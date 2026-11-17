@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.ingest import IngestionError, _parse_page
+from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page
 
 
 class ParsePageTests(unittest.TestCase):
@@ -39,6 +39,23 @@ class ParsePageTests(unittest.TestCase):
         with self.assertRaises(IngestionError):
             _parse_page(b"not json", 1, "x")
 
+
+    def test_identical_duplicate_across_pages_is_accepted(self):
+        rows = {}
+        first = Draw("26131", "2026-11-16", [1, 2, 3, 4, 5], [1, 2], "page-a")
+        repeated = Draw("26131", "2026-11-16", [1, 2, 3, 4, 5], [1, 2], "page-b")
+        _add_draw(rows, first)
+        _add_draw(rows, repeated)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows["26131"].source_id, "page-a")
+
+    def test_conflicting_duplicate_across_pages_is_rejected(self):
+        rows = {}
+        first = Draw("26131", "2026-11-16", [1, 2, 3, 4, 5], [1, 2], "page-a")
+        conflict = Draw("26131", "2026-11-16", [1, 2, 3, 4, 6], [1, 2], "page-b")
+        _add_draw(rows, first)
+        with self.assertRaises(IngestionError):
+            _add_draw(rows, conflict)
 
 if __name__ == "__main__":
     unittest.main()
