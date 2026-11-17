@@ -1,0 +1,46 @@
+{
+  "dataset_id": "legacy-clean-candidate-2007-2026-07",
+  "status": "candidate_unverified",
+  "source_repository": "https://github.com/rbk64513-debug/dlt-analysis",
+  "source_path": "public/data/dlt_clean.json",
+  "source_git_blob_sha": "bde880c7272f70b4e558ee01b58c63c1e65e632c",
+  "source_file_bytes": 3823201,
+  "source_record_count": 2901,
+  "draw_file": "legacy_draws.jsonl",
+  "prize_files_pattern": "legacy_prizes_part_*.jsonl",
+  "first_draw": "07001",
+  "first_date": "2007-05-30",
+  "last_draw": "26083",
+  "last_date": "2026-07-25",
+  "transformations": [
+    "Converted the existing JSON array to JSON Lines.",
+    "Mapped draw identifiers, dates, and selected numbers to canonical field names.",
+    "Split the seven-number draw-order array into front and back order fields without reordering it.",
+    "Preserved legacy equipment and promotion flags with explicit legacy suffixes.",
+    "Converted monetary JSON numbers to decimal strings to avoid further binary-float arithmetic.",
+    "Preserved original prize labels, amounts, counts, totals, and conditions as separate rows."
+  ],
+  "known_limitations": [
+    "This is already-cleaned data, not immutable raw official API responses.",
+    "The original cleaning script uses bool(lotteryPromotionFlag); source field type was not retained, so promotion flags require raw-source reconciliation.",
+    "The original cleaning script contains a no-op awardType condition and retained all prize rows; labels are preserved without reinterpretation.",
+    "1,398 draws have no sales value; 560 draws have no draw-order value.",
+    "Equipment code 0 is treated as unknown, not as a real equipment identity.",
+    "21 draws contain promotion prize rows where amount is 0 but total is positive; these require source-level interpretation.",
+    "This candidate must not be used as a trusted predictive training set until official-source reconciliation and rule-era checks are complete."
+  ],
+  "audit_summary": {
+    "draw_records": 2901,
+    "unique_draw_ids": 2901,
+    "duplicate_draw_ids": 0,
+    "valid_front_back_records": 2901,
+    "valid_draw_order_records": 2341,
+    "missing_draw_order_records": 560,
+    "unknown_equipment_code_records": 565,
+    "known_equipment_code_records": 2336,
+    "legacy_promotion_true_records": 141,
+    "missing_sales_records": 1398,
+    "prize_label_kinds": 25,
+    "prize_records": 33098
+  }
+}
