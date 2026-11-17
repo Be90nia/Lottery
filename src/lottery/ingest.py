@@ -42,8 +42,8 @@ def _fetch_page(page_no: int, page_size: int, timeout: int = 20, retries: int = 
     url = f"{API_URL}?{params}"
     headers = {
         "Accept": "application/json",
-        "User-Agent": "LotteryResearchBot/0.1 (public historical data research)",
-        "Referer": "https://www.sporttery.cn/",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "Referer": "https://m.lottery.gov.cn/",
     }
     last_error: Exception | None = None
     for attempt in range(retries):
@@ -144,6 +144,10 @@ def fetch_history(
 ) -> dict[str, Any]:
     if not 1 <= page_size <= 100:
         raise ValueError("page_size must be between 1 and 100")
+    if max_pages is not None and max_pages < 1:
+        raise ValueError("max_pages must be at least 1")
+    if delay_seconds < 0:
+        raise ValueError("delay_seconds must not be negative")
     all_rows: dict[str, Draw] = {}
     page_manifests: list[dict[str, Any]] = []
     for page_no in range(1, (max_pages or 10**9) + 1):
