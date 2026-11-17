@@ -1,7 +1,7 @@
 # Task Backlog
 
 ## P0 — Trustworthy foundation
-- [ ] LOT-001 Confirm repository branch and CI baseline.
+- [x] LOT-001 Confirm repository branch and CI baseline.
 - [ ] LOT-002 Identify authoritative historical result source(s).
 - [ ] LOT-003 Capture and hash immutable raw source snapshots.
 - [x] LOT-004 Define canonical draw schema; prize schema remains specified separately in DATA_SPEC.
@@ -31,3 +31,10 @@
 ## Acceptance criteria
 
 A task is complete only when code, tests, provenance, and documentation are updated together. Research claims require reproducible evidence and an explicit limitations section.
+
+## Additional data-reconciliation tasks
+
+- [ ] LOT-035 Obtain an authorized network path or official response snapshots for source verification; do not bypass the source WAF.
+- [ ] LOT-036 Reconcile legacy promotion flags, prize award types, equipment codes, and monetary fields against raw official records.
+- [ ] LOT-037 Extend the candidate dataset from draw 26083 through the latest verified official draw.
+- [ ] LOT-038 Promote a versioned canonical dataset only after source overlap, completeness, and prize-field checks pass.
