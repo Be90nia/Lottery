@@ -39,6 +39,16 @@ class ParsePageTests(unittest.TestCase):
         with self.assertRaises(IngestionError):
             _parse_page(b"not json", 1, "x")
 
+    def test_source_failure_envelope_rejected(self):
+        payload = json.dumps({"success": False, "errorMessage": "blocked", "value": {"list": []}}).encode()
+        with self.assertRaises(IngestionError):
+            _parse_page(payload, 1, "x")
+
+    def test_nonzero_error_code_rejected(self):
+        payload = json.dumps({"errorCode": "E001", "value": {"list": []}}).encode()
+        with self.assertRaises(IngestionError):
+            _parse_page(payload, 1, "x")
+
 
     def test_identical_duplicate_across_pages_is_accepted(self):
         rows = {}
