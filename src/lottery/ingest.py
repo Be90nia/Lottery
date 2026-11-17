@@ -120,6 +120,21 @@ def _parse_page(raw: bytes, page_no: int, source_id: str) -> list[Draw]:
     return rows
 
 
+def _add_draw(rows: dict[str, Draw], row: Draw) -> None:
+    previous = rows.get(row.draw_id)
+    if previous is not None:
+        same_result = (
+            previous.draw_date == row.draw_date
+            and previous.front_numbers == row.front_numbers
+            and previous.back_numbers == row.back_numbers
+        )
+        if not same_result:
+            raise IngestionError(f"conflicting duplicate draw_id: {row.draw_id}")
+        # Same draw on adjacent pages: keep the first provenance reference.
+        return
+    rows[row.draw_id] = row
+
+
 def fetch_history(
     output: Path = Path("data/processed/draws.jsonl"),
     raw_dir: Path = Path("data/raw/sporttery"),
@@ -146,19 +161,7 @@ def fetch_history(
         if not rows:
             break
         for row in rows:
-            previous = all_rows.get(row.draw_id)
-            if previous is not None:
-                same_result = (
-                    previous.draw_date == row.draw_date
-                    and previous.front_numbers == row.front_numbers
-                    and previous.back_numbers == row.back_numbers
-                )
-                if not same_result:
-                    raise IngestionError(f"conflicting duplicate draw_id: {row.draw_id}")
-                # The same draw may occur on adjacent pages. Keep the first
-                # provenance reference; both page snapshots remain archived.
-                continue
-            all_rows[row.draw_id] = row
+            _add_draw(all_rows, row)
         if len(rows) < page_size:
             break
         if max_pages is not None and page_no >= max_pages:
