@@ -41,6 +41,9 @@
     "legacy_promotion_true_records": 141,
     "missing_sales_records": 1398,
     "prize_label_kinds": 25,
-    "prize_records": 33098
+    "prize_records": 33098,
+    "missing_prize_amount_rows": 2101,
+    "prize_amount_times_count_mismatch_rows": 147,
+    "zero_amount_positive_total_rows": 147
   }
 }
