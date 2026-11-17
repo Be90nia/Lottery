@@ -4,11 +4,11 @@
 - [ ] LOT-001 Confirm repository branch and CI baseline.
 - [ ] LOT-002 Identify authoritative historical result source(s).
 - [ ] LOT-003 Capture and hash immutable raw source snapshots.
-- [ ] LOT-004 Define canonical draw and prize schemas.
-- [ ] LOT-005 Implement strict number/date/identifier validation.
+- [x] LOT-004 Define canonical draw schema; prize schema remains specified separately in DATA_SPEC.
+- [x] LOT-005 Implement strict number/date/identifier and canonical dataset validation.
 - [ ] LOT-006 Reconcile duplicate and conflicting draw records.
-- [ ] LOT-007 Add unit tests for parsing and validation.
-- [ ] LOT-008 Add provenance manifest and reproducible ingestion command.
+- [x] LOT-007 Add unit tests for parsing, duplicate reconciliation, and dataset validation.
+- [ ] LOT-008 Complete live-source verification and ingestion-run provenance acceptance test.
 
 ## P1 — Research quality
 - [ ] LOT-009 Implement legal-draw random simulation.
