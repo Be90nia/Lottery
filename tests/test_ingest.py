@@ -9,12 +9,15 @@ from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page
 
 
 class ParsePageTests(unittest.TestCase):
-    def payload(self, result="01 02 03 04 05 01 02"):
-        return json.dumps({"value": {"list": [{
+    def payload(self, result="01 02 03 04 05 01 02", order=None):
+        row = {
             "lotteryDrawNum": "26131",
             "lotteryDrawTime": "2026-11-16",
             "lotteryDrawResult": result,
-        }]}}).encode()
+        }
+        if order is not None:
+            row["lotteryUnsortDrawresult"] = order
+        return json.dumps({"value": {"list": [row]}}).encode()
 
     def test_valid_record_is_normalized(self):
         rows = _parse_page(self.payload(), 1, "sha256:test")
@@ -22,6 +25,15 @@ class ParsePageTests(unittest.TestCase):
         self.assertEqual(rows[0].draw_id, "26131")
         self.assertEqual(rows[0].front_numbers, [1, 2, 3, 4, 5])
         self.assertEqual(rows[0].back_numbers, [1, 2])
+
+    def test_draw_order_is_preserved_by_zone(self):
+        rows = _parse_page(self.payload(order="03 01 05 02 04 02 01"), 1, "x")
+        self.assertEqual(rows[0].front_draw_order, [3, 1, 5, 2, 4])
+        self.assertEqual(rows[0].back_draw_order, [2, 1])
+
+    def test_invalid_draw_order_rejected(self):
+        with self.assertRaises(IngestionError):
+            _parse_page(self.payload(order="03 01 05 02 06 02 01"), 1, "x")
 
     def test_duplicate_number_rejected(self):
         with self.assertRaises(IngestionError):
