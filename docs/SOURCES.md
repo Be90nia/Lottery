@@ -28,3 +28,13 @@ The collector archives exact response bytes before parsing and writes a sidecar 
 - Additional endpoint example: https://github.com/FranklinDX3906/Lottery/blob/master/data/numbers_get.py
 
 These are corroborating technical examples, not substitutes for the official source itself.
+
+## Network access observation (2026-11-17)
+
+A read-only one-page probe from GitHub Actions using the documented endpoint, mobile browser headers, and no `termLimits` parameter received HTTP 567 after three attempts. The response was reported by urllib as `HTTP Error 567: Unknown Status`; no JSON payload was returned, so no official sample was parsed.
+
+Independent recent technical documentation for Sporttery's API host reports Tencent Cloud EdgeOne WAF responses of HTTP 403/567 and rejection of datacenter egress IPs. This is consistent with the observed GitHub-hosted runner failure. We will not attempt to evade this access control with an unapproved relay. Live verification must use an authorized access path or user-provided official response snapshots.
+
+References:
+- https://github.com/Johnserf-Seed/SportteryAPI/blob/main/README.zh-CN.md
+- https://github.com/Johnserf-Seed/SportteryAPI/blob/main/src/upstream.ts
