@@ -17,3 +17,5 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Validate imported legacy draw candidate
         run: python scripts/validate_dataset.py data/candidates/legacy_draws.jsonl
+      - name: Audit imported legacy prize rows
+        run: python scripts/validate_legacy_prizes.py
