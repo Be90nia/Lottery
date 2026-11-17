@@ -11,6 +11,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,7 +60,7 @@ def _fetch_page(page_no: int, page_size: int, timeout: int = 20, retries: int = 
     raise IngestionError(f"page {page_no}: request failed after {retries} attempts: {last_error}")
 
 
-def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir: Path, url: str) -> str:
+def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir: Path, url: str, run_id: str) -> str:
     digest = hashlib.sha256(raw).hexdigest()
     retrieved_at = datetime.now(timezone.utc).isoformat()
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -74,6 +75,7 @@ def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir:
         "content_type": content_type,
         "sha256": digest,
         "parser_version": PARSER_VERSION,
+        "run_id": run_id,
         "page_no": page_no,
         "raw_file": body_path.name,
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -148,6 +150,7 @@ def fetch_history(
         raise ValueError("max_pages must be at least 1")
     if delay_seconds < 0:
         raise ValueError("delay_seconds must not be negative")
+    run_id = uuid.uuid4().hex
     all_rows: dict[str, Draw] = {}
     page_manifests: list[dict[str, Any]] = []
     for page_no in range(1, (max_pages or 10**9) + 1):
@@ -159,9 +162,9 @@ def fetch_history(
         raw, status, content_type = _fetch_page(page_no, page_size)
         if status != 200:
             raise IngestionError(f"page {page_no}: unexpected HTTP status {status}")
-        digest = _snapshot(raw, page_no, status, content_type, raw_dir, url)
+        digest = _snapshot(raw, page_no, status, content_type, raw_dir, url, run_id)
         rows = _parse_page(raw, page_no, digest)
-        page_manifests.append({"page_no": page_no, "sha256": digest, "records": len(rows)})
+        page_manifests.append({"page_no": page_no, "sha256": digest, "records": len(rows), "run_id": run_id})
         if not rows:
             break
         for row in rows:
@@ -184,4 +187,5 @@ def fetch_history(
         "output": str(output),
         "pages": page_manifests,
         "parser_version": PARSER_VERSION,
+        "run_id": run_id,
     }
