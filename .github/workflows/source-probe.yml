@@ -1,0 +1,43 @@
+name: source-probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/source-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch one official page and preserve response
+        run: |
+          python scripts/fetch_history.py \
+            --max-pages 1 \
+            --delay 0 \
+            --output data/interim/official_page1.jsonl \
+            --raw-dir data/raw/official_probe
+      - name: Reconcile overlap with legacy candidate
+        run: |
+          python scripts/reconcile_candidate.py \
+            data/candidates/legacy_draws.jsonl \
+            data/interim/official_page1.jsonl
+      - name: Upload source probe evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: official-source-probe
+          path: |
+            data/interim/official_page1.jsonl
+            data/raw/official_probe/
+          if-no-files-found: warn
+          retention-days: 14
