@@ -15,3 +15,5 @@ jobs:
           python-version: "3.12"
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
+      - name: Validate imported legacy draw candidate
+        run: python scripts/validate_dataset.py data/candidates/legacy_draws.jsonl
