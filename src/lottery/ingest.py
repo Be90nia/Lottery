@@ -147,8 +147,17 @@ def fetch_history(
             break
         for row in rows:
             previous = all_rows.get(row.draw_id)
-            if previous is not None and previous != row:
-                raise IngestionError(f"conflicting duplicate draw_id: {row.draw_id}")
+            if previous is not None:
+                same_result = (
+                    previous.draw_date == row.draw_date
+                    and previous.front_numbers == row.front_numbers
+                    and previous.back_numbers == row.back_numbers
+                )
+                if not same_result:
+                    raise IngestionError(f"conflicting duplicate draw_id: {row.draw_id}")
+                # The same draw may occur on adjacent pages. Keep the first
+                # provenance reference; both page snapshots remain archived.
+                continue
             all_rows[row.draw_id] = row
         if len(rows) < page_size:
             break
