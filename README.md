@@ -43,3 +43,16 @@
 ## 重要声明
 
 超级大乐透开奖结果由正式开奖规则产生。历史数据分析不能证明下一期号码可被准确预测。任何模型都必须报告样本外结果、随机基线差异、不确定性和失败案例。请理性购彩，不要将模型输出视为投资建议。
+
+## Run the data collector
+
+Python 3.10+ is sufficient; the initial collector uses only the standard library.
+
+```bash
+python scripts/fetch_history.py --max-pages 2
+python -m unittest discover -s tests -v
+```
+
+Remove `--max-pages 2` to request all available pages. The collector writes immutable raw page snapshots and SHA-256 manifests under `data/raw/sporttery/`, then writes normalized JSON Lines to `data/processed/draws.jsonl`. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
+
+The live endpoint has not yet passed this repository's end-to-end verification. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset.
