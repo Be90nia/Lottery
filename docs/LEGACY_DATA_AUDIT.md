@@ -34,6 +34,7 @@ Money fields are represented as decimal strings in the imported candidate files.
 | Legacy promotion flag set to true | 141 |
 | Missing sales values | 1,398 |
 | Prize rows | 33,098 |
+| Prize rows with missing single-ticket amount | 2,101 |
 | Prize label variants | 25 |
 
 All 2,901 records have five distinct front numbers in 1..35 and two distinct back numbers in 1..12. Draw IDs are unique, and dates are in ascending order. For all 2,341 non-null draw-order records, the first five values are a permutation of the front numbers and the last two are a permutation of the back numbers.
@@ -57,7 +58,7 @@ The original `scripts/clean_dlt.py` was inspected. It contains several issues th
 2. **Prize award type filter is a no-op:** the code says `if p.get("awardType") != 0: pass`, then appends the row anyway. All original labels are preserved here; we do not guess which award types should be excluded.
 3. **Binary floating-point money:** the old cleaner converts monetary fields with `float()`. Financial reconciliation must use official raw values and decimal arithmetic.
 4. **Missing values are not uniform:** 560 missing order values, 1,398 missing sales values, and equipment code 0 must remain unknown rather than be imputed.
-5. **Promotion prize semantics:** 21 draws (23039–23059) contain 147 promotion prize rows across tiers 3–9 where the recorded per-ticket `amount` is 0 while `total` is positive. These rows must not be interpreted as ordinary `amount × winner_count` prize rows.
+5. **Promotion prize semantics:** 2,101 prize rows have a missing per-ticket amount. In addition, 21 draws (23039–23059) contain 147 promotion prize rows across tiers 3–9 where the recorded per-ticket `amount` is 0 while `total` is positive. These rows must not be interpreted as ordinary `amount × winner_count` prize rows.
 6. **Download provenance:** the old downloader reuses existing page cache files and silently overwrites duplicate draw IDs in a dictionary. It does not store response hashes or a per-run manifest.
 
 ## Decision
