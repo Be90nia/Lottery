@@ -46,6 +46,13 @@ class DatasetValidationTests(unittest.TestCase):
         with self.assertRaises(DatasetValidationError):
             validate_records([record(draw_date="2026-02-30")])
 
+    def test_invalid_draw_order_rejected(self):
+        row = record()
+        row["front_draw_order"] = [2, 11, 18, 19, 28]
+        row["back_draw_order"] = [4, 7]
+        with self.assertRaises(DatasetValidationError):
+            validate_records([row])
+
 
 if __name__ == "__main__":
     unittest.main()
