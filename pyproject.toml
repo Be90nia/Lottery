@@ -1,0 +1,10 @@
+[project]
+name = "lottery-research"
+version = "0.1.0"
+description = "Reproducible Super Lotto data ingestion and statistical research"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
