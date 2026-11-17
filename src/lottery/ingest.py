@@ -89,6 +89,11 @@ def _parse_page(raw: bytes, page_no: int, source_id: str) -> list[Draw]:
         raise IngestionError(f"page {page_no}: response is not valid UTF-8 JSON") from exc
     if not isinstance(payload, dict):
         raise IngestionError(f"page {page_no}: top-level JSON must be an object")
+    if payload.get("success") is False:
+        raise IngestionError(f"page {page_no}: source reported failure: {payload.get('errorMessage') or payload.get('errorMsg') or 'unknown error'}")
+    error_code = payload.get("errorCode")
+    if error_code is not None and str(error_code) not in ("0", "00"):
+        raise IngestionError(f"page {page_no}: source errorCode={error_code!r}")
     value = payload.get("value")
     if not isinstance(value, dict) or not isinstance(value.get("list"), list):
         raise IngestionError(f"page {page_no}: missing expected value.list array")
