@@ -23,6 +23,10 @@ class DatasetValidationTests(unittest.TestCase):
         self.assertEqual(report["records"], 1)
         self.assertEqual(report["unique_draw_ids"], 1)
 
+    def test_empty_dataset_rejected(self):
+        with self.assertRaises(DatasetValidationError):
+            validate_records([])
+
     def test_duplicate_draw_id_rejected(self):
         with self.assertRaises(DatasetValidationError):
             validate_records([record(), record(draw_date="2026-11-17")])
