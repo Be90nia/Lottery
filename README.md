@@ -57,3 +57,7 @@ python -m unittest discover -s tests -v
 Remove `--max-pages 2` to request all available pages. The collector writes immutable raw page snapshots and SHA-256 manifests under `data/raw/sporttery/`, then writes normalized JSON Lines to `data/processed/draws.jsonl`. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
 
 The live endpoint has not yet passed this repository's end-to-end verification. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset.
+
+## Legacy historical candidate data
+
+An existing 2,901-draw dataset from the earlier `dlt-analysis` project has been imported under `data/candidates/`. It is explicitly marked **unverified candidate data**, not a trusted training dataset. Its structure and cleaning-script defects are documented in [the legacy data audit](docs/LEGACY_DATA_AUDIT.md). Do not use its promotion, prize, sales, or equipment fields as ground truth until they are reconciled with immutable official source snapshots.
