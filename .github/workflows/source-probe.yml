@@ -1,4 +1,5 @@
 name: source-probe
+# One-shot live API contract probe; safe to re-run manually.
 
 on:
   push:
