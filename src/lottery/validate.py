@@ -12,6 +12,8 @@ class DatasetValidationError(ValueError):
 
 
 def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
+    if not records:
+        raise DatasetValidationError("dataset is empty")
     seen: dict[str, dict[str, Any]] = {}
     previous_key: tuple[str, str] | None = None
     errors: list[str] = []
