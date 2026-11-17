@@ -50,6 +50,7 @@ Python 3.10+ is sufficient; the initial collector uses only the standard library
 
 ```bash
 python scripts/fetch_history.py --max-pages 2
+python scripts/validate_dataset.py
 python -m unittest discover -s tests -v
 ```
 
