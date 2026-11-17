@@ -1,5 +1,5 @@
 name: source-probe
-# One-shot live API contract probe; safe to re-run manually.
+# Read-only probe; a 567 response is recorded as BLOCKED, never bypassed.
 
 on:
   push:
@@ -21,13 +21,26 @@ jobs:
         with:
           python-version: "3.12"
       - name: Fetch one official page and preserve response
+        id: fetch
         run: |
+          set +e
           python scripts/fetch_history.py \
             --max-pages 1 \
             --delay 0 \
             --output data/interim/official_page1.jsonl \
-            --raw-dir data/raw/official_probe
+            --raw-dir data/raw/official_probe > probe.log 2>&1
+          status=$?
+          cat probe.log
+          if [ "$status" -eq 0 ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          elif grep -q "HTTP Error 567" probe.log; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Official API returned HTTP 567 from this runner; recorded as blocked."
+          else
+            exit "$status"
+          fi
       - name: Reconcile overlap with legacy candidate
+        if: steps.fetch.outputs.available == 'true'
         run: |
           python scripts/reconcile_candidate.py \
             data/candidates/legacy_draws.jsonl \
@@ -38,6 +51,7 @@ jobs:
         with:
           name: official-source-probe
           path: |
+            probe.log
             data/interim/official_page1.jsonl
             data/raw/official_probe/
           if-no-files-found: warn
