@@ -86,6 +86,26 @@ This is not a small rounding difference. The API values for these rows must
 not be used as trusted payout observations until the upstream mapping and
 historical announcement discrepancy are resolved.
 
+### Issue 07008 — API contains additional rows not present in the official main-game announcement
+
+The archived API snapshot contains `四等奖(追加)` at ¥3,000 for 92
+winners and `五等奖(追加)` at ¥500 for 2,581 winners. These values duplicate
+the basic fourth- and fifth-prize rows in the same API draw.
+
+The Jiangsu announcement separately lists the main-game basic prizes and says
+the only main-game additional-bet winners were six third-prize winners at
+¥4,582. It does not list fourth- or fifth-prize additional winners. The page
+also separately identifies an "附加玩法" result, which must not be conflated
+with additional betting on the main game.
+
+Source: [Jiangsu Sports Lottery, issue 07008](https://www.js-lottery.com/cms/post-2575.html),
+published 2007-06-16; see the main-game prize table around lines 95–114 and
+the separate side-game section beginning around line 118.
+
+This supports quarantining the API's 07008 additional rows and is consistent
+with the broader finding that 2007 early-era fixed-tier additional rows need
+source-level review.
+
 ### Issue 17045 — promotion overlay is not represented cleanly
 
 The Jiangsu announcement separates basic awards, promotion awards, and
