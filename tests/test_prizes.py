@@ -85,6 +85,22 @@ class PrizeAuditTests(unittest.TestCase):
         self.assertEqual(report["unexpected_additional_row_count"], 1)
         self.assertEqual(report["unexpected_additional_rows"][0]["tier"], 4)
 
+    def test_official_2007_regional_result_additional_rows(self):
+        rows = [
+            prize("07006", "一等奖", "5000000", 1, "5000000"),
+            prize("07006", "一等奖(追加)", "3000000", 1, "3000000"),
+            prize("07006", "二等奖", "461113", 3, "1383339"),
+            prize("07006", "二等奖(追加)", "0", 0, "0"),
+            prize("07006", "三等奖", "20343", 13, "264459"),
+            prize("07006", "三等奖(追加)", "12205", 1, "12205"),
+            prize("07006", "四等奖", "3000", 42, "126000"),
+            prize("07006", "五等奖", "500", 814, "407000"),
+        ]
+        report = reconcile_additional_awards(rows)
+        self.assertEqual(report["additional_pairs_checked"], 2)
+        self.assertEqual(report["additional_pair_mismatches"], 0)
+        self.assertEqual(report["unexpected_additional_row_count"], 0)
+
     def test_2009_and_2014_fixed_additional_multipliers(self):
         rows = [
             prize("09121", "四等奖", "3000", 10, "30000"),
