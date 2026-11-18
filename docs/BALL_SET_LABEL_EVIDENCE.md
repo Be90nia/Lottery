@@ -50,6 +50,10 @@ Searches found secondary lottery-result archives reporting explicit third-set us
 | 12047 | 2012-04-25 | 3 | https://news.zgzcw.com/news/48/21/2012-04-26/382339.shtml |
 | 12052 | 2012-05-07 | 2 | https://news.zgzcw.com/news/48/21/2012-05-08/384626.shtml |
 
+
+
+The 11105 and 11119 pages were opened and their full page text confirms the stated draw IDs/dates and “本期使用第：3套摇奖球” wording. They remain C1 secondary records: opening and reading the full page improves confidence in what the secondary publisher reported, but does not change source authority or qualify them as official per-draw evidence. The Jiangsu official 2011-01-10 retrospective explicitly says the disclosure information came from national Sports Lottery Center announcements, but does not preserve or link the underlying 11004 announcement bytes.
+
 These records materially narrow the search target: the third set may already have been in use by September 2011. However, these pages are not the issuing provincial/national lottery authority's archived original announcement, so they are **discovery leads only**. They must not populate the verified row-level label ledger or establish the formal transition date. LOT-058 should use the draw IDs/dates above as priority recovery targets for matching original official notices. If original official bytes cannot be recovered, retain the records as secondary corroboration only.
 
 ### 1.5 Machine replacement is a separate event, not proof of ball-set transition
