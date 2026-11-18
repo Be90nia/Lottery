@@ -82,6 +82,16 @@ class ParsePageTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows["26131"].source_id, "page-a")
 
+    def test_conflicting_equipment_metadata_across_pages_is_rejected(self):
+        rows = {}
+        first = Draw("26131", "2026-11-16", [1, 2, 3, 4, 5], [1, 2], "page-a",
+                     source_equipment_count=1)
+        conflict = Draw("26131", "2026-11-16", [1, 2, 3, 4, 5], [1, 2], "page-b",
+                        source_equipment_count=3)
+        _add_draw(rows, first)
+        with self.assertRaises(IngestionError):
+            _add_draw(rows, conflict)
+
     def test_conflicting_duplicate_across_pages_is_rejected(self):
         rows = {}
         first = Draw("26131", "2026-11-16", [1, 2, 3, 4, 5], [1, 2], "page-a")
