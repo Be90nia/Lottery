@@ -50,7 +50,7 @@ class ForecastLedgerTests(unittest.TestCase):
             create_forecast_event(self.rows, **kwargs)
 
     def test_target_date_must_follow_training_data(self):
-        kwargs = dict(self.kwargs, target_draw_at="2026-01-03T20:00:00+08:00")
+        kwargs = dict(self.kwargs, target_draw_at="2026-01-03T20:00:00+08:00", generated_at=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc))
         with self.assertRaisesRegex(ForecastLedgerError, "later than every training"):
             create_forecast_event(self.rows, **kwargs)
 
