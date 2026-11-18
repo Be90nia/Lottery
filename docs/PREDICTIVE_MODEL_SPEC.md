@@ -61,7 +61,7 @@ Keep these as separately named models:
 3. EWMA marginal model, half-life 100 draws and α = 100 shrinkage.
 4. LOT-051 complete-set exponential-family candidate.
 
-For weighted-subset comparators, define the probability of a legal k-subset S proportional to the product of its fixed marginal odds weights, and normalize over all legal subsets. Document how marginal inclusion probabilities are converted to positive odds weights and test the expected subset size; do not multiply Bernoulli probabilities without conditioning on fixed subset size.
+For weighted-subset comparators, use the conditional-Poisson / rejective-sampling family P(S) ∝ ∏_{i∈S} w_i over all legal k-subsets, with w_i > 0. Calibrate log-weights by solving for the requested marginal inclusion probabilities under this fixed-size distribution (with one redundant scale degree of freedom removed, e.g. centering log-weights). Verify numerically that the resulting inclusion probabilities match the input marginals and sum to k. If the calibration fails or the target marginals are on an infeasible boundary, fail closed and report it; do not silently fall back to independent Bernoulli draws or arbitrary odds. This ensures the comparator preserves the fixed ticket size and the intended marginals.
 
 No candidate may replace uniform merely because its top-ranked tickets look plausible. Score probability forecasts using exact-set negative log likelihood. Ticket hit counts are descriptive only.
 
