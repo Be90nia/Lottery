@@ -43,7 +43,7 @@
 - [ ] LOT-044 Verify `lotteryUnsortDrawresult` and `lotteryEquipmentCount` semantics against authorized immutable official raw snapshots; reconcile row-level order/equipment provenance before positional or equipment-stratified inference.
 - [x] LOT-045 Add offline immutable JSON snapshot import with SHA-256 sidecar verification, duplicate reconciliation, dataset validation, output manifest, and explicit unverified status when provenance is incomplete. Audit: [DRAW_ORDER_METADATA_AUDIT.md](docs/DRAW_ORDER_METADATA_AUDIT.md).
 - [x] LOT-046 Add pre-draw forecast ledger with fixed model probabilities, training-data hash, code commit, future-target guard, duplicate prevention, and hash-chain verification. This is instrumentation only; LOT-042 holdout remains unstarted.
-- [ ] LOT-047 Add separate provenance-gated post-draw outcome ledger and offline per-draw scoring; never mutate forecast events. Track in [issue #1](https://github.com/Be90nia/Lottery/issues/1); CI and audit hardening required before completion.
+- [x] LOT-047 Add separate provenance-gated post-draw outcome ledger and offline per-draw scoring; never mutate forecast events. Includes timestamp/source/result validation, forecast-event linkage, semantic ledger verification, per-draw Brier/Log Loss/Top-K scoring, and exact-score regression tests. CI run [44225221808](https://github.com/Be90nia/Lottery/actions/runs/44225221808) passed.
 
 ## Acceptance criteria
 
