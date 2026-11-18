@@ -91,7 +91,7 @@ def main() -> int:
             if not isinstance(draw, dict):
                 raise SystemExit(f"non-object draw at {raw_path.name}:{draw_index}")
 
-            draw_id = str(draw.get("lotteryDrawNum") or draw.get("lotteryDrawNo") or "")
+            draw_id = str(draw.get("lotteryDrawNum", "")).strip()
             if not draw_id:
                 raise SystemExit(f"missing draw ID at {raw_path.name}:{draw_index}")
             if draw_id in seen_draws:
@@ -124,7 +124,7 @@ def main() -> int:
                 records.append({
                     "record_schema": "sporttery-prize-raw/v1",
                     "draw_id": draw_id,
-                    "draw_date": draw.get("lotteryDrawTime"),
+                    "draw_date": str(draw.get("lotteryDrawTime", "")).strip(),
                     "source": {
                         "source_name": manifest["source"],
                         "source_url": manifest["url"],
