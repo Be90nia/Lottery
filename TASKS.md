@@ -42,6 +42,7 @@
 
 - [ ] LOT-044 Verify `lotteryUnsortDrawresult` and `lotteryEquipmentCount` semantics against authorized immutable official raw snapshots; reconcile row-level order/equipment provenance before positional or equipment-stratified inference.
 - [x] LOT-045 Add offline immutable JSON snapshot import with SHA-256 sidecar verification, duplicate reconciliation, dataset validation, output manifest, and explicit unverified status when provenance is incomplete. Audit: [DRAW_ORDER_METADATA_AUDIT.md](docs/DRAW_ORDER_METADATA_AUDIT.md).
+- [x] LOT-046 Add pre-draw forecast ledger with fixed model probabilities, training-data hash, code commit, future-target guard, duplicate prevention, and hash-chain verification. This is instrumentation only; LOT-042 holdout remains unstarted.
 
 ## Acceptance criteria
 
