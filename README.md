@@ -173,3 +173,16 @@ tier = rules.tier_for_hits(front_hits=4, back_hits=2)
 ```
 
 The registry supports the reconstructed eight-tier 2007 launch rules (07001–09120), eight-tier 2009/2013 rules (09121–14051), six-tier 2014 rules (14052–19018), nine-tier 2019 rules (19019–26013), and seven-tier 2026 rules (26014 onward). The launch-era source-quality caveat is documented; floating awards and promotion overlays are not calculated. See [versioned prize rules](docs/PRIZE_RULES.md).
+
+### Prize row reconciliation
+
+Audit base awards, additional bets, and promotion overlays without rewriting
+the original candidate values:
+
+```bash
+python scripts/validate_legacy_prizes.py --output prize-reconciliation.json
+```
+
+See [prize reconciliation methodology](docs/PRIZE_RECONCILIATION.md). The
+report is exploratory until raw official prize snapshots are independently
+verified.
