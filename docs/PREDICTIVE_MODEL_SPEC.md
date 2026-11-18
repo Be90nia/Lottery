@@ -270,3 +270,21 @@ An implementation may use full subset enumeration, or the exact dynamic-programm
 Calibration minimizes the convex log-partition dual A(η) − ηᵀπ_target under the zero-sum gauge, where A=log e_k(exp η). The target must satisfy 0 < π_i < 1 and Σ_i π_i = k within a declared input tolerance. A boundary target, non-finite value, wrong sum, or solver non-convergence is an explicit failure. After calibration, independently recompute achieved marginals and require max absolute residual ≤ 1e−8; record both target and achieved vectors, solver status, objective, gradient norm, iteration count, and residual. Never silently renormalize invalid targets or accept a fit based only on optimizer success.
 
 For exact sampling, use the same prefix DP to choose whether item i is included conditional on the remaining selection count while traversing i from m down to 1, with probability w_i E[i−1,r−1] / E[i,r] (or an algebraically equivalent reverse traversal). Inject the RNG; return exactly k distinct indices. Tests must compare DP normalizers and marginals with brute-force enumeration for small m,k, verify permutation equivariance, and verify empirical sampling frequencies against exact marginals within predeclared Monte Carlo tolerance. The Monte Carlo check validates the sampler only; it must never replace exact normalization or calibration.
+
+## 13. Exact marginal semantics for the expanding and EWMA baselines
+
+The marginal baselines must output a fixed-size subset distribution through the conditional-Poisson calibration in Section 12; they must not independently sample Bernoulli indicators.
+
+For a zone with population m, selection size k, n earlier training draws, and inclusion count c_i for item i, define the expanding-frequency target marginal:
+
+π_i = (c_i + α k/m) / (n + α), with α=100.
+
+This is a uniform-prior shrinkage of the empirical inclusion rates. It guarantees 0<π_i<1 and Σ_i π_i=k for finite n.
+
+For EWMA with half-life h=100 draws, assign each prior training draw s at chronological lag ℓ_s (most recent lag 0) weight a_s=2^(−ℓ_s/h). Define W=Σ_s a_s and C_i=Σ_s a_s 1[i∈S_s]. Then:
+
+π_i = (C_i + α k/m) / (W + α), with α=100.
+
+The EWMA weights and counts use only draws strictly earlier than the target. The same fixed-size sum and interior constraints hold. Both target-marginal vectors are passed to the exact conditional-Poisson calibration routine; store the input target marginals, calibrated log weights, achieved marginals, and residual. If calibration fails, record a failed baseline for that target; do not replace it with independent Bernoulli sampling or silently substitute the uniform model.
+
+These formulas are the frozen baseline semantics. Do not retune α or h per target, zone, regime, or observed performance.
