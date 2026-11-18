@@ -259,7 +259,7 @@ def ingest_snapshot_directory(
         "validation": validation,
         "output_file": output.name,
         "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
-        "trust_status": "candidate_unverified" if not provenance_complete else "source_manifest_verified_not_semantically_authoritative",
+        "trust_status": "candidate_unverified" if not provenance_complete else "manifest_complete_not_officially_authenticated",
     }
     manifest_path = output.with_suffix(output.suffix + ".manifest.json")
     manifest_tmp = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
