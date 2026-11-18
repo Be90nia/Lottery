@@ -82,11 +82,13 @@ game rule:
   secondary-source cross-check, not an official immutable source snapshot.
   [Detailed 16106 result](https://news.zgzcw.com/dlt/zx_193.shtml)
 - Draw 26016, first prize: the official Jiangsu result reports basic ¥5,925,957
-  and additional ¥4,740,766. The latter is 80% of the basic amount rounded to
-  the nearest yuan (¥4,740,765.6). The 2026 ruleset therefore records
-  `half_up` as an observed published-result rounding convention; the earlier
-  rulesets retain floor rounding.
+  and additional ¥4,740,766; draw 26029 reports basic ¥7,877,022 and additional
+  ¥6,301,617. Both satisfy the 80% relationship within one yuan, but the
+  displayed amounts do not establish one universal rounding mode. The audit
+  therefore uses a conservative ±¥2 display-rounding tolerance for floating
+  tiers only, and keeps exact multiplier checks for fixed tiers.
   [Official Jiangsu draw 26016](https://www.js-lottery.com/cms/post-146412.html)
+  [Official Jiangsu draw 26029](https://api.js-lottery.com/cms/post-146636.html)
 
 The candidate also contains 734 nonzero additional rows in fixed tiers 4 and
 5 during the 2007 launch-era rules, which only authorized additional betting
@@ -102,11 +104,14 @@ row and selects the effective ruleset by draw ID. It checks:
 - whether additional winners exceed base winners;
 - whether both unit amounts are available;
 - whether the additional unit amount matches the published multiplier,
-  rounded down to whole yuan.
+  rounded down to whole yuan. For floating tiers, published integer amounts
+  may reflect independent rounding of underlying pool calculations, so the
+  audit only flags differences greater than ¥2 from the exact multiplier
+  relationship. This tolerance is a conservative screening allowance, not a
+  published official rounding rule.
 
 A mismatch is a candidate-data inconsistency, not proof of an official payout
-error. Floating-prize amounts and rounding require source-specific scrutiny;
-the current multiplier check is a screening rule, not a full official
+error. The current multiplier check is a screening rule, not a full official
 settlement engine.
 
 ## Known early-era issue
