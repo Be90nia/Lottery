@@ -6,7 +6,7 @@
 - [ ] LOT-003 Capture and hash immutable raw source snapshots.
 - [x] LOT-004 Define canonical draw schema; prize schema remains specified separately in DATA_SPEC.
 - [x] LOT-005 Implement strict number/date/identifier and canonical dataset validation.
-- [ ] LOT-006 Reconcile duplicate and conflicting draw records.
+- [x] LOT-006 Reconcile overlapping selected-number/date records across the legacy candidate and an independent CSV snapshot; official-source provenance remains open.
 - [x] LOT-007 Add unit tests for parsing, duplicate reconciliation, and dataset validation.
 - [ ] LOT-008 Complete live-source verification and ingestion-run provenance acceptance test.
 
