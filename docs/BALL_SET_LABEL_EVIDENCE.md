@@ -44,7 +44,7 @@ Searches found secondary lottery-result archives reporting explicit third-set us
 
 These records materially narrow the search target: the third set may already have been in use by September 2011. However, these pages are not the issuing provincial/national lottery authority's archived original announcement, so they are **discovery leads only**. They must not populate the verified row-level label ledger or establish the formal transition date. LOT-058 should use the draw IDs/dates above as priority recovery targets for matching original official notices. If original official bytes cannot be recovered, retain the records as secondary corroboration only.
 
-### 1.3 Machine replacement is a separate event, not proof of ball-set transition
+### 1.4 Machine replacement is a separate event, not proof of ball-set transition
 
 An official State General Administration of Sport article reports that the original “Venus” Super Lotto drawing machine, first introduced on 2007-05-10, was to be replaced after more than twelve years of service. It says the new machine retained the same drawing method and describes the machine replacement; it does **not** state that the physical ball sets were replaced, added, renumbered, or re-identified at the same time:
 
@@ -52,7 +52,7 @@ An official State General Administration of Sport article reports that the origi
 
 Accordingly, the machine replacement must not be used as a proxy date for the two-set to three-set change. It also cannot establish continuity of physical ball-set identity across the machine replacement. The 2007 two-set procedure and the three-set description by 2019 remain the current official bounds; the effective transition date and the physical identity mapping remain unresolved.
 
-### 1.3 Individual official draw announcements can publish the set index
+### 1.5 Individual official draw announcements can publish the set index
 
 The following Guangdong Sports Lottery draw-announcement pages explicitly state “本期使用第X套摇奖球”:
 
