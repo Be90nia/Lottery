@@ -3,13 +3,17 @@
 **Important:** This registry versions published prize match patterns, fixed
 prize schedules, and additional-bet multipliers. It is not a complete prize
 calculator. Floating awards, pool carry-over, risk-control adjustments, sales
-totals, winner counts, and promotion overlays require draw-specific official
-data and separate logic.
+totals, winner counts, and promotion overlays require draw-specific data and
+separate logic.
 
 ## Evidence-backed effective boundaries
 
-The registry currently supports five rulesets:
+The registry supports six historical eras:
 
+- `dlt_2007_from_07001`: draws 07001–09120; launch-era rules from 2007-05-30.
+  The rules are reconstructed from contemporaneous launch coverage and
+  contemporaneous provincial draw-result tables; the original primary rule
+  document has not yet been archived in this repository.
 - `dlt_2009_from_09121`: draws 09121–13144; new rules started with draw 09121
   (sales opened 2009-10-14; draw held 2009-10-17).
 - `dlt_2013_from_13145`: draws 13145–14051; funding composition changed from
@@ -19,11 +23,12 @@ The registry currently supports five rulesets:
   February 2019.
 - `dlt_2026_from_26014`: draw 26014 onward; effective 2026-02-02.
 
-Draws before 09121 deliberately raise `UnsupportedRulesetError`. The
-pre-2009 prize rules are not yet independently verified, so the registry does
-not guess a schedule for 2007–09120.
+Draw IDs before 07001 are invalid for the game and raise
+`UnsupportedRulesetError`.
 
 Sources:
+- [2007 contemporaneous launch-rule summary](https://news.sohu.com/20070501/n249819058.shtml)
+- [2007 official provincial draw result showing the launch-era eight-tier amounts](https://www.js-lottery.com/cms/post-2573.html)
 - [2009 Ministry of Finance approval (财办综〔2009〕68号)](https://zhs.mof.gov.cn/zhengcefabu/201811/t20181122_3073538.htm)
 - [Contemporaneous 2009 draw 09121 result and tier schedule](https://www.js-lottery.com/cms/post-2935.html)
 - [2013 Ministry of Finance funding-ratio approval and attached rules](https://zhs.mof.gov.cn/zhengcefabu/201312/t20131219_1026921.htm)
@@ -39,7 +44,7 @@ Sources:
 
 Here `a+b` means matched front-zone numbers plus matched back-zone numbers.
 
-| Tier | 2009/2013 (09121–14051) | 2014 (14052–19018) | 2019 (19019–26013) | 2026 (26014 onward) |
+| Tier | 2007/2009/2013 (07001–14051) | 2014 (14052–19018) | 2019 (19019–26013) | 2026 (26014 onward) |
 |---|---|---|---|---|
 | 1 | 5+2 | 5+2 | 5+2 | 5+2 |
 | 2 | 5+1 | 5+1 | 5+1 | 5+1 |
@@ -56,21 +61,22 @@ Here `a+b` means matched front-zone numbers plus matched back-zone numbers.
 All fixed amounts are yuan per basic winning bet, before any independent
 promotion overlay.
 
-| Tier | 2009/2013 fixed | 2014 fixed | 2019 fixed | 2026 below ¥800m | 2026 at/above ¥800m |
-|---|---:|---:|---:|---:|---:|
-| 1 | Floating | Floating | Floating | Floating | Floating |
-| 2 | Floating | Floating | Floating | Floating | Floating |
-| 3 | Floating | Floating | 10,000 | 5,000 | 6,666 |
-| 4 | 3,000 | 200 | 3,000 | 300 | 380 |
-| 5 | 600 | 10 | 300 | 150 | 200 |
-| 6 | 100 | 5 | 200 | 15 | 18 |
-| 7 | 10 | — | 100 | 5 | 7 |
-| 8 | 5 | — | 15 | — | — |
-| 9 | — | — | 5 | — | — |
+| Tier | 2007 fixed | 2009/2013 fixed | 2014 fixed | 2019 fixed | 2026 below ¥800m | 2026 at/above ¥800m |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | Floating | Floating | Floating | Floating | Floating | Floating |
+| 2 | Floating | Floating | Floating | Floating | Floating | Floating |
+| 3 | Floating | Floating | Floating | 10,000 | 5,000 | 6,666 |
+| 4 | 3,000 | 3,000 | 200 | 3,000 | 300 | 380 |
+| 5 | 500 | 600 | 10 | 300 | 150 | 200 |
+| 6 | 200 | 100 | 5 | 200 | 15 | 18 |
+| 7 | 10 | 10 | — | 100 | 5 | 7 |
+| 8 | 5 | 5 | — | 15 | — | — |
+| 9 | — | — | — | 5 | — | — |
 
 Additional award multipliers:
-- 2009 and 2013 rules: floating tiers 1–3 receive 60% of the corresponding
-  basic-bet prize; fixed tiers 4–7 receive 50%; tier 8 has no additional award.
+- 2007 rules: only floating tiers 1–3 participate in additional betting, at 60%.
+- 2009 and 2013 rules: floating tiers 1–3 receive 60%; fixed tiers 4–7 receive
+  50%; tier 8 has no additional award.
 - 2014 rules: floating tiers 1–3 receive 60%; fixed tiers 4–5 receive 50%;
   tier 6 has no additional award.
 - 2019 rules: additional betting participates only in floating tiers 1–2,
@@ -105,9 +111,9 @@ tier = rules.tier_for_hits(front_hits=4, back_hits=2)  # 3
 fixed = rules.fixed_prize_yuan(3, jackpot_yuan="800000000")
 ```
 
-For draw IDs before 09121, `ruleset_for_draw` raises
-`UnsupportedRulesetError` until the pre-2009 historical rules are verified.
-Do not catch this exception and silently substitute the 2009 rules.
+The launch-era ruleset is based on contemporaneous secondary rule coverage
+and official provincial result tables; preserve this source-quality distinction
+in accounting reports. Do not overwrite source prize labels or amounts.
 
 ## Limitations and data policy
 
@@ -117,8 +123,8 @@ Do not catch this exception and silently substitute the 2009 rules.
   retain this provenance distinction in downstream reports.
 - Do not assign a ruleset to a historical prize row if its draw identifier is
   missing or unresolved.
-- Do not recalculate or overwrite original source prize labels or amounts.
 - Floating award formulas, minimum award rules, total-payout risk control,
   tax, and promotion eligibility are not calculated by this registry.
-- The pre-09121 rules remain an explicit gap; candidate prize rows in that
-  period must not be normalized with the later schedules.
+- The 2007 launch-era rules are reconstructed from sources rather than a
+  preserved original rule document; downstream analyses must retain this
+  caveat.
