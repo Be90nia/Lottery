@@ -52,7 +52,8 @@
 
 - [ ] LOT-054 / Issue #17: implement the exact unordered-subset probability engine and family-specific baselines; keep marginal legacy code isolated.
 - [ ] LOT-068 / Issue #31: first implementation slice for exact exponential-family normalization, conditional-Poisson DP/calibration/backward sampling, mean-NLL fitting, RFC 8785 artifacts, and property/golden-vector tests.
-- [ ] LOT-055 / Issue #18: build the separate frozen 2,649-target exact-set NLL rolling-origin evaluator; current marginal backtest is exploratory only.
+- [ ] LOT-055 / Issue #18: frozen 2,649-target exact-set NLL evaluation contract.
+- [ ] LOT-069 / Issue #35: implement the separate exact-set NLL rolling-origin evaluator, complete terminal ledger, fixed 50-draw bootstrap and Holm correction; current marginal backtest is exploratory only.
 - [ ] LOT-056–059 / Issues #19–22: reconstruct regime-aware official ball-set evidence and prospective evidence capture.
 - [ ] LOT-060–064 / Issues #23–27: implement Champion lifecycle, staged orchestration, three-slot serving, feedback ledger, and experiment governance.
 - [ ] LOT-065–067 / Issues #28–30: implement durable storage/recovery, supply-chain security, and end-to-end readiness/fault-injection gates.
