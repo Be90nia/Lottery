@@ -102,3 +102,35 @@ Legal ticket constraints: five distinct front numbers in 1..35 and two distinct 
 ## 7. Interpretation
 
 Three separately labeled model outputs are three conditional forecasts, not three guaranteed independent sources of predictive edge. The lottery remains random; no result here establishes a recoverable PRNG seed, manipulation, or a physical mechanism. Negative and inconclusive results must be retained.
+
+
+## 8. LOT-054 implementation artifact and numerical contract
+
+The implementation must separate fit-time operations from forecast-time operations. Forecasting consumes a frozen, forecast-ready artifact; it must not silently refit. The engine must provide equivalent operations for canonical support enumeration, feature-table/moment construction, exponential-family fitting, exact-subset log-probability evaluation, weighted-subset marginal calibration, and deterministic sampling.
+
+Every artifact must include:
+- artifact schema version, model family, zone, population size, and selection size;
+- feature schema version, ordered feature names, exact uniform-support means and population standard deviations;
+- fitted theta (or centered log-weights for a weighted-subset model);
+- training cutoff draw, training row count, training snapshot SHA-256, and code revision;
+- optimizer/calibration configuration, convergence status, termination reason, objective, gradient infinity norm, and iteration count;
+- numeric dtype, implementation/runtime version, and deterministic sampling algorithm identifier.
+
+Do not make a dense support probability vector the only source of truth. Retain parameters and schemas sufficient to recompute probabilities. Any cached support/probability table is derived and must be hash-linked to the artifact. A failed or non-converged fit must never be marked forecast-ready.
+
+Probability semantics and numerical acceptance:
+- The primary scoring interface returns natural-log probabilities for exact unordered subsets. Reject malformed, duplicate, out-of-range, or wrong-cardinality subsets; do not silently sort/deduplicate invalid input.
+- Use float64 and stable log-sum-exp for full-support normalization. Aggregated feature cells retain exact integer multiplicities whose sum equals the combinatorial support size.
+- On small exhaustive fixtures, direct and aggregated log-partition and per-subset log-probability results must agree within 1e-10.
+- On full supports, the float64 probability sum must be 1 within absolute tolerance 1e-12; theta=0 must recover -log(C(m,k)) within 1e-12.
+- Reject NaN/Inf in inputs, parameters, objective, gradients, log probabilities, and calibration outputs. Never clip invalid values into a valid-looking distribution.
+- Weighted-subset calibration requires strictly interior marginals, sum-to-k within 1e-10, and maximum absolute marginal error no greater than 1e-8. Boundary/infeasible targets and non-convergence fail closed; no independent-Bernoulli fallback.
+- Deterministic replay is guaranteed only for the same artifact, RNG algorithm identifier, seed, and runtime/library version. Record all of them; do not claim cross-version bit identity.
+
+Every fit exposes convergence status, termination reason, iterations, objective, gradient infinity norm, and finite-value checks. Hitting the iteration cap without meeting the 1e-8 gradient stopping criterion is a failed fit, not a forecast-ready artifact.
+
+Benchmark support enumeration, feature-table construction, grouped log-partition/gradient, one fit, probability evaluation, and sampling separately. Report hardware/runtime, peak memory, warm-up policy, repetitions, median, and p95. Do not impose a machine-specific hard wall-clock gate; provide measurements sufficient to estimate LOT-055 rolling-origin cost.
+
+Adversarial tests must cover invalid subsets, non-finite inputs, zero-variance features, extreme finite parameters, multiplicity mismatch, optimizer iteration-cap exit, infeasible weighted marginals, calibration non-convergence, artifact/schema mismatch, and deterministic replay.
+
+This implementation contract does not authorize model promotion, LOT-055 evaluation before preregistration verification, LOT-042 access, or production activation.
