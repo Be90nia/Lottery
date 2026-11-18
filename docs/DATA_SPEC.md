@@ -61,3 +61,9 @@ The rules registry covers the reconstructed eight-tier 2007 launch rules
 (from 26014). The launch-era rules are reconstructed from contemporaneous
 coverage and provincial results rather than an archived primary rule document;
 retain that source-quality caveat. See [PRIZE_RULES.md](PRIZE_RULES.md).
+
+Prize-row audit findings for the current legacy candidate are documented in
+[PRIZE_AUDIT.md](PRIZE_AUDIT.md). Promotion overlay totals are aggregate fields:
+a zero original unit amount alongside a positive aggregate total is preserved
+and excluded from ordinary unit-amount × winner-count arithmetic; it is not
+silently treated as a zero payout.
