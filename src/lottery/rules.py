@@ -143,6 +143,36 @@ def _eight_tier_schedule() -> tuple[PrizeTier, ...]:
     )
 
 
+RULES_2007 = PrizeRuleset(
+    ruleset_id="dlt_2007_from_07001",
+    effective_from_draw_id="07001",
+    effective_through_draw_id="09120",
+    effective_from_date="2007-05-30",
+    jackpot_threshold_yuan=None,
+    floating_per_ticket_cap_yuan=Decimal("5000000"),
+    floating_total_cap_per_tier_yuan=None,
+    floating_award_notes=(
+        "Tiers 1-3 are floating (70%/25%/5% of the amount remaining after "
+        "fixed awards). Additional betting participates only in floating tiers "
+        "and pays 60% of the corresponding basic-bet floating award. "
+        "This module does not calculate floating awards."
+    ),
+    source_urls=(
+        "https://news.sohu.com/20070501/n249819058.shtml",
+        "https://www.js-lottery.com/cms/post-2573.html",
+    ),
+    tiers=(
+        PrizeTier(1, _EIGHT_TIER_PATTERNS[0], None, None, True, Decimal("0.6")),
+        PrizeTier(2, _EIGHT_TIER_PATTERNS[1], None, None, True, Decimal("0.6")),
+        PrizeTier(3, _EIGHT_TIER_PATTERNS[2], None, None, True, Decimal("0.6")),
+        PrizeTier(4, _EIGHT_TIER_PATTERNS[3], Decimal("3000"), Decimal("3000")),
+        PrizeTier(5, _EIGHT_TIER_PATTERNS[4], Decimal("500"), Decimal("500")),
+        PrizeTier(6, _EIGHT_TIER_PATTERNS[5], Decimal("200"), Decimal("200")),
+        PrizeTier(7, _EIGHT_TIER_PATTERNS[6], Decimal("10"), Decimal("10")),
+        PrizeTier(8, _EIGHT_TIER_PATTERNS[7], Decimal("5"), Decimal("5")),
+    ),
+)
+
 RULES_2009 = PrizeRuleset(
     ruleset_id="dlt_2009_from_09121",
     effective_from_draw_id="09121",
@@ -270,7 +300,8 @@ def ruleset_for_draw(draw_id: str) -> PrizeRuleset:
         return RULES_2013
     if numeric_id >= 9121:
         return RULES_2009
+    if numeric_id >= 7001:
+        return RULES_2007
     raise UnsupportedRulesetError(
-        f"draw {draw_id} predates the evidenced 2009 rules boundary; "
-        "the 2007-2009 historical ruleset remains unverified and must not be guessed"
+        f"draw {draw_id} predates the first Super Lotto draw 07001"
     )
