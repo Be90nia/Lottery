@@ -98,7 +98,8 @@ class ParsePageTests(unittest.TestCase):
             (raw_dir / name).write_bytes(raw)
             (raw_dir / f"page-00001-{digest[:12]}.manifest.json").write_text(
                 json.dumps({
-                    "url": "https://webapi.sporttery.cn/example",
+                    "source": "Sporttery public historical draw API",
+                    "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85",
                     "retrieved_at": "2026-11-18T00:00:00+00:00",
                     "http_status": 200,
                     "sha256": digest,
@@ -129,6 +130,30 @@ class ParsePageTests(unittest.TestCase):
             )
             with self.assertRaises(IngestionError):
                 ingest_snapshot_directory(raw_dir, root / "draws.jsonl")
+
+
+    def test_strict_offline_import_rejects_non_official_manifest_url(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_dir = root / "raw"
+            raw_dir.mkdir()
+            raw = self.payload()
+            digest = hashlib.sha256(raw).hexdigest()
+            name = "page-00001.json"
+            (raw_dir / name).write_bytes(raw)
+            (raw_dir / "page-00001.manifest.json").write_text(
+                json.dumps({
+                    "source": "Sporttery public historical draw API",
+                    "url": "https://example.com/gateway/lottery/getHistoryPageListV1.qry?gameNo=85",
+                    "retrieved_at": "2026-11-18T00:00:00+00:00",
+                    "http_status": 200,
+                    "sha256": digest,
+                    "raw_file": name,
+                }),
+                encoding="utf-8",
+            )
+            with self.assertRaises(IngestionError):
+                ingest_snapshot_directory(raw_dir, root / "strict.jsonl", require_manifests=True)
 
     def test_offline_snapshot_import_without_sidecar_remains_unverified(self):
         with tempfile.TemporaryDirectory() as temp:
