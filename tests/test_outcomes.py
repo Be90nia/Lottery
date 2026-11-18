@@ -101,7 +101,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         append_outcome(self.outcomes, event)
         record = json.loads(self.outcomes.read_text(encoding="utf-8"))
         record["front_numbers"][0] = 35
-        self.outcomes.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        self.outcomes.write_text(json.dumps(record) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(OutcomeLedgerError, "hash mismatch"):
             verify_outcome_ledger(self.outcomes)
 
