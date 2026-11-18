@@ -52,6 +52,7 @@ Python 3.10+ is sufficient; the initial collector uses only the standard library
 python scripts/fetch_history.py --max-pages 2
 python scripts/validate_dataset.py
 python scripts/validate_legacy_prizes.py
+python scripts/reconcile_sources.py
 python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl --simulations 999 --seed 20261118
 python -m unittest discover -s tests -v
 ```
@@ -66,3 +67,6 @@ An existing 2,901-draw dataset from the earlier `dlt-analysis` project has been 
 
 
 Monte Carlo frequency baseline details are documented in [research methods](docs/RESEARCH_METHODS.md). The baseline uses legal draws without replacement within each number zone and reports global frequency diagnostics; it does not produce a predictive number ranking.
+
+
+The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into the legacy candidate.
