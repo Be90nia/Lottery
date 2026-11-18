@@ -1,4 +1,5 @@
 import json
+import multiprocessing
 from datetime import datetime, timezone
 import hashlib
 from pathlib import Path
@@ -21,6 +22,16 @@ def make_draw(index):
         "back_numbers": [1, 2],
         "source_id": "test",
     }
+
+
+
+def _append_forecast_worker(path, event, barrier, results):
+    try:
+        barrier.wait(timeout=15)
+        append_forecast(Path(path), event)
+        results.put("ok")
+    except Exception as exc:
+        results.put(type(exc).__name__ + ":" + str(exc))
 
 
 class ForecastLedgerTests(unittest.TestCase):
@@ -105,6 +116,54 @@ class ForecastLedgerTests(unittest.TestCase):
             ledger.write_text(json.dumps(data) + "\n", encoding="utf-8")
             with self.assertRaisesRegex(ForecastLedgerError, "hash mismatch"):
                 verify_ledger(ledger)
+
+
+    def test_concurrent_duplicate_target_has_exactly_one_winner(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            event = create_forecast_event(self.rows, **self.kwargs)
+            ctx = multiprocessing.get_context("spawn")
+            barrier, results = ctx.Barrier(2), ctx.Queue()
+            processes = [
+                ctx.Process(target=_append_forecast_worker, args=(str(ledger), event, barrier, results))
+                for _ in range(2)
+            ]
+            for process in processes:
+                process.start()
+            outcomes = [results.get(timeout=20) for _ in processes]
+            for process in processes:
+                process.join(timeout=20)
+                self.assertEqual(process.exitcode, 0)
+            self.assertEqual(outcomes.count("ok"), 1, outcomes)
+            self.assertEqual(sum("already exists" in value for value in outcomes), 1, outcomes)
+            self.assertEqual(verify_ledger(ledger)["events"], 1)
+
+    def test_concurrent_distinct_targets_keep_chain_contiguous(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            first = create_forecast_event(self.rows, **self.kwargs)
+            second = create_forecast_event(
+                self.rows, target_draw_id="26005",
+                target_draw_at="2026-02-03T20:00:00+08:00",
+                training_sha256=self.kwargs["training_sha256"],
+                code_commit=self.kwargs["code_commit"],
+                generated_at=datetime(2026, 2, 2, 10, 0, tzinfo=timezone.utc),
+            )
+            ctx = multiprocessing.get_context("spawn")
+            barrier, results = ctx.Barrier(2), ctx.Queue()
+            processes = [
+                ctx.Process(target=_append_forecast_worker, args=(str(ledger), event, barrier, results))
+                for event in (first, second)
+            ]
+            for process in processes:
+                process.start()
+            outcomes = [results.get(timeout=20) for _ in processes]
+            for process in processes:
+                process.join(timeout=20)
+                self.assertEqual(process.exitcode, 0)
+            self.assertEqual(outcomes.count("ok"), 2, outcomes)
+            self.assertEqual(verify_ledger(ledger)["events"], 2)
+
 
 
 if __name__ == "__main__":
