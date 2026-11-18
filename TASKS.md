@@ -44,7 +44,7 @@
 - [x] LOT-045 Add offline immutable JSON snapshot import with SHA-256 sidecar verification, duplicate reconciliation, dataset validation, output manifest, and explicit unverified status when provenance is incomplete. Audit: [DRAW_ORDER_METADATA_AUDIT.md](docs/DRAW_ORDER_METADATA_AUDIT.md).
 - [x] LOT-046 Add pre-draw forecast ledger with fixed model probabilities, training-data hash, code commit, future-target guard, duplicate prevention, and hash-chain verification. This is instrumentation only; LOT-042 holdout remains unstarted.
 - [x] LOT-047 Add separate provenance-gated post-draw outcome ledger and offline per-draw scoring; never mutate forecast events. Includes timestamp/source/result validation, forecast-event linkage, semantic ledger verification, per-draw Brier/Log Loss/Top-K scoring, and exact-score regression tests. CI run [44225221808](https://github.com/Be90nia/Lottery/actions/runs/44225221808) passed.
-- [ ] LOT-048 Serialize forecast/outcome ledger appends across processes; remove the current single-writer race while preserving POSIX/Windows behavior. Track in [issue #2](https://github.com/Be90nia/Lottery/issues/2).
+- [x] LOT-048 Serialize forecast/outcome ledger appends across processes with POSIX `flock` and Windows `msvcrt.locking`; lock the full verify/dedupe/append/fsync transaction, use bounded acquisition timeouts, retain lock files, and test duplicate/distinct concurrent writes plus timeout/crash release. Linux and Windows CI passed in [run 44226365462](https://github.com/Be90nia/Lottery/actions/runs/44226365462); CLI timeout reporting also passed in [run 44226591924](https://github.com/Be90nia/Lottery/actions/runs/44226591924).
 
 ## Acceptance criteria
 
