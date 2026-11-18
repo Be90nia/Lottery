@@ -35,6 +35,28 @@ class PrizeAuditTests(unittest.TestCase):
         self.assertEqual(report["promotion_total_yuan"], "150")
         self.assertEqual(report["amount_times_count_mismatch_rows_excluding_promotions"], 0)
 
+    def test_promotion_coverage_is_grouped_without_treating_zero_as_zero_payout(self):
+        rows = [
+            prize("23039", "三等奖派奖", "0", 99, "615000"),
+            prize("23039", "四等奖派奖", "0", 323, "598500"),
+            prize("24030", "三等奖派奖", "1250", 10, "12500"),
+        ]
+        report = audit_prize_rows(rows)
+        self.assertEqual(report["promotion_rows"], 3)
+        self.assertEqual(report["promotion_draw_ids"], 2)
+        self.assertEqual(report["promotion_zero_amount_positive_total_rows"], 2)
+        self.assertEqual(report["promotion_zero_amount_positive_total_by_label"], {
+            "三等奖派奖": 1, "四等奖派奖": 1,
+        })
+        self.assertEqual(report["promotion_summary_by_draw_id_prefix"]["23"], {
+            "rows": 2, "draw_ids": 1, "zero_amount_positive_total_rows": 2,
+            "total_yuan": "1213500",
+        })
+        self.assertEqual(report["promotion_summary_by_draw_id_prefix"]["24"], {
+            "rows": 1, "draw_ids": 1, "zero_amount_positive_total_rows": 0,
+            "total_yuan": "12500",
+        })
+
     def test_ruleset_and_label_distributions_are_reported(self):
         row = prize(draw_id="07001")
         report = audit_prize_rows([row])
