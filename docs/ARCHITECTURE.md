@@ -85,3 +85,10 @@ The release manifest links source/workflow/dependencies, SBOM and provenance, ca
 ## Legacy pipeline isolation
 
 Existing `baseline.py`, `backtest.py` and `forecast.py` implement an older marginal-frequency research/holdout path. They are not the new complete-subset probability engine. Preserve the LOT-042 forecast path and data unchanged; do not silently reuse marginal inclusion vectors as exact ticket probabilities. Build LOT-054 in an isolated `src/lottery/subset_model/` package, beginning with strict support enumeration, symmetric features, exact uniform moments and multiplicity aggregation, then add probability fitting and sampling in later independently tested slices.
+
+
+## Current code boundary and first implementation slice
+
+The current `src/lottery/backtest.py` is a marginal-inclusion benchmark (per-number Brier/log loss), and `src/lottery/forecast.py` creates the older LOT-042 pre-draw ledger from uniform/expanding/EWMA marginal probabilities. They do not implement a joint distribution over complete unordered subsets and must remain isolated from the future exact-set serving path.
+
+The existing CI entry point is `.github/workflows/tests.yml`. It runs unit tests and exploratory scripts over the unverified legacy candidate dataset; those jobs are not the frozen LOT-055 confirmatory evaluation. The first new implementation slice is LOT-068 (#31), a separate offline exact-subset engine with exact full-support exponential-family normalization, conditional-Poisson DP, fit/calibration gates, canonical artifact identity and numerical/property tests. LOT-055 follows as a separate frozen exact-set evaluator.
