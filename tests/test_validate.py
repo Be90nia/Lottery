@@ -52,6 +52,14 @@ class DatasetValidationTests(unittest.TestCase):
         with self.assertRaises(DatasetValidationError):
             validate_records([row])
 
+    def test_raw_source_order_must_match_parsed_order(self):
+        row = record()
+        row["front_draw_order"] = [11, 2, 18, 19, 29]
+        row["back_draw_order"] = [4, 7]
+        row["source_unsort_drawresult"] = "02 11 18 19 29 04 07"
+        with self.assertRaises(DatasetValidationError):
+            validate_records([row])
+
     def test_raw_source_metadata_is_optional_and_preserved(self):
         row = record()
         row["source_unsort_drawresult"] = "02 11 18 19 29 04 07"
