@@ -36,3 +36,18 @@ An unusual result is a review signal, not evidence of manipulation. Check data q
 ## Reproducibility
 
 Every experiment records dataset version/hash, code commit, configuration, random seed for computational simulation, runtime environment, metrics, and generated artifacts.
+
+
+## Current Monte Carlo baseline implementation
+
+`scripts/analyze_baseline.py` runs global front-zone and back-zone frequency diagnostics against independent legal draws. Each simulated draw selects 5 distinct values from 1..35 and 2 distinct values from 1..12; sampling is without replacement within each zone.
+
+The reported statistics are:
+- Pearson frequency-imbalance statistic for each zone;
+- maximum absolute standardized deviation among all numbers in each zone;
+- upper-tail Monte Carlo p-values using the plus-one correction;
+- Monte Carlo standard errors and the simulation seed.
+
+The maximum-deviation statistic is a global scan statistic: it accounts for looking across all numbers in a zone within that statistic. It does not correct for every other analysis a researcher might subsequently run. Treat any low p-value as a lead for preregistered follow-up, not as evidence of manipulation or future predictability.
+
+Draw-level sums, odd-count, and adjacent-pair counts are reported descriptively only in this initial version. They are not yet assigned inferential p-values. The report includes the input file SHA-256 and dataset validation summary. The computational seed is solely for reproducibility of this Monte Carlo experiment; it is not a hypothesized lottery seed.
