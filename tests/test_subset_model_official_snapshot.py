@@ -86,6 +86,18 @@ class OfficialSnapshotSubsetSmokeTests(unittest.TestCase):
         back_uniform_nll = math.log(math.comb(BACK_POPULATION, BACK_SELECTION))
         front_nll = -front_logp
         back_nll = -back_logp
+        print("SUBSET_MODEL_FIT_RESULT=" + json.dumps({
+            "snapshot_sha256": digest,
+            "training_rows": len(training),
+            "training_cutoff_draw_id": training[-1]["draw_id"],
+            "target_draw_id": target["draw_id"],
+            "front_candidate_nll": front_nll,
+            "front_uniform_nll": front_uniform_nll,
+            "front_gradient_inf_norm": front_fit.gradient_infinity_norm,
+            "back_candidate_nll": back_nll,
+            "back_uniform_nll": back_uniform_nll,
+            "back_gradient_inf_norm": back_fit.gradient_infinity_norm,
+        }, sort_keys=True))
 
         front_rng = random.Random(20261118)
         back_rng = random.Random(20261119)
