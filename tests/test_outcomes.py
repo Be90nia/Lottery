@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from lottery.forecast import append_forecast, create_forecast_event
+from lottery.forecast import append_forecast, create_forecast_event, _event_hash
 from lottery.outcomes import (
     OutcomeLedgerError, append_outcome, create_outcome_event,
     score_ledgers, verify_outcome_ledger,
@@ -104,6 +104,39 @@ class OutcomeLedgerTests(unittest.TestCase):
         self.outcomes.write_text(json.dumps(record) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(OutcomeLedgerError, "hash mismatch"):
             verify_outcome_ledger(self.outcomes)
+
+
+    def test_scoring_rejects_outcome_linked_to_wrong_forecast_hash(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        append_outcome(self.outcomes, event)
+        record = json.loads(self.outcomes.read_text(encoding="utf-8"))
+        body = {key: value for key, value in record.items() if key != "event_hash"}
+        body["forecast_event_hash"] = "f" * 64
+        record = {**body, "event_hash": _event_hash(body)}
+        self.outcomes.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(OutcomeLedgerError, "does not link"):
+            score_ledgers(self.forecasts, self.outcomes)
+
+    def test_verifier_rejects_forged_outcome_metadata_even_with_valid_chain(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        append_outcome(self.outcomes, event)
+        record = json.loads(self.outcomes.read_text(encoding="utf-8"))
+        body = {key: value for key, value in record.items() if key != "event_hash"}
+        body["source_snapshot_sha256"] = "bad"
+        record = {**body, "event_hash": _event_hash(body)}
+        self.outcomes.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(OutcomeLedgerError, "SHA-256"):
+            verify_outcome_ledger(self.outcomes)
+
+    def test_forecast_probability_mass_is_rechecked_before_outcome(self):
+        record = json.loads(self.forecasts.read_text(encoding="utf-8"))
+        body = {key: value for key, value in record.items() if key != "event_hash"}
+        body["models"]["uniform"]["front_inclusion_probabilities"][0] += 0.01
+        record = {**body, "event_hash": _event_hash(body)}
+        self.forecasts.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(OutcomeLedgerError, "invalid uniform front"):
+            create_outcome_event(self.forecasts, **self.kwargs)
+
 
 
 if __name__ == "__main__":
