@@ -48,6 +48,16 @@ The following Guangdong Sports Lottery draw-announcement pages explicitly state 
 | 26106 | 2026-09-16 | 3 | https://gdlottery.cn/f_html/kjgg/P085_26106.html |
 | 26110 | 2026-09-26 | 1 | https://www.gdlottery.cn/f_html/kjgg/P085_26110.html |
 
+Additional per-draw examples are available on the Jiangsu Provincial Sports Lottery Center website. The page footer identifies Jiangsu Provincial Sports Lottery Management Center as the copyright holder, and the pages explicitly state the set index:
+
+| Draw | Date | Officially stated index | Source |
+|---|---|---:|---|
+| 19101 | 2019-08-31 | 1 | https://www.js-lottery.com/cms/post-88511.html |
+| 20103 | 2020-10-19 | 2 | https://www.js-lottery.com/cms/post-91587.html |
+| 21132 | 2021-11-17 | 3 | https://www.js-lottery.com/cms/post-133060.html |
+
+This confirms explicit publication of all three index values in provincial result announcements across 2019–2021. It does not prove that each index denotes the same physical set across years or that the source archive is complete for every draw.
+
 These examples prove that explicit per-draw indices are published in at least some official provincial result records. They do not prove complete historical coverage or establish that an index has the same physical identity across equipment regimes.
 
 ## 2. Consequences for the historical data model
