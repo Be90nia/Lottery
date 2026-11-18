@@ -73,3 +73,10 @@ Backups must be independently stored and periodically restored in isolation. Bac
 Third-party Actions must be pinned to reviewed full commit SHAs; workflow permissions are explicit and least-privilege. The read-only source probe receives no write, signing, registry or production credentials, and checkout credentials are not persisted by default. Dependencies and release runtimes are locked; SBOM, vulnerability reports and build provenance are retained.
 
 Artifact digests are signed by protected identities and verified against expected repository/workflow/source provenance at evaluation, promotion and serving. A hash/signature does not replace numerical or statistical validation. Secrets, signing keys and master RNG seeds never enter logs or ordinary artifacts. Protected review gates cover workflows, lockfiles, signing and registry changes. Production remains disabled until security acceptance and compromise-recovery drills pass.
+
+
+## Release readiness and integration
+
+The system exposes derived readiness states: `NOT_READY`, `READY_FOR_OFFLINE_VALIDATION`, `READY_FOR_SHADOW`, and `READY_FOR_PRODUCTION`. State is computed from immutable receipts bound to one release-manifest digest. Unknown or missing evidence is not a pass; issue closure is not readiness.
+
+The release manifest links source/workflow/dependencies, SBOM and provenance, canonical data/evidence, model and evaluation artifacts, Champion generation, sampler/RNG version, durable commit receipts, backup/restore drill, policy and approvals. Integration gates cover data, numerical correctness, experiment validity, regime evidence, lifecycle/serving, feedback, storage/recovery and security. Fault injection must demonstrate fail-closed behavior and no partial user-visible batches. Production requires protected approval for the exact manifest and successful restore/rollback drills.
