@@ -54,6 +54,19 @@ After Holm correction across all 16 era × statistic tests:
 
 The observed concentration is therefore in the first two calendar bins; the later two bins do not show a comparable marginal frequency signal under this analysis. This is a hypothesis-generating temporal pattern, not proof that an equipment change caused it.
 
+
+
+### Era-level descriptive extremes
+
+| Calendar period | Highest counts | Lowest counts |
+|---|---|---|
+| 2007–2011 | 33: 157; 32: 147; 35: 146 | 16: 67; 15: 72; 4: 73 |
+| 2012–2016 | 29: 151; 35: 137; 30: 134 | 16: 86; 4: 89; 19/24: 96 |
+| 2017–2021 | 1: 123; 3: 122; 19: 121 | 24: 89; 31: 90; 13: 93 |
+| 2022–2026 | 2: 113; 5: 111; 22: 110 | 24: 79; 14: 81; 33: 86 |
+
+The 2007–2016 concentration of high counts for 29, 32, 33, and 35 and low counts for 16 and 4 is a useful lead for stratified investigation. These are post-hoc descriptive rankings, not evidence that these numbers have any future advantage.
+
 ## Descriptive front-number extremes
 
 Across the full 2,901-draw candidate:
