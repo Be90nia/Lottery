@@ -66,3 +66,10 @@ Git is for code, schemas, compact manifests and documentation; GitHub Actions ar
 Publish immutable objects by staging, read-back hash verification, schema validation, conditional create, durable receipt, then CAS update of the active pointer. Never expose partially written objects or mixed three-slot registry generations. A workflow is not successful until its durable commit receipt exists. Retries are idempotent and stale workers are fenced out. Reconciliation is read-only by default; repairs are explicit and audited.
 
 Backups must be independently stored and periodically restored in isolation. Backup success without a restore drill is not proof of recoverability. Preserve old objects through corrections and schema migrations; write new versions with explicit lineage. Do not enable production collection, promotion or serving before fault-injection and restore acceptance tests pass.
+
+
+## Software supply-chain security
+
+Third-party Actions must be pinned to reviewed full commit SHAs; workflow permissions are explicit and least-privilege. The read-only source probe receives no write, signing, registry or production credentials, and checkout credentials are not persisted by default. Dependencies and release runtimes are locked; SBOM, vulnerability reports and build provenance are retained.
+
+Artifact digests are signed by protected identities and verified against expected repository/workflow/source provenance at evaluation, promotion and serving. A hash/signature does not replace numerical or statistical validation. Secrets, signing keys and master RNG seeds never enter logs or ordinary artifacts. Protected review gates cover workflows, lockfiles, signing and registry changes. Production remains disabled until security acceptance and compromise-recovery drills pass.
