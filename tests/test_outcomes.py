@@ -56,6 +56,14 @@ class OutcomeLedgerTests(unittest.TestCase):
         self.assertEqual(report["scored_draws"], 1)
         self.assertEqual(set(report["scores"][0]["models"]), {"uniform", "expanding", "ewma"})
         self.assertIn("brier_per_number", report["scores"][0]["models"]["uniform"]["front"])
+        self.assertAlmostEqual(
+            report["scores"][0]["models"]["uniform"]["front"]["brier_per_number"],
+            6 / 49, places=12,
+        )
+        self.assertAlmostEqual(
+            report["scores"][0]["models"]["uniform"]["back"]["brier_per_number"],
+            5 / 36, places=12,
+        )
 
     def test_rejects_publication_before_draw(self):
         kwargs = dict(self.kwargs, published_at="2026-02-02T19:59:00+08:00")
