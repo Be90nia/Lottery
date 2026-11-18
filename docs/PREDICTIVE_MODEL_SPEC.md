@@ -209,3 +209,19 @@ Model-family-specific parameter payloads must be explicit. For a weighted-subset
 Forecast eligibility is a separate boolean/status decision derived from all checks, never inferred merely from successful serialization. A model with a failed fit, invalid artifact hash, mismatched support/feature schema, missing training snapshot provenance, or non-finite parameter is not forecast-ready.
 
 For every forecast request, the generation ledger must reference the exact artifact ID and record the target draw ID (or an explicit non-draw simulation label), request ID, batch/slot ID, RNG algorithm, seed, and generated canonical subset. Never embed training rows or raw source files inside the model artifact.
+
+
+## 10. Rolling-origin evaluation record contract
+
+LOT-055 must write one immutable run manifest and one target record per zone/model/target combination. A target record must contain:
+- `run_id`, `target_draw_id`, `zone`, `model_family`, `artifact_id` (nullable only for a non-fitted analytic baseline);
+- `snapshot_sha256`, `training_first_draw_id`, `training_last_draw_id`, `training_row_count`, and a machine-checkable assertion that every training draw date is strictly earlier than the target date;
+- model/configuration hash, feature schema hash, optimizer/solver status, convergence fields, and any failure reason;
+- exact observed subset in canonical ascending form, predicted log probability, and negative log score;
+- baseline/candidate pairing key so paired differences cannot accidentally compare different targets or different zones.
+
+The run manifest must pin the snapshot path/hash/row count/draw range, target list hash, code revision, environment/library versions, model-spec/preregistration revision, bootstrap replicate count (1,000), block length (50), bootstrap seed, metric definitions, and exact comparison directions. Each target must appear exactly once for every expected model and zone, including failed fits. A failed fit has an explicit failure record and no fabricated score; the report must disclose its count and must not silently shrink the candidate's target set.
+
+For each zone and candidate-vs-baseline comparison, compute per-target paired score differences on the intersection of valid, predeclared target records only. Also report the complete expected-target denominator and every exclusion reason. The promotion gate must not be satisfied by selectively dropping targets or by comparing models on different target sets.
+
+Calibration diagnostics are descriptive checks on the same chronological predictions; they do not replace exact-set log score. The moving-block bootstrap must resample contiguous blocks of the ordered paired-difference series, with deterministic boundary handling documented and tested. Report the point estimate and two-sided 95% interval. No iid row bootstrap is permitted.
