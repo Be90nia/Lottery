@@ -103,6 +103,15 @@ for floating tiers 1–3. This is exactly two rows for each of the 367 draws in
 the 07001–09120 interval. These rows are quarantined as candidate-label or
 mapping anomalies, not deleted or rewritten.
 
+The latest full candidate audit (before the additional 17062 fixture-only
+test was added) paired 8,905 nonzero additional-award rows. Of these, 6,037
+floating pairs fell within the ±¥2 display tolerance. Fourteen candidate
+mismatches remained, and 734 additional rows were outside the 2007 ruleset's
+authorized tiers. The 14 remaining mismatches include material amount
+differences and impossible additional-winner counts concentrated in 07008,
+16106, and the 17045–17063 window. These remain quarantined; no source values
+were repaired.
+
 ## Base/additional reconciliation
 
 For each explicit `(追加)` row, the audit pairs the same draw and tier's base
