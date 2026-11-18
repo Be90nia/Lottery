@@ -74,3 +74,23 @@ python scripts/audit_promotion_flags.py \
 ```
 
 The command exits non-zero if either source has an unmatched promotion draw ID.
+
+
+## Historical campaign limitation
+
+The exact set match above is specifically between raw API `awardType=1`
+draws and the legacy cleaner's draw-level `promotion_flag_legacy`. It is not
+an exhaustive audit of every historical campaign described as a promotion.
+
+Issue 17045 is a counterexample to overgeneralizing this result: the archived
+API draw has `lotteryPromotionFlag=0` and no `awardType=1` prize rows, while
+the contemporaneous Jiangsu result announcement explicitly lists promotion
+rows for first through sixth prize. The API prize list does not preserve the
+same separate promotion/additional row structure shown on the provincial page.
+See [the 17045 announcement](https://www.js-lottery.com/cms/post-77220.html)
+and [the API/provincial conflict audit](OFFICIAL_API_PROVINCIAL_PRIZE_CONFLICTS_2026-11-18.md).
+
+Accordingly, the validated claim is narrow: **for the 141 draws represented
+as `awardType=1` in this API snapshot, the legacy draw-level flags align
+exactly**. This does not validate earlier promotion campaigns or prove that
+the API's historical promotion representation is complete.
