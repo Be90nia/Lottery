@@ -102,7 +102,7 @@ class ForecastLedgerTests(unittest.TestCase):
             append_forecast(ledger, event)
             data = json.loads(ledger.read_text(encoding="utf-8"))
             data["models"]["uniform"]["front_inclusion_probabilities"][0] += 0.01
-            ledger.write_text(json.dumps(data) + "\\n", encoding="utf-8")
+            ledger.write_text(json.dumps(data) + "\n", encoding="utf-8")
             with self.assertRaisesRegex(ForecastLedgerError, "hash mismatch"):
                 verify_ledger(ledger)
 
