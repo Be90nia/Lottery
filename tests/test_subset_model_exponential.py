@@ -92,6 +92,19 @@ class ExponentialFamilyTests(unittest.TestCase):
                 delta=1e-12,
             )
 
+    def test_exact_sampler_is_legal_replayable_and_with_replacement(self):
+        left_rng = __import__("random").Random(20261118)
+        right_rng = __import__("random").Random(20261118)
+        theta = (0.04, -0.02, 0.03, 0.01, -0.05)
+        left = self.model.sample_many(100, theta, left_rng)
+        right = self.model.sample_many(100, theta, right_rng)
+        self.assertEqual(left, right)
+        self.assertEqual(len(left), 100)
+        for subset in left:
+            self.assertEqual(len(subset), 3)
+            self.assertEqual(tuple(sorted(set(subset))), subset)
+            self.assertTrue(all(1 <= value <= 8 for value in subset))
+
     def test_solver_failure_is_not_marked_converged(self):
         result = self.model.fit(
             [(1, 2, 3), (1, 2, 4), (2, 4, 6)],
