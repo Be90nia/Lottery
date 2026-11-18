@@ -66,6 +66,11 @@ jobs:
           python scripts/analyze_lag_dependence.py data/processed/draws-20261118.jsonl \
             --permutations 1999 --seed 20261118 \
             --output official-snapshot-r1-r4-lag-dependence.json
+      - name: Run causal four-lag rolling-origin forecast experiment
+        run: |
+          python scripts/backtest_lag_model.py data/processed/draws-20261118.jsonl \
+            --min-train 300 --alpha 100 --half-life 100 --ridge 10 \
+            --output official-snapshot-four-lag-model-backtest.json
       - name: Upload research reports
         uses: actions/upload-artifact@v4
         with:
@@ -78,6 +83,7 @@ jobs:
             rolling-origin-benchmark.json
             official-snapshot-rolling-origin-benchmark.json
             official-snapshot-r1-r4-lag-dependence.json
+            official-snapshot-four-lag-model-backtest.json
             prize-reconciliation.json
             official-legacy-prize-reconciliation.json
             official-legacy-promotion-audit.json

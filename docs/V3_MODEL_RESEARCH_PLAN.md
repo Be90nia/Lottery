@@ -37,8 +37,8 @@ Use lag (r in {1,2,3,4}), where lag 1 means the immediately preceding draw. Anal
 Predeclared statistics:
 1. **Same-number recurrence:** per-number joint inclusion and zone-level repeat counts.
 2. **Lagged cross-number transition:** every ordered pair (a,b), preserving direction; (a→b) and (b→a) are distinct.
-3. **Set overlap:** shared values between the two fixed-size draw sets. Report both the conditional circular-shift expectation and the independent legal-draw expectation n·k²/N.
-4. **Temporal stability:** calendar-block summaries are descriptive only and cannot be used to select a favorable era.
+3. **Set overlap:** shared values between the two fixed-size draw sets at lag r. Report the complete-row permutation expectation and the independent legal-draw expectation (n−r)·k²/N.
+4. **Ordered transitions:** report every ordered pair (a,b) as a descriptive effect-size table; individual pair rows do not receive confirmatory p-values. Calendar-era summaries remain separate exploratory analyses and cannot be used to select a favorable lag or era.
 
 ### Randomization and multiplicity
 
@@ -54,14 +54,16 @@ A statistically unusual transition is a diagnostic, not evidence of manipulation
 
 ## Phase C — lag-feature predictive experiment
 
-Only after Phase B's test family and implementation are frozen:
-- Construct features using strictly earlier draws only.
-- Candidate family: lagged same-number inclusion indicators at lags 1–4, lagged zone overlap summaries, and optionally a shrinkage-weighted recurrence count.
-- Do not include draw-order, equipment, prize, sales, or promotion fields.
-- Use regularization/shrinkage fixed in advance. Avoid one free coefficient per arbitrary transition unless sample size and correction support it.
-- Compare uniform, expanding, EWMA, and lag-feature model on the same rolling-origin targets.
-- Primary metric: per-number Brier; secondary: Bernoulli log loss. Report paired moving-block uncertainty and full feature-family multiplicity/selection controls.
-- A feature may be retained only if the predeclared comparison supports out-of-sample improvement; in-sample significance is insufficient.
+Only after Phase B's test family and implementation are frozen, evaluate one fixed lag-feature candidate:
+- Model: four-lag shared-coefficient ridge logistic marginal inclusion model, fitted separately for front and back zones.
+- Features: same-number inclusion indicators at lags 1–4 only. No ordered cross-number coefficient matrix and no post-hoc lag selection.
+- Estimation: composite Bernoulli logistic likelihood aggregated over the 16 possible four-bit lag patterns; fixed L2 penalty λ=10.0, with no hyperparameter search.
+- Causality: for target draw t, fit only on labelled historical targets j<t; each training target j uses features from j-1 through j-4. The prediction uses only t-1 through t-4.
+- Calibration: solve a per-target intercept offset by bisection so the marginal inclusion probabilities sum exactly to 5 (front) or 2 (back). This is a calibrated marginal-probability vector, not a claimed joint ticket distribution.
+- Compare against uniform, expanding-frequency (α=100), and EWMA (half-life=100) on identical rolling-origin targets, with minimum training history 300.
+- Primary metric: per-number Brier; secondary: Bernoulli log loss. Use paired moving-block bootstrap (1,000 replicates, 50-draw blocks, fixed seed base 20261119).
+- Promotion gate: the lag model must have the upper endpoint of the paired 95% interval below zero for both Brier and log loss, in both zones, against all three reference models. This is deliberately conservative; Top-K hits are descriptive only.
+- Do not include draw-order, equipment, prize, sales, or promotion fields. A failure to beat the references leaves uniform as the reference; no parameter tuning is permitted on this historical extension.
 
 ## Phase D — order/equipment research gate
 
