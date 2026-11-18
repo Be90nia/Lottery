@@ -23,6 +23,18 @@ def _max_abs_z(counts: list[int], expected: float, standard_deviation: float) ->
     return max(abs(observed - expected) / standard_deviation for observed in counts)
 
 
+def holm_adjust(p_values: dict[str, float]) -> dict[str, float]:
+    """Holm step-down family-wise adjustment for a named family of p-values."""
+    ordered = sorted(p_values.items(), key=lambda item: item[1])
+    adjusted: dict[str, float] = {}
+    running_max = 0.0
+    total = len(ordered)
+    for rank, (name, p_value) in enumerate(ordered):
+        running_max = max(running_max, min(1.0, (total - rank) * p_value))
+        adjusted[name] = running_max
+    return adjusted
+
+
 def _count_numbers(rows: list[dict[str, Any]], field: str, pool_size: int) -> list[int]:
     counter: Counter[int] = Counter()
     for row in rows:
@@ -113,6 +125,7 @@ def analyze_frequency_baseline(
         },
         "observed_statistics": observed,
         "monte_carlo_p_values_upper_tail": p_values,
+        "holm_adjusted_p_values_within_report": holm_adjust(p_values),
         "monte_carlo_standard_errors": monte_carlo_se,
         "front_frequency": [
             {"number": number, "count": front_counts[number - 1]}
