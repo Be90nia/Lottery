@@ -13,6 +13,10 @@ venv/
 .vscode/
 data/raw/*
 !data/raw/.gitkeep
+!data/raw/sporttery/
+data/raw/sporttery/*
+!data/raw/sporttery/2026-11-18/
+!data/raw/sporttery/2026-11-18/**
 data/interim/*
 !data/interim/.gitkeep
 data/processed/*
