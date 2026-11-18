@@ -61,6 +61,10 @@ jobs:
           python scripts/backtest_models.py data/processed/draws-20261118.jsonl \
             --min-train 300 --alpha 100 --half-life 100 \
             --output official-snapshot-rolling-origin-benchmark.json
+      - name: Run official snapshot R1-R4 lag-dependence diagnostics
+        run: |
+          python scripts/analyze_lag_dependence.py data/processed/draws-20261118.jsonl \
+            --output official-snapshot-r1-r4-lag-dependence.json
       - name: Upload research reports
         uses: actions/upload-artifact@v4
         with:
@@ -72,6 +76,7 @@ jobs:
             chronological-split/
             rolling-origin-benchmark.json
             official-snapshot-rolling-origin-benchmark.json
+            official-snapshot-r1-r4-lag-dependence.json
             prize-reconciliation.json
             official-legacy-prize-reconciliation.json
             official-legacy-promotion-audit.json
