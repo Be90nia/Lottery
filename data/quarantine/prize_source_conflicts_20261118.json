@@ -3,6 +3,7 @@
   "snapshot_date": "2026-11-18",
   "status": "minimum_known_conflicts_not_exhaustive",
   "affected_draw_ids": [
+    "07005",
     "07006",
     "07007",
     "07008",
@@ -22,9 +23,9 @@
     "raw_source_retention": "preserve_all_sources_without_overwrite"
   },
   "limitations": [
-    "Issues 07006-07011: the API's fourth- and fifth-prize additional rows duplicate the corresponding basic-tier unit amounts and winner counts, but are absent from the contemporaneous Jiangsu main-game additional-bet tables; issue 07008 also has a third-prize additional amount conflict.",
+    "Issues 07005-07011: the API's fourth- and fifth-prize additional rows duplicate the corresponding basic-tier unit amounts and winner counts, but are absent from the contemporaneous Jiangsu main-game additional-bet tables; issue 07008 also has a third-prize additional amount conflict.",
     "This is a minimum known-conflict list, not an exhaustive scan of the historical archive.",
-    "Issues 07001-07005 show the same API row shape but remain leads pending contemporaneous independent announcement verification; they are not added to the confirmed quarantine set by shape alone.",
+    "Issues 07001-07004 show a similar API row shape but remain leads pending contemporaneous independent announcement verification; they are not added to the confirmed quarantine set by shape alone.",
     "Draw-number/date records are not quarantined by this prize-specific list.",
     "A source conflict does not by itself establish which source is correct."
   ]
