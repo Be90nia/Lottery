@@ -9,6 +9,7 @@ from run_subset_rolling_origin import run
 
 
 class OfficialSnapshotRollingOriginTests(unittest.TestCase):
+    """Run the full frozen 2,649-target denominator, retaining fit failures."""
     def test_all_2649_frozen_targets_have_terminal_records(self):
         snapshot = ROOT / "data/processed/draws-20261118.jsonl"
         output = ROOT / "subset-model-rolling-origin.json"
