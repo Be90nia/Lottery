@@ -52,6 +52,18 @@ def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
             errors.append(f"row {index} ({draw_id}): back_numbers must be distinct values in 1..12")
         if not isinstance(row["source_id"], str) or not row["source_id"]:
             errors.append(f"row {index} ({draw_id}): source_id must be non-empty")
+        front_order, back_order = row.get("front_draw_order"), row.get("back_draw_order")
+        if (front_order is None) != (back_order is None):
+            errors.append(f"row {index} ({draw_id}): front/back draw order must both be present or both be null")
+        elif front_order is not None:
+            if (not isinstance(front_order, list) or len(front_order) != 5
+                    or any(type(n) is not int for n in front_order)
+                    or len(set(front_order)) != 5 or set(front_order) != set(front)):
+                errors.append(f"row {index} ({draw_id}): front_draw_order must be a permutation of front_numbers")
+            if (not isinstance(back_order, list) or len(back_order) != 2
+                    or any(type(n) is not int for n in back_order)
+                    or len(set(back_order)) != 2 or set(back_order) != set(back)):
+                errors.append(f"row {index} ({draw_id}): back_draw_order must be a permutation of back_numbers")
         raw_order = row.get("source_unsort_drawresult")
         if raw_order is not None and not isinstance(raw_order, str):
             errors.append(f"row {index} ({draw_id}): source_unsort_drawresult must be a string or null")
@@ -67,18 +79,6 @@ def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
                       or raw_order_numbers[:5] != front_order
                       or raw_order_numbers[5:] != back_order):
                     errors.append(f"row {index} ({draw_id}): raw source order disagrees with parsed draw order")
-        front_order, back_order = row.get("front_draw_order"), row.get("back_draw_order")
-        if (front_order is None) != (back_order is None):
-            errors.append(f"row {index} ({draw_id}): front/back draw order must both be present or both be null")
-        elif front_order is not None:
-            if (not isinstance(front_order, list) or len(front_order) != 5
-                    or any(type(n) is not int for n in front_order)
-                    or len(set(front_order)) != 5 or set(front_order) != set(front)):
-                errors.append(f"row {index} ({draw_id}): front_draw_order must be a permutation of front_numbers")
-            if (not isinstance(back_order, list) or len(back_order) != 2
-                    or any(type(n) is not int for n in back_order)
-                    or len(set(back_order)) != 2 or set(back_order) != set(back)):
-                errors.append(f"row {index} ({draw_id}): back_draw_order must be a permutation of back_numbers")
         key = (draw_date, draw_id)
         if previous_key is not None and key < previous_key:
             errors.append(f"row {index} ({draw_id}): dataset is not sorted chronologically")
