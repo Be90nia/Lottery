@@ -73,3 +73,21 @@ Monte Carlo frequency baseline details are documented in [research methods](docs
 
 
 The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into the legacy candidate.
+
+### Prospective forecast logging
+
+Before an eligible future draw, the fixed marginal models can be recorded with
+a pre-draw timestamp, target draw ID/time, training dataset SHA-256, full code
+commit, model parameters, and a hash-chained ledger event:
+
+```bash
+python scripts/forecast_ledger.py create data/canonical/draws.jsonl \
+  --target-draw-id 27XXX \
+  --target-draw-at 2027-01-01T20:30:00+08:00 \
+  --code-commit <40-character-commit-sha>
+python scripts/forecast_ledger.py verify data/holdout/forecast-ledger.jsonl
+```
+
+The ledger is not a digital signature or proof of source authenticity. See
+[the prospective holdout protocol](docs/HOLDOUT_PREREGISTRATION.md) for
+eligibility, archival, and analysis rules. The prospective test has not started.
