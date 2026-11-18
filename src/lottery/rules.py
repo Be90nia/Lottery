@@ -32,7 +32,6 @@ class PrizeRuleset:
     floating_total_cap_per_tier_yuan: Decimal | None
     floating_award_notes: str
     source_urls: tuple[str, ...]
-    additional_award_rounding: str = "floor"
 
     def tier_for_hits(self, front_hits: int, back_hits: int) -> int | None:
         if type(front_hits) is not int or not 0 <= front_hits <= 5:
@@ -105,7 +104,6 @@ class PrizeRuleset:
                 for tier in self.tiers
             ],
             "source_urls": list(self.source_urls),
-            "additional_award_rounding": self.additional_award_rounding,
         }
 
 
@@ -276,9 +274,6 @@ RULES_2026 = PrizeRuleset(
         "not calculate floating awards."
     ),
     source_urls=(_RULES_2026_PDF, _RULES_2026_ANNOUNCEMENT),
-    # Published 2026 official draw results round the 80% additional amount
-    # to the nearest yuan (e.g. 5,925,957 × 0.8 = 4,740,765.6 -> 4,740,766).
-    additional_award_rounding="half_up",
     tiers=(
         PrizeTier(1, ((5, 2),), None, None, True, Decimal("0.8")),
         PrizeTier(2, ((5, 1),), None, None, True, Decimal("0.8")),
