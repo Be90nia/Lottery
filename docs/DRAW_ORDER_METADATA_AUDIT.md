@@ -106,9 +106,9 @@ A targeted search found a useful primary-source cross-check on the official Chon
 
 ### Exact row-level matches: 2017 and 2026
 
-The official Jiangsu Sports Lottery Center and Chongqing Sports Lottery Center announcements explicitly publish “本期出球顺序” and “本期使用第N套摇奖球”. The official-site identity is visible in the site footers; the Jiangsu announcement footer states “江苏省体育彩票管理中心版权所有”, while the Chongqing institutional page identifies the Chongqing Sports Lottery Management Center as a public institution under the Chongqing Municipal Sports Bureau.
+The official Jiangsu, Guangdong, and Chongqing provincial Sports Lottery Center announcements explicitly publish “本期出球顺序” and “本期使用第N套摇奖球”. The official-site identity is visible in the site footers; the Jiangsu announcement footer states “江苏省体育彩票管理中心版权所有”, while the Chongqing institutional page identifies the Chongqing Sports Lottery Management Center as a public institution under the Chongqing Municipal Sports Bureau.
 
-Fourteen records were cross-checked against the repository's legacy candidate blob. In every case, the sorted numbers, front/back order arrays, and equipment code match the official announcement exactly:
+Sixteen records were cross-checked against the repository's legacy candidate blob. In every case, the sorted numbers, front/back order arrays, and equipment code match the official announcement exactly:
 
 | Draw | Official date | Official front draw order | Official back draw order | Ball set | Legacy row |
 |---|---|---|---|---:|---|
@@ -125,6 +125,8 @@ Fourteen records were cross-checked against the repository's legacy candidate bl
 | 23001 | 2023-01-02 | 19, 27, 18, 24, 34 | 12, 11 | 3 | Exact match |
 | 24001 | 2024-01-01 | 17, 03, 09, 35, 26 | 07, 02 | 3 | Exact match |
 | 25001 | 2025-01-01 | 16, 17, 27, 08, 05 | 07, 04 | 2 | Exact match |
+| 25100 | 2025-09-01 | 32, 34, 26, 28, 35 | 02, 07 | 1 | Exact match |
+| 25112 | 2025-09-29 | 23, 03, 21, 04, 24 | 09, 12 | 3 | Exact match |
 | 26083 | 2026-07-25 | 15, 16, 23, 26, 14 | 09, 07 | 3 | Exact match |
 
 Official announcements:
@@ -141,11 +143,13 @@ Official announcements:
 - 23001: https://www.js-lottery.com/cms/post-137213.html
 - 24001: https://api.js-lottery.com/cms/post-140462.html
 - 25001: https://api.js-lottery.com/cms/post-143433.html
+- 25100: https://www.gdlottery.cn/f_html/kjgg_pdf_bak/P085_25100.pdf
+- 25112: https://www.gdlottery.cn/f_html/kjgg_pdf_bak/P085_25112.pdf
 - 26083: https://www.cqtcw.net/h5/aritcle/1534974555978928128/h5/content_1534974555978928128.html
 
 For example, draw 17045's official result is `01 08 11 21 35 / 09 12`, its published draw order is `21 08 35 01 11 / 09 12`, and it used ball set 2. The candidate row has `front_draw_order=[21,8,35,1,11]`, `back_draw_order=[9,12]`, and `equipment_code_legacy=2`. The same exact correspondence holds for the other four rows.
 
-This is now more than a structural plausibility check: it is fourteen direct row-level crosswalks spanning 2017–2020 and every year from 2022 through 2026, and covering equipment codes 1, 2, and 3. It supports interpreting the order arrays as the official published draw-order sequence and the equipment code as the numbered draw-ball set for these records. However, this is a purposive/convenience sample assembled from searchable official announcements and adjacent issue links, not a random or representative sample; it cannot estimate the error rate of the remaining rows. It still does not prove that all 2,341 legacy rows were faithfully copied, nor does it define every operational detail of the physical extraction sequence.
+This is now more than a structural plausibility check: it is sixteen direct row-level crosswalks spanning 2017–2020 and every year from 2022 through 2026, with 2025 checks from both Jiangsu and Guangdong official sites, and covering equipment codes 1, 2, and 3. It supports interpreting the order arrays as the official published draw-order sequence and the equipment code as the numbered draw-ball set for these records. However, this is a purposive/convenience sample assembled from searchable official announcements and adjacent issue links, not a random or representative sample; it cannot estimate the error rate of the remaining rows. It still does not prove that all 2,341 legacy rows were faithfully copied, nor does it define every operational detail of the physical extraction sequence.
 
 ### Independent recent examples
 
