@@ -13,7 +13,7 @@
 ## P1 — Research quality
 - [x] LOT-009 Implement legal-draw random simulation.
 - [x] LOT-010 Add initial descriptive frequency diagnostics; gap analysis remains open.
-- [ ] LOT-011 Add pair/co-occurrence statistics.
+- [ ] LOT-011 Add pair/co-occurrence statistics with exact binomial tests and one Holm family across all 661 front/back pairs; implementation and CI smoke test are in progress. See [issue #3](https://github.com/Be90nia/Lottery/issues/3) and [methodology](docs/PAIR_COOCCURRENCE.md).
 - [x] LOT-012 Add Holm multiple-testing correction for defined test families.
 - [ ] LOT-013 Add equipment/ball-set/event metadata with citations.
 - [ ] LOT-014 Add chronological dataset split utility.
