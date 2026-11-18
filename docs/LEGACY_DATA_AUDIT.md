@@ -68,3 +68,10 @@ The original `scripts/clean_dlt.py` was inspected. It contains several issues th
 The selected-number fields pass structural checks and can support parser fixtures and provisional exploratory work. Prize accounting, promotion flags, equipment metadata, and source completeness remain quarantined pending comparison with immutable official API snapshots.
 
 The new collector in `src/lottery/ingest.py` is the intended path for obtaining fresh immutable source snapshots. Once live API retrieval and pagination have been verified, we should reconcile the overlap and extend the candidate beyond 26083 before publishing a trusted canonical dataset.
+
+
+## Independent selected-number cross-check (2026-11-18)
+
+A separately maintained CSV snapshot from `cs4745/PickWise` contains 2,948 draws through issue 26130. A direct programmatic comparison of all 2,901 overlapping IDs found exact equality for draw date, five front numbers, and two back numbers: **2,901/2,901 matches, zero mismatches**. The external snapshot contains 47 additional IDs (26084–26130), while the legacy candidate contains no IDs absent from that snapshot.
+
+This increases confidence in the legacy candidate's selected-number/date fields for the overlapping period. It does not certify source authenticity, draw order, prize data, equipment metadata, or promotion flags. See [source provenance and limitations](SOURCES.md); the external CSV remains a separate candidate source.
