@@ -46,3 +46,18 @@ python scripts/backtest_models.py data/candidates/legacy_draws.jsonl
 Optional parameters: `--min-train`, `--alpha`, `--half-life`, and
 `--output`. Every report records the exact input file SHA-256 and effective
 date range. Preserve the report even when all candidate models lose to uniform.
+
+
+## Uncertainty for paired model comparisons
+
+The report additionally compares each frequency model with the uniform baseline
+on the exact same target draws. For each target, it records the difference in
+per-number Brier score and Bernoulli log loss (candidate minus uniform); a
+negative value favors the candidate. A paired moving-block bootstrap with
+1,000 replicates and 50-draw blocks produces exploratory 95% percentile
+intervals. Blocks preserve some local temporal dependence better than an
+i.i.d. bootstrap, but the intervals remain descriptive: they do not correct
+for trying multiple models, feature families, cut points, or hyperparameters.
+A candidate should not be considered predictive unless improvements are
+material, stable across predeclared periods, and replicated on a later,
+untouched holdout.
