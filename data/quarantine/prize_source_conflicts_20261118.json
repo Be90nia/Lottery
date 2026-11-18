@@ -1,0 +1,23 @@
+{
+  "schema": "lottery-prize-source-quarantine/v1",
+  "snapshot_date": "2026-11-18",
+  "status": "minimum_known_conflicts_not_exhaustive",
+  "affected_draw_ids": [
+    "17045",
+    "17052",
+    "17062",
+    "17063"
+  ],
+  "reason": "Archived Sporttery API prize rows materially conflict with contemporaneous Jiangsu Sports Lottery result announcements; see docs/OFFICIAL_API_PROVINCIAL_PRIZE_CONFLICTS_2026-11-18.md",
+  "handling": {
+    "payout_calculation": "exclude_until_adjudicated",
+    "prize_model_targets": "exclude_until_adjudicated",
+    "prize_derived_features": "exclude_until_adjudicated",
+    "raw_source_retention": "preserve_all_sources_without_overwrite"
+  },
+  "limitations": [
+    "This is a minimum known-conflict list, not an exhaustive scan of the historical archive.",
+    "Draw-number/date records are not quarantined by this prize-specific list.",
+    "A source conflict does not by itself establish which source is correct."
+  ]
+}
