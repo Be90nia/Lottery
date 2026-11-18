@@ -1,6 +1,6 @@
 # Prospective holdout protocol (draft frozen specification)
 
-**Status:** draft protocol and pre-draw ledger tooling implemented; the freeze boundary has not yet been declared, the prospective holdout has not started, and no holdout outcomes have been inspected.
+**Status:** draft protocol, pre-draw forecast ledger, and separate post-draw outcome/scoring tooling implemented; the freeze boundary has not yet been declared, the prospective holdout has not started, and no holdout outcomes have been inspected.
 
 ## 1. Why a new holdout is required
 
@@ -164,7 +164,7 @@ or declare the prospective holdout started. LOT-042 remains open until the
 frozen protocol's 500 eligible future draws are collected and analyzed once.
 
 
-## 10. Post-draw outcome ledger and scoring (LOT-047; implementation in progress)
+## 10. Post-draw outcome ledger and scoring (LOT-047; implemented)
 
 The repository adds `scripts/outcome_ledger.py` and `lottery.outcomes` as a
 separate post-draw path. An outcome event references both the target draw ID
