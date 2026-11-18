@@ -19,3 +19,13 @@ jobs:
         run: python scripts/validate_dataset.py data/candidates/legacy_draws.jsonl
       - name: Audit imported legacy prize rows
         run: python scripts/validate_legacy_prizes.py
+      - name: Run legal-draw Monte Carlo baseline smoke test
+        run: |
+          python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl \
+            --simulations 199 --seed 20261118 --output baseline-candidate.json
+      - name: Upload baseline report
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-candidate-baseline
+          path: baseline-candidate.json
+          retention-days: 30
