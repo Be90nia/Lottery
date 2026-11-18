@@ -23,6 +23,21 @@ class PrizeAuditTests(unittest.TestCase):
         report = audit_prize_rows([prize("7.5", 2, "15.0")])
         self.assertEqual(report["amount_times_count_mismatch_rows"], 0)
 
+    def test_ruleset_and_label_distributions_are_reported(self):
+        row = prize()
+        row["draw_id"] = "07001"
+        report = audit_prize_rows([row])
+        self.assertEqual(report["ruleset_row_counts"], {"dlt_2007_from_07001": 1})
+        self.assertEqual(report["tier_label_counts"], {"五等奖": 1})
+        self.assertEqual(report["unsupported_ruleset_rows"], 0)
+
+    def test_unknown_historical_rules_are_not_silently_assigned(self):
+        row = prize()
+        row["draw_id"] = "00001"
+        report = audit_prize_rows([row])
+        self.assertEqual(report["unsupported_ruleset_rows"], 1)
+        self.assertEqual(report["ruleset_row_counts"], {})
+
     def test_promotion_total_mismatch_is_reported_not_rewritten(self):
         report = audit_prize_rows([prize("0", 10, "150")])
         self.assertEqual(report["zero_amount_positive_total_rows"], 1)
