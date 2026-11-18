@@ -134,3 +134,17 @@ cloud-synced, and unusual filesystems vary; use a local filesystem for the
 active ledger and independently archive ledger heads. This mechanism prevents
 cooperating local processes from racing; it is not a distributed transaction
 or protection against a malicious writer.
+
+### Pair co-occurrence diagnostics
+
+Run all 595 front-zone and 66 back-zone pair tests under the legal uniform-draw
+null, with one Holm correction family across all 661 hypotheses:
+
+```bash
+python scripts/analyze_pairs.py data/candidates/legacy_draws.jsonl \
+  --output pair-cooccurrence.json
+```
+
+See [pair co-occurrence methodology](docs/PAIR_COOCCURRENCE.md). These are
+exploratory discrepancy diagnostics, not prediction features or evidence of
+manipulation; the binomial null assumes independence across draws.
