@@ -45,3 +45,20 @@ The API raw rows were read from the byte-preserved 2026-11-18 archive. The sourc
 ## Next audit
 
 Continue backward through 07001–07005 and forward beyond 07011 using contemporaneous detailed provincial announcements. Then inspect whether the same empty-`group` / `sort` 60/80/100 pattern persists in later rule eras. Any expansion of the quarantine list must be supported by a draw-specific source comparison.
+
+
+## Additional confirmed issue 07005
+
+A separate contemporaneous Jiangsu Sports Lottery announcement for issue 07005
+shows the same discrepancy:
+
+- API `四等奖(追加)`: ¥3,000 × 57; basic fourth prize is also ¥3,000 × 57.
+- API `五等奖(追加)`: ¥500 × 1,726; basic fifth prize is also ¥500 × 1,726.
+- The provincial main-game additional-bet table lists first prize 0, second
+  prize 2, and third prize 24; it does not list fourth- or fifth-prize
+  additional awards.
+
+Source: [Jiangsu Sports Lottery, issue 07005](https://www.js-lottery.com/cms/post-2572.html),
+published 2007-06-09. Thus the confirmed early-era sequence now begins at
+07005 and runs continuously through 07011. Issues 07001–07004 remain
+unconfirmed leads.
