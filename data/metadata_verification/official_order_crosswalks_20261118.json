@@ -230,6 +230,38 @@
       "source_capture_status": "url_transcribed_not_archived"
     },
     {
+      "draw_id": "19001",
+      "draw_date": "2019-01-02",
+      "front_numbers": [
+        6,
+        18,
+        23,
+        26,
+        28
+      ],
+      "back_numbers": [
+        3,
+        12
+      ],
+      "front_draw_order": [
+        28,
+        23,
+        26,
+        6,
+        18
+      ],
+      "back_draw_order": [
+        3,
+        12
+      ],
+      "equipment_set": 1,
+      "source_authority": "provincial sports lottery center official website",
+      "source_label_order": "本期出球顺序",
+      "source_label_equipment": "本期使用第1套摇奖球",
+      "source_url": "https://www.js-lottery.com/cms/post-86432.html",
+      "source_capture_status": "url_transcribed_not_archived"
+    },
+    {
       "draw_id": "20001",
       "draw_date": "2020-01-01",
       "front_numbers": [
