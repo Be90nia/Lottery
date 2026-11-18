@@ -61,6 +61,21 @@ The raw `dlt_history_raw.json` file and its per-record source evidence are not p
 3. Six exact official row crosswalks confirm that equipment codes 1, 2, and 3 correspond to “第1/2/3套摇奖球” for those records. Treat this as a numbered draw-ball set, not as a machine identifier. The remaining historical rows still require row-level reconciliation.
 4. A permutation check cannot detect a consistently reordered, sorted, display-derived, or otherwise semantically misinterpreted sequence.
 
+### Original project API lineage
+
+The upstream project is `rbk64513-debug/dlt-analysis`. Its `vite.config.ts` at source revision `af6e5f656ed9ef80ce8a9f6afc3e97f07656a728` defines the official Sporttery history endpoint:
+
+`https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&termLimits=0&pageNo=`
+
+Its `fetchPage` function retrieves the raw `value.list` records, and `cleanRec` reads:
+- `lotteryDrawResult` for the selected-number set;
+- `lotteryUnsortDrawresult` for the seven-value order array (only when exactly seven values are present);
+- `lotteryEquipmentCount` for the numeric equipment code (falling back to zero).
+
+Source code: https://github.com/rbk64513-debug/dlt-analysis/blob/af6e5f656ed9ef80ce8a9f6afc3e97f07656a728/vite.config.ts
+
+This materially improves source lineage: the legacy order/equipment values were derived from fields returned by the official Sporttery history API, rather than invented by the local analysis code. It still does not provide the original per-page response bodies, retrieval timestamps, response hashes, or a row-to-response manifest. The 16 official provincial-announcement crosswalks independently confirm the transformed values for those specific draws; they do not certify every row in the 2,341-record candidate.
+
 ## Research decision
 
 **Do not yet run confirmatory position-by-number or equipment-stratified tests across the full legacy dataset.** Seven exact crosswalks establish the published field meanings for those records, but they are not a substitute for validating the remaining 2,334 rows or defining a representative eligible period.
