@@ -17,7 +17,7 @@ This document defines a target schema. It is not a claim that every historical s
 | equipment_id | string | nullable | Equipment metadata with source |
 | ball_set_id | string | nullable | Ball-set metadata with source |
 | source_unsort_drawresult | string | nullable | Exact source field value, retained for audit; not itself proof of physical draw sequence |
-| source_equipment_count | source scalar | nullable | Exact source metadata value; do not map to equipment identity without documentation |
+| source_equipment_count | JSON value | nullable | Exact source metadata value; do not map to equipment identity without documentation |
 
 ## Prize record
 
