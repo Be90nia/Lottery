@@ -59,6 +59,41 @@ The report also preserves:
 - ruleset coverage counts;
 - every additional-award mismatch and unmatched row (not only examples).
 
+## Source-backed examples of candidate field errors
+
+The following comparisons are important because they show that a percentage
+mismatch can be caused by the candidate transformation rather than a changed
+game rule:
+
+- Draw 17045, fifth prize: the official Jiangsu result reports basic ¥10 and
+  additional ¥5. The legacy candidate reports basic ¥100 and additional ¥5.
+  The additional row agrees with the 2014 50% multiplier; the candidate basic
+  unit amount does not.
+  [Official Jiangsu draw 17045](https://www.js-lottery.com/cms/post-77220.html)
+- Draw 17052, second prize: the official Jiangsu result reports basic ¥81,082
+  and additional ¥48,649. The legacy candidate records the basic amount as
+  ¥1,551,723 while retaining the correct additional amount. The recorded
+  basic value matches a separate first-prize promotion amount on that result
+  page, suggesting a source-field mapping error.
+  [Official Jiangsu draw 17052](https://www.js-lottery.com/cms/post-77436.html)
+- Draw 16106, third prize: the legacy candidate records the additional unit
+  amount as ¥266, equal to the additional winner count. A contemporaneous
+  detailed result page reports ¥2,131 per additional winning bet. This is a
+  secondary-source cross-check, not an official immutable source snapshot.
+  [Detailed 16106 result](https://news.zgzcw.com/dlt/zx_193.shtml)
+- Draw 26016, first prize: the official Jiangsu result reports basic ¥5,925,957
+  and additional ¥4,740,766. The latter is 80% of the basic amount rounded to
+  the nearest yuan (¥4,740,765.6). The 2026 ruleset therefore records
+  `half_up` as an observed published-result rounding convention; the earlier
+  rulesets retain floor rounding.
+  [Official Jiangsu draw 26016](https://www.js-lottery.com/cms/post-146412.html)
+
+The candidate also contains 734 nonzero additional rows in fixed tiers 4 and
+5 during the 2007 launch-era rules, which only authorized additional betting
+for floating tiers 1–3. This is exactly two rows for each of the 367 draws in
+the 07001–09120 interval. These rows are quarantined as candidate-label or
+mapping anomalies, not deleted or rewritten.
+
 ## Base/additional reconciliation
 
 For each explicit `(追加)` row, the audit pairs the same draw and tier's base
