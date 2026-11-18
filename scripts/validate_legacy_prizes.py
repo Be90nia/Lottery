@@ -2,6 +2,7 @@
 """Audit imported legacy prize rows without assuming every row is amount × count."""
 import argparse
 import glob
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -15,6 +16,7 @@ from lottery.prizes import audit_prize_rows  # noqa: E402
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", type=Path, default=ROOT / "data/candidates")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     paths = sorted(args.directory.glob("legacy_prizes_part_*.jsonl"))
     if not paths:
@@ -33,8 +35,21 @@ def main() -> int:
     except (OSError, ValueError) as exc:
         print(f"PRIZE_AUDIT_FAILED: {exc}", file=sys.stderr)
         return 1
-    report["files"] = [path.name for path in paths]
-    print(json.dumps(report, ensure_ascii=False, indent=2))
+    report["files"] = [
+        {
+            "file": path.name,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "bytes": path.stat().st_size,
+        }
+        for path in paths
+    ]
+    rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\\n"
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        temporary = args.output.with_suffix(args.output.suffix + ".tmp")
+        temporary.write_text(rendered, encoding="utf-8")
+        temporary.replace(args.output)
+    print(rendered, end="")
     return 0
 
 
