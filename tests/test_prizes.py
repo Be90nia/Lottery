@@ -121,7 +121,7 @@ class PrizeAuditTests(unittest.TestCase):
             prize("19019", "三等奖(追加)", "8000", 1, "8000"),
         ]
         report = reconcile_additional_awards(rows)
-        self.assertEqual(report["unexpected_additional_rows"], 1)
+        self.assertEqual(report["unexpected_additional_row_count"], 1)
 
     def test_duplicate_draw_tier_rejected(self):
         with self.assertRaises(PrizeDataError):
