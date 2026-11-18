@@ -62,3 +62,35 @@ Source: [Jiangsu Sports Lottery, issue 07005](https://www.js-lottery.com/cms/pos
 published 2007-06-09. Thus the confirmed early-era sequence now begins at
 07005 and runs continuously through 07011. Issues 07001–07004 remain
 unconfirmed leads.
+
+
+## Issues 07001–07004: contemporaneous media cross-check
+
+The same pattern is present in the first four issues. Contemporaneous national
+sports-media result reports for these draws publish separate basic and
+additional tables; each additional table lists only first, second, and third
+prize. The archived API's fourth-/fifth-prize additional rows duplicate the
+same draw's basic fourth-/fifth-prize unit amounts and winner counts.
+
+| Draw | API 4th additional = basic | API 5th additional = basic | Contemporaneous additional table |
+|---|---:|---:|---|
+| 07001 | ¥3,000 × 50 | ¥500 × 682 | 1st: 1; 2nd: 1; 3rd: 1 |
+| 07002 | ¥3,000 × 31 | ¥500 × 662 | 1st: 1; 2nd: 1; 3rd: 0 |
+| 07003 | ¥3,000 × 63 | ¥500 × 925 | 1st: 1; 2nd: 1; 3rd: 5 |
+| 07004 | ¥3,000 × 38 | ¥500 × 2,241 | 1st: 0; 2nd: 7; 3rd: 12 |
+
+Sources:
+- [Issue 07001, Sohu Sports, 2007-05-30](https://sports.sohu.com/20070530/n250315144.shtml)
+- [Issue 07002, Sina Sports, 2007-06-02](https://sports.sina.cn/sa/2007-06-02/detail-ikftssaq1363321.d.html?vt=4)
+- [Issue 07003, Sohu Sports, 2007-06-04](https://sports.sohu.com/20070604/n250391898.shtml)
+- [Issue 07004, Sina Sports, 2007-06-06](https://sports.sina.com.cn/l/2007-06-06/22332966740.shtml)
+
+**Source-confidence distinction:** these four checks rely on contemporaneous
+national sports-media reports, not a located provincial-administration
+announcement. They support quarantining the rows conservatively, but they
+should not be described as direct provincial-official corroboration. Issues
+07005–07011 have the stronger contemporaneous Jiangsu Sports Lottery
+administration source checks documented above.
+
+The confirmed minimum quarantine sequence for this early-era pattern is now
+07001–07011, with the 07001–07004 evidence tier explicitly distinguished.
