@@ -160,3 +160,18 @@ This deterministic utility keeps every draw date intact and records input/output
 hashes and partition boundaries. It is for exploratory development only; it
 does not replace rolling-origin evaluation or the untouched prospective
 500-draw holdout. See [split methodology](docs/CHRONOLOGICAL_SPLITS.md).
+
+### Versioned prize rules
+
+Use the effective draw ID to select the correct historical prize ruleset:
+
+```python
+from lottery.rules import ruleset_for_draw
+
+rules = ruleset_for_draw("26014")
+tier = rules.tier_for_hits(front_hits=4, back_hits=2)
+```
+
+The 2026 seven-tier rules begin at draw 26014; the legacy nine-tier rules
+apply through 26013. Floating awards and promotion overlays are not calculated
+by this rules registry. See [versioned prize rules](docs/PRIZE_RULES.md).
