@@ -28,7 +28,15 @@ The official China Sports Lottery 2019 Social Responsibility Report also describ
 - https://www.sport.gov.cn/n315/n20067006/c20260981/part/20260998.pdf
 - Printed page 49, section “体彩彩票乐透摇奖球”.
 
-**The exact transition date, the reason for the change, and whether set identities were carried forward or renumbered are not established by these sources.** Do not infer them. The transition occurred after the documented 2007 two-set procedure and no later than the 2018 three-set description, but its exact effective date remains unresolved.
+**The exact transition date, the reason for the change, and whether set identities were carried forward or renumbered are not established by these sources.** Do not infer them. The transition occurred after the documented 2007 two-set procedure and no later than the 2018 three-set description, but its exact effective date remains unresolved. A later machine replacement is documented separately and must not be conflated with a ball-set transition.
+
+### 1.3 Machine replacement is a separate event, not proof of ball-set transition
+
+An official State General Administration of Sport article reports that the original “Venus” Super Lotto drawing machine, first introduced on 2007-05-10, was to be replaced after more than twelve years of service. It says the new machine retained the same drawing method and describes the machine replacement; it does **not** state that the physical ball sets were replaced, added, renumbered, or re-identified at the same time:
+
+- https://www.sport.gov.cn/n20001280/n20745751/n20767297/c21145013/content.html
+
+Accordingly, the machine replacement must not be used as a proxy date for the two-set to three-set change. It also cannot establish continuity of physical ball-set identity across the machine replacement. The 2007 two-set procedure and the three-set description by 2018 remain the current official bounds; the effective transition date and the physical identity mapping remain unresolved.
 
 ### 1.3 Individual official draw announcements can publish the set index
 
@@ -95,7 +103,7 @@ If one or more slots are ineligible, the N → 3N generator remains unavailable.
 ## 6. Current decision
 
 - Two formal sets are documented in the official 2007 launch-era procedure.
-- Three formal sets are documented in official material by 2019.
+- Three formal sets are documented in official material by 2018.
 - The transition date and physical identity continuity are not yet established.
 - Explicit per-draw set indices are demonstrably published in some later official result announcements.
 - Complete historical per-draw coverage and reproducible row-level mapping are not yet established.
