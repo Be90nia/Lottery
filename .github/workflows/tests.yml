@@ -64,6 +64,7 @@ jobs:
       - name: Run official snapshot R1-R4 lag-dependence diagnostics
         run: |
           python scripts/analyze_lag_dependence.py data/processed/draws-20261118.jsonl \
+            --permutations 1999 --seed 20261118 \
             --output official-snapshot-r1-r4-lag-dependence.json
       - name: Upload research reports
         uses: actions/upload-artifact@v4
