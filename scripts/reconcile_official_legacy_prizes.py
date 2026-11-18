@@ -105,11 +105,15 @@ def main() -> int:
         "official_draws": len(by_draw_off),
         "legacy_draws": len(by_draw_leg),
         "overlap_draws": 0,
-        "official_only_rows": 0,
-        "legacy_only_rows": 0,
-        "value_exact_rows": 0,
+        "official_only_draw_rows": 0,
+        "legacy_only_draw_rows": 0,
+        "official_unmatched_rows_in_overlap": 0,
+        "legacy_unmatched_rows_in_overlap": 0,
+        "value_exact_rows_in_overlap": 0,
         "official_only_draws": 0,
         "legacy_only_draws": 0,
+        "official_only_draw_ids": [],
+        "legacy_only_draw_ids": [],
         "statuses": Counter(),
         "draw_summaries": [],
         "examples": [],
@@ -121,20 +125,36 @@ def main() -> int:
         l = by_draw_leg.get(draw_id, [])
         if not o:
             report["legacy_only_draws"] += 1
-            report["legacy_only_rows"] += len(l)
+            report["legacy_only_draw_ids"].append(draw_id)
+            report["legacy_only_draw_rows"] += len(l)
+            report["draw_summaries"].append({
+                "draw_id": draw_id, "status": "legacy_only_draw",
+                "official_rows": 0, "legacy_rows": len(l),
+                "value_exact_rows": 0,
+                "official_unmatched_rows": 0,
+                "legacy_unmatched_rows": len(l),
+            })
             continue
         if not l:
             report["official_only_draws"] += 1
-            report["official_only_rows"] += len(o)
+            report["official_only_draw_ids"].append(draw_id)
+            report["official_only_draw_rows"] += len(o)
+            report["draw_summaries"].append({
+                "draw_id": draw_id, "status": "official_only_draw",
+                "official_rows": len(o), "legacy_rows": 0,
+                "value_exact_rows": 0,
+                "official_unmatched_rows": len(o),
+                "legacy_unmatched_rows": 0,
+            })
             continue
         report["overlap_draws"] += 1
 
         oc = Counter(value_key(x) for x in o)
         lc = Counter(value_key(x) for x in l)
         exact_values = sum((oc & lc).values())
-        report["value_exact_rows"] += exact_values
-        report["official_only_rows"] += sum((oc - lc).values())
-        report["legacy_only_rows"] += sum((lc - oc).values())
+        report["value_exact_rows_in_overlap"] += exact_values
+        report["official_unmatched_rows_in_overlap"] += sum((oc - lc).values())
+        report["legacy_unmatched_rows_in_overlap"] += sum((lc - oc).values())
         unmatched_off = list((oc - lc).elements())
         unmatched_leg = list((lc - oc).elements())
 
@@ -197,7 +217,9 @@ def main() -> int:
         k: report[k] for k in (
             "official_rows", "legacy_rows", "official_draws", "legacy_draws",
             "overlap_draws", "official_only_draws", "legacy_only_draws",
-            "value_exact_rows", "official_only_rows", "legacy_only_rows", "statuses"
+            "value_exact_rows_in_overlap", "official_only_draw_rows",
+            "legacy_only_draw_rows", "official_unmatched_rows_in_overlap",
+            "legacy_unmatched_rows_in_overlap", "statuses"
         )
     }, ensure_ascii=False, indent=2))
     return 0
