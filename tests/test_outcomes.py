@@ -113,7 +113,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         body = {key: value for key, value in record.items() if key != "event_hash"}
         body["forecast_event_hash"] = "f" * 64
         record = {**body, "event_hash": _event_hash(body)}
-        self.outcomes.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        self.outcomes.write_text(json.dumps(record) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(OutcomeLedgerError, "does not link"):
             score_ledgers(self.forecasts, self.outcomes)
 
@@ -124,7 +124,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         body = {key: value for key, value in record.items() if key != "event_hash"}
         body["source_snapshot_sha256"] = "bad"
         record = {**body, "event_hash": _event_hash(body)}
-        self.outcomes.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        self.outcomes.write_text(json.dumps(record) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(OutcomeLedgerError, "SHA-256"):
             verify_outcome_ledger(self.outcomes)
 
@@ -133,7 +133,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         body = {key: value for key, value in record.items() if key != "event_hash"}
         body["models"]["uniform"]["front_inclusion_probabilities"][0] += 0.01
         record = {**body, "event_hash": _event_hash(body)}
-        self.forecasts.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        self.forecasts.write_text(json.dumps(record) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(OutcomeLedgerError, "invalid uniform front"):
             create_outcome_event(self.forecasts, **self.kwargs)
 
