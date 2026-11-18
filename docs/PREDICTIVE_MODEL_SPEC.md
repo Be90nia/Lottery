@@ -330,3 +330,23 @@ For every preregistered candidate-vs-uniform comparison, define the paired per-t
 Use a non-circular moving-block bootstrap on the chronological paired difference vector of length n: valid contiguous block starts are 0 through n−50; sample starts uniformly with replacement until at least n observations are collected; concatenate the sampled length-50 blocks in sampled order and truncate to n; compute the replicate mean paired difference. Repeat exactly 1,000 times with the frozen bootstrap seed. Use the percentile 95% interval (2.5th and 97.5th percentiles under one documented deterministic quantile convention). The candidate must have the entire interval below zero in both zones. Do not use circular wraparound blocks, iid row resampling, or independent resampling of candidate and comparator.
 
 If multiple non-baseline candidate/model families are compared with the same baseline, apply Holm correction across the complete preregistered candidate × zone hypothesis family at family-wise alpha=0.05. Report raw and Holm-adjusted p-values. Multiplicity correction does not replace the both-zone interval and coverage gates. Freeze the exact comparison family before inspecting scores.
+
+
+## 17. Immutable champion/challenger lifecycle
+
+Model refresh is a gated lifecycle, not an in-place overwrite. Each population key and zone has an immutable active champion artifact, zero or more immutable challenger/shadow artifacts, and retained retired artifacts. Lifecycle states are `champion`, `challenger`, `shadow`, `retired`, and `suspended`. Artifact bytes never change; promotion changes only a versioned registry pointer.
+
+A new unique, validated official draw may trigger a data snapshot and candidate build. Collection, candidate fitting, shadow evaluation, and promotion are separate jobs. Retries and duplicate observations are idempotent. A blocked, ambiguous, unavailable, or parse-failed source is a receipt/alert only and never a training row. Candidate artifacts record exact training IDs, cutoff, input snapshot hash, code/runtime/dependency versions, model specification, optimizer configuration, RNG algorithm, parent champion ID, and evaluation manifest.
+
+A challenger is never user-facing. It may be promoted only after numerical/artifact validation, complete paired champion comparison, frozen full-denominator coverage, preregistered front-and-back NLL criteria, confidence interval and multiplicity gates, calibration/probability integrity, and non-regression against the uniform baseline all pass. A better recent mean alone is insufficient. If evidence is not yet adequate, retain the challenger in shadow; do not weaken thresholds after seeing outcomes.
+
+Routine refresh must not access or tune against the LOT-042 500-draw prospective holdout. The frozen LOT-055 pooled evaluation remains immutable and separate from routine shadow evaluation. A new outcome enters future training only after official archival and validation; it cannot be both pre-draw input and target for the same forecast.
+
+Promotion uses compare-and-swap against the expected current champion ID. Concurrent or stale promotions fail closed. The lifecycle event ledger is append-only and records creation, validation, promotion, rejection, suspension, restoration, artifact IDs, policy version, evidence/data hashes, workflow run, timestamp, and reason. Candidate storage precedes registry update; interrupted runs leave the champion pointer unchanged.
+
+A rejected challenger leaves the champion untouched. If a champion fails a preregistered health/integrity gate, restore the last compatible known-good retired artifact atomically and record the rollback. If no compatible champion exists, suspend the slot and emit no forecast. Never silently fall back to pooled output or another slot. For three-slot generation, all three active champion entries must resolve from one consistent registry snapshot and pass compatibility checks; if any slot is unavailable, publish no 3N batch.
+
+Monitoring uses only preregistered diagnostics: exact-set NLL against champion and uniform, calibration/normalization integrity, coverage, source/evidence health, artifact/optimizer failures, and rolling stability. Fixed windows and alert thresholds must be versioned before monitoring. A single noisy draw cannot trigger promotion or rollback. Data-source drift and model-performance drift are separate alerts. Number-pattern anomalies are not proof of manipulation and do not authorize silent outlier deletion.
+
+Every user-facing forecast identifies the active artifact ID, population/zone, training cutoff, data snapshot hash, and lifecycle state. Challenger/shadow/retired/suspended artifacts are never served. If no compatible champion exists, the slot is unavailable.
+
