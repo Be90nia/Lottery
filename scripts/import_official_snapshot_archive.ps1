@@ -36,7 +36,7 @@ try {
     }
 
     New-Item -ItemType Directory -Path $rawTarget -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $snapshotRoot "*") -Destination $rawTarget -Force
+    Get-ChildItem -LiteralPath $snapshotRoot -File | Copy-Item -Destination $rawTarget
 
     $python = Get-Command py -ErrorAction SilentlyContinue
     if (-not $python) {
