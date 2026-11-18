@@ -110,7 +110,7 @@ class ParsePageTests(unittest.TestCase):
             report = ingest_snapshot_directory(raw_dir, output, require_manifests=True)
             self.assertTrue(report["provenance_complete"])
             self.assertEqual(report["validation"]["records"], 1)
-            self.assertEqual(report["trust_status"], "source_manifest_verified_not_semantically_authoritative")
+            self.assertEqual(report["trust_status"], "manifest_complete_not_officially_authenticated")
             row = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(row["source_unsort_drawresult"], "03 01 05 02 04 02 01")
             self.assertTrue(output.with_suffix(".jsonl.manifest.json").exists())
