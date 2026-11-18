@@ -201,3 +201,21 @@ the ledger head. Use a single writer for each ledger. Per-draw scores are
 instrumentation only: do not inspect aggregate rankings or claim holdout
 success before all 500 preregistered eligible draws have accrued and the
 single final analysis is run. LOT-042 remains unstarted.
+
+
+### Ledger writer coordination (LOT-048)
+
+Forecast and outcome appends now use a persistent sibling `.lock` file and an
+OS advisory lock. The lock covers chain verification, duplicate-target checks,
+sequence/hash construction, and append+flush+fsync as one transaction. POSIX
+uses `flock`; Windows uses a one-byte `msvcrt.locking` region. Both paths use
+a 30-second acquisition timeout. The OS releases the lock when a process exits,
+including abnormal termination; the lock file itself is intentionally retained.
+
+Do not delete or replace a ledger's `.lock` file while writers may be active:
+doing so can split contenders across different lock inodes. All writers must
+cooperate with this locking protocol. Advisory-lock guarantees on network,
+cloud-synced, and unusual filesystems vary; use a local filesystem for the
+active ledger and independently archive ledger heads. This mechanism prevents
+cooperating local processes from racing; it is not a distributed transaction
+or protection against a malicious writer.
