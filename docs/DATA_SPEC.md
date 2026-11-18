@@ -55,9 +55,8 @@ All model splits use draw_date/draw_id chronology. A feature is eligible only if
 
 ## Versioned prize rules
 
-The optional `ruleset_id` on a draw identifies the rules effective for that
-draw. The current registry in `src/lottery/rules.py` selects the legacy
-nine-tier rules through draw 26013 and the revised seven-tier rules from draw
-26014 (2026-02-02). Do not infer a ruleset for missing or unresolved draw IDs.
-Keep campaign promotions as separately sourced overlays; do not merge them
-into base prize amounts. See [PRIZE_RULES.md](PRIZE_RULES.md).
+The rules registry currently covers draws 14052 onward: six-tier 2014 rules
+(14052–19018), nine-tier 2019 rules (19019–26013), and seven-tier 2026 rules
+(from 26014). Earlier draws deliberately have no automatic ruleset assignment
+until the 2007–2014 changes and effective boundaries are verified. See
+[PRIZE_RULES.md](PRIZE_RULES.md).
