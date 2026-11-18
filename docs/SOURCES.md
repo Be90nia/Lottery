@@ -56,3 +56,18 @@ Our direct comparison against the imported 2,901-record legacy candidate found:
 This is a strong independent consistency check for the selected-number and date fields in the overlapping period. It does not validate legacy prize rows, promotion flags, equipment/ball-set labels, or draw-order metadata. The independent snapshot ends at 26130; it does not contain 26131.
 
 The preserved CSV is a secondary source snapshot, not a replacement for immutable official API response bodies. Re-run `python scripts/reconcile_sources.py` to reproduce the overlap check. Do not merge its 47 additional records into the canonical dataset until the official-source provenance and issue 26131 boundary are resolved.
+
+## Offline raw-snapshot import
+
+When the API cannot be reached from an authorized runtime, raw JSON response files obtained through an authorized channel can be placed in a directory and parsed without making network requests:
+
+```bash
+python scripts/fetch_history.py \
+  --snapshots-dir data/raw/user-supplied \
+  --require-manifests \
+  --output data/processed/from-snapshots.jsonl
+```
+
+The importer reads each `*.json` response snapshot, excludes sidecar files, recomputes SHA-256 from exact bytes, checks any matching `<snapshot-stem>.manifest.json`, rejects hash mismatches and conflicting duplicate draw IDs, validates the combined chronological dataset, and writes an output JSONL plus an output manifest containing input hashes and the output hash. Raw inputs are never modified.
+
+A complete sidecar must include `url`, `retrieved_at`, `http_status=200`, and the matching `sha256`. `--require-manifests` rejects missing sidecars; without it, the import may proceed but is explicitly marked `candidate_unverified`. Even a complete sidecar is not a cryptographic signature or proof that the endpoint is authoritative. It does not establish the physical meaning of `lotteryUnsortDrawresult` or `lotteryEquipmentCount`.
