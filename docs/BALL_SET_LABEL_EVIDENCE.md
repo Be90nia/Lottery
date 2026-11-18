@@ -15,7 +15,7 @@ This is contemporaneous official evidence for a two-set procedure at launch.
 
 ### 1.2 Official material by 2019 describes three formal sets
 
-The State General Administration of Sport article “全方位升级 体彩开奖场地的‘变与不变’” discusses the 2018 draw-hall upgrade and states that Super Lotto has three sets of formal draw balls, all kept by notaries:
+The State General Administration of Sport article “全方位升级 体彩开奖场地的‘变与不变’” discusses the 2019 draw-hall upgrade and states that Super Lotto has three sets of formal draw balls, all kept by notaries:
 
 - https://www.sport.gov.cn/n20001280/n20745751/n20767297/c21145964/content.html
 
@@ -71,7 +71,7 @@ The evidence ledger must distinguish:
 
 Do not assume that “set 1” in the two-set period is the same physical equipment as “set 1” in the three-set period. Only explicit official continuity/renumbering evidence can establish that mapping.
 
-The 2007 source documents the two-set procedure at launch; official material documents a three-set regime by 2018. They do not establish the exact effective date of the transition. This interval is a required research item, not a date to be guessed.
+The 2007 source documents the two-set procedure at launch; official material documents a three-set regime by 2019. They do not establish the exact effective date of the transition. This interval is a required research item, not a date to be guessed.
 
 ## 3. What the repository currently establishes
 
