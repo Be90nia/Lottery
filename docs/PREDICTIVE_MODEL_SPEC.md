@@ -225,3 +225,28 @@ The run manifest must pin the snapshot path/hash/row count/draw range, target li
 For each zone and candidate-vs-baseline comparison, compute per-target paired score differences on the intersection of valid, predeclared target records only. Also report the complete expected-target denominator and every exclusion reason. The promotion gate must not be satisfied by selectively dropping targets or by comparing models on different target sets.
 
 Calibration diagnostics are descriptive checks on the same chronological predictions; they do not replace exact-set log score. The moving-block bootstrap must resample contiguous blocks of the ordered paired-difference series, with deterministic boundary handling documented and tested. Report the point estimate and two-sided 95% interval. No iid row bootstrap is permitted.
+
+
+## 11. LOT-054 language-neutral engine API contract
+
+The library may choose its language and concrete type system, but it must expose equivalent pure/stateless operations with these semantics:
+
+| Operation | Input | Output / invariant |
+|---|---|---|
+| `enumerate_support(m, k)` | integers `m >= k >= 1` | Every k-subset exactly once, ascending tuple, deterministic lexicographic order |
+| `validate_subset(S, m, k)` | candidate subset | Accept only exactly k distinct integer members in [1,m]; do not repair invalid input |
+| `extract_features(S, zone)` | validated subset, feature schema | Ordered finite feature vector; permutation invariant |
+| `uniform_feature_stats(m, k, schema)` | support/schema | Exact or reproducibly high-precision mean, population variance/std, and zero-variance mask over the uniform legal support |
+| `aggregate_feature_cells(m, k, schema)` | support/schema | Feature-vector → exact positive integer multiplicity; multiplicities sum to C(m,k) |
+| `log_partition(theta, cells)` | finite theta, validated cells | Stable log Z and expected standardized feature vector under Pθ |
+| `log_probability(S, artifact)` | validated subset, forecast-ready artifact | Natural log probability for that exact unordered subset |
+| `fit_exponential(train_subsets, config)` | canonical training subsets and frozen config | Fitted artifact plus full optimizer diagnostics; failed convergence is not forecast-ready |
+| `calibrate_weighted_subset(target_marginals, config)` | strictly interior feasible marginals summing to k | Centered log weights, achieved marginals, residual, solver diagnostics; otherwise explicit failure |
+| `sample_subsets(artifact, n, rng)` | forecast-ready artifact, n >= 0, injected RNG | n legal subsets sampled from the exact normalized distribution; no hidden global RNG |
+| `score_subsets(subsets, artifact)` | validated observed subsets and artifact | Aligned finite log-probability vector; preserve input row order |
+
+Every operation must reject invalid dimensions, schema mismatches, duplicate or out-of-range elements, NaN/Infinity, and corrupted multiplicity totals with typed errors. It must not silently coerce floats to integers, sort-and-deduplicate malformed subsets, clip invalid probabilities, or fall back to another model family.
+
+Front and back are separate calls with support (35,5) and (12,2). The combined ticket distribution is the declared factorized product assumption only; the engine must not imply a learned cross-zone dependence. All public APIs must be deterministic for fixed inputs except `sample_subsets`, whose randomness is fully injected and recorded.
+
+Implementations should expose a lightweight support descriptor so callers can query support size and schema without materializing all subsets. The complete front support is small enough for exact enumeration (324,632 subsets); no Monte Carlo approximation is permitted for the preregistered full-support normalizer or exact uniform moments.
