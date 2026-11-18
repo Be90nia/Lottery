@@ -13,18 +13,22 @@ The State General Administration of Sport's “超级大乐透”开奖流程 ar
 
 This is contemporaneous official evidence for a two-set procedure at launch.
 
-### 1.2 Official material by 2019 describes three formal sets
+### 1.2 Official material by 2018 describes three formal sets
 
-The State General Administration of Sport article “体彩品牌开放日：细节见证公信力” states that Super Lotto has three sets of formal draw balls, all kept by notaries, and that the set used on a given draw day is selected before the draw under notarial supervision:
+The State General Administration of Sport article “全方位升级 体彩开奖场地的‘变与不变’” discusses the 2018 draw-hall upgrade and states that Super Lotto has three sets of formal draw balls, all kept by notaries:
 
-- https://www.sport.gov.cn/n20001280/n20067608/n20067637/c27201503/content.html
+- https://www.sport.gov.cn/n20001280/n20745751/n20767297/c21145964/content.html
 
-The official China Sports Lottery 2019 Social Responsibility Report independently describes three sets and their inspection/handling requirements:
+A State General Administration of Sport article published 2020-01-03 independently confirms that three sets are held by notaries and that a host/guest draws the set index before a draw:
+
+- https://www.sport.gov.cn/cpzx/n5651/c939578/content.html
+
+The official China Sports Lottery 2019 Social Responsibility Report also describes three sets and their inspection/handling requirements:
 
 - https://www.sport.gov.cn/n315/n20067006/c20260981/part/20260998.pdf
 - Printed page 49, section “体彩彩票乐透摇奖球”.
 
-**The exact transition date, the reason for the change, and whether set identities were carried forward or renumbered are not established by these sources.** Do not infer them. The historical span from 2007 to 2019 must therefore include an unresolved regime boundary until authoritative transition evidence is found.
+**The exact transition date, the reason for the change, and whether set identities were carried forward or renumbered are not established by these sources.** Do not infer them. The transition occurred after the documented 2007 two-set procedure and no later than the 2018 three-set description, but its exact effective date remains unresolved.
 
 ### 1.3 Individual official draw announcements can publish the set index
 
@@ -49,7 +53,7 @@ The evidence ledger must distinguish:
 
 Do not assume that “set 1” in the two-set period is the same physical equipment as “set 1” in the three-set period. Only explicit official continuity/renumbering evidence can establish that mapping.
 
-The 2007 source documents the two-set procedure at launch; the 2019 sources document a three-set regime by 2019. They do not establish the exact effective date of the transition. This interval is a required research item, not a date to be guessed.
+The 2007 source documents the two-set procedure at launch; official material documents a three-set regime by 2018. They do not establish the exact effective date of the transition. This interval is a required research item, not a date to be guessed.
 
 ## 3. What the repository currently establishes
 
