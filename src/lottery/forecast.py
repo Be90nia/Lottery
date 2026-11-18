@@ -16,6 +16,7 @@ import sys
 from typing import Any
 
 from .validate import validate_records
+from .ledger_lock import ledger_lock
 from .backtest import (
     DEFAULT_ALPHA,
     FRONT_SIZE,
@@ -154,22 +155,26 @@ def append_forecast(
     event: dict[str, Any],
 ) -> dict[str, Any]:
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    state = verify_ledger(ledger_path)
-    if any(
-        json.loads(line).get("target_draw_id") == event["target_draw_id"]
-        for line in ledger_path.read_text(encoding="utf-8").splitlines()
-    ) if ledger_path.exists() else False:
-        raise ForecastLedgerError(f"forecast already exists for target {event['target_draw_id']}")
-    body = {
-        "sequence": state["events"] + 1,
-        "previous_event_hash": state["last_event_hash"],
-        **event,
-    }
-    record = {**body, "event_hash": _event_hash(body)}
-    with ledger_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
-        handle.flush()
-    return {"sequence": record["sequence"], "event_hash": record["event_hash"]}
+    # Serialize the complete read/verify/deduplicate/append transaction.
+    with ledger_lock(ledger_path):
+        state = verify_ledger(ledger_path)
+        if any(
+            json.loads(line).get("target_draw_id") == event["target_draw_id"]
+            for line in ledger_path.read_text(encoding="utf-8").splitlines()
+        ) if ledger_path.exists() else False:
+            raise ForecastLedgerError(f"forecast already exists for target {event['target_draw_id']}")
+        body = {
+            "sequence": state["events"] + 1,
+            "previous_event_hash": state["last_event_hash"],
+            **event,
+        }
+        record = {**body, "event_hash": _event_hash(body)}
+        with ledger_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\\n")
+            handle.flush()
+            import os
+            os.fsync(handle.fileno())
+        return {"sequence": record["sequence"], "event_hash": record["event_hash"]}
 
 
 def main() -> int:
