@@ -1,5 +1,6 @@
 import hashlib
 import json
+import multiprocessing
 from datetime import datetime, timezone
 from pathlib import Path
 import tempfile
@@ -16,6 +17,16 @@ def draw(index):
     return {"draw_id": f"260{index}", "draw_date": f"2026-01-0{index}",
             "front_numbers": [1, 2, 3, 4, 5], "back_numbers": [1, 2],
             "source_id": "test"}
+
+
+
+def _append_outcome_worker(path, event, barrier, results):
+    try:
+        barrier.wait(timeout=15)
+        append_outcome(Path(path), event)
+        results.put("ok")
+    except Exception as exc:
+        results.put(type(exc).__name__ + ":" + str(exc))
 
 
 class OutcomeLedgerTests(unittest.TestCase):
@@ -144,6 +155,60 @@ class OutcomeLedgerTests(unittest.TestCase):
         self.forecasts.write_text(json.dumps(record) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(OutcomeLedgerError, "invalid uniform front"):
             create_outcome_event(self.forecasts, **self.kwargs)
+
+
+
+    def test_concurrent_duplicate_outcome_has_exactly_one_winner(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        ctx = multiprocessing.get_context("spawn")
+        barrier, results = ctx.Barrier(2), ctx.Queue()
+        processes = [
+            ctx.Process(target=_append_outcome_worker, args=(str(self.outcomes), event, barrier, results))
+            for _ in range(2)
+        ]
+        for process in processes:
+            process.start()
+        outcomes = [results.get(timeout=20) for _ in processes]
+        for process in processes:
+            process.join(timeout=20)
+            self.assertEqual(process.exitcode, 0)
+        self.assertEqual(outcomes.count("ok"), 1, outcomes)
+        self.assertEqual(sum("already exists" in value for value in outcomes), 1, outcomes)
+        self.assertEqual(verify_outcome_ledger(self.outcomes)["events"], 1)
+
+    def test_concurrent_distinct_outcomes_keep_chain_contiguous(self):
+        second_forecast = create_forecast_event(
+            [draw(1), draw(2), draw(3)],
+            target_draw_id="2605",
+            target_draw_at="2026-02-03T20:00:00+08:00",
+            training_sha256=hashlib.sha256(b"training-2").hexdigest(),
+            code_commit="b" * 40,
+            generated_at=datetime(2026, 2, 2, 10, 0, tzinfo=timezone.utc),
+        )
+        append_forecast(self.forecasts, second_forecast)
+        first_event = create_outcome_event(self.forecasts, **self.kwargs)
+        second_kwargs = dict(
+            self.kwargs,
+            target_draw_id="2605",
+            published_at="2026-02-03T20:30:00+08:00",
+            captured_at="2026-02-03T20:31:00+08:00",
+            recorded_at=datetime(2026, 2, 3, 13, 0, tzinfo=timezone.utc),
+        )
+        second_event = create_outcome_event(self.forecasts, **second_kwargs)
+        ctx = multiprocessing.get_context("spawn")
+        barrier, results = ctx.Barrier(2), ctx.Queue()
+        processes = [
+            ctx.Process(target=_append_outcome_worker, args=(str(self.outcomes), event, barrier, results))
+            for event in (first_event, second_event)
+        ]
+        for process in processes:
+            process.start()
+        outcomes = [results.get(timeout=20) for _ in processes]
+        for process in processes:
+            process.join(timeout=20)
+            self.assertEqual(process.exitcode, 0)
+        self.assertEqual(outcomes.count("ok"), 2, outcomes)
+        self.assertEqual(verify_outcome_ledger(self.outcomes)["events"], 2)
 
 
 
