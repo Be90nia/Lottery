@@ -35,6 +35,9 @@ class Draw:
     source_id: str
     front_draw_order: list[int] | None = None
     back_draw_order: list[int] | None = None
+    # Raw upstream metadata retained without asserting its physical meaning.
+    source_unsort_drawresult: str | None = None
+    source_equipment_count: Any = None
 
 
 def _fetch_page(page_no: int, page_size: int, timeout: int = 20, retries: int = 3) -> tuple[bytes, int, str]:
@@ -119,7 +122,10 @@ def _parse_page(raw: bytes, page_no: int, source_id: str) -> list[Draw]:
             raise IngestionError(f"draw {draw_id}: front numbers must be 5 distinct values in 1..35")
         if len(set(back)) != 2 or any(n < 1 or n > 12 for n in back):
             raise IngestionError(f"draw {draw_id}: back numbers must be 2 distinct values in 1..12")
-        raw_order = str(item.get("lotteryUnsortDrawresult") or "").strip()
+        raw_order_value = item.get("lotteryUnsortDrawresult")
+        if raw_order_value is not None and not isinstance(raw_order_value, str):
+            raise IngestionError(f"draw {draw_id}: lotteryUnsortDrawresult must be a string or null")
+        raw_order = (raw_order_value or "").strip()
         front_order = None
         back_order = None
         if raw_order:
@@ -142,6 +148,8 @@ def _parse_page(raw: bytes, page_no: int, source_id: str) -> list[Draw]:
             source_id=source_id,
             front_draw_order=front_order,
             back_draw_order=back_order,
+            source_unsort_drawresult=raw_order_value,
+            source_equipment_count=item.get("lotteryEquipmentCount"),
         ))
     return rows
 
