@@ -1,6 +1,6 @@
 # Prospective holdout protocol (draft frozen specification)
 
-**Status:** protocol specification drafted; prospective holdout has not started and no holdout outcomes have been inspected.
+**Status:** draft protocol and pre-draw ledger tooling implemented; the freeze boundary has not yet been declared, the prospective holdout has not started, and no holdout outcomes have been inspected.
 
 ## 1. Why a new holdout is required
 
