@@ -24,6 +24,13 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual(result["evaluated_draws"], 4)
         self.assertEqual(result["first_evaluation_draw"], "4")
         self.assertEqual(set(result["metrics"]), {"uniform", "expanding", "ewma"})
+        era = result["calendar_era_stability"]["eras"]["2017-2021"]
+        self.assertEqual(era["evaluation_draws"], 4)
+        self.assertEqual(era["first_evaluation_draw"], "4")
+        self.assertEqual(era["last_evaluation_draw"], "7")
+        delta = era["paired_score_delta_vs_uniform"]["ewma"]["front"]["brier"]
+        self.assertEqual(delta["replicates"], 1000)
+        self.assertEqual(delta["block_length_draws"], 4)
 
     def test_duplicate_draw_ids_rejected(self):
         rows = [draw(1, [1, 2, 3, 4, 5], [1, 2]),
