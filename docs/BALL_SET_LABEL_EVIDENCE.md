@@ -208,3 +208,30 @@ Further searches found official Jiangsu Sports Lottery pages covering the surrou
 - 2011-10-10 official Jiangsu article about the upcoming 11119 draw and prior 11118: https://www.js-lottery.com/wfzq/dlt/xwzx/cms/post-37627.html. It does not state the 11119 ball-set index.
 
 These are A2 official contextual sources for the draw/result context, but they are not A1/A2 ball-set-label observations. The C1 third-party reports for 11105 and 11119 therefore remain unverified. The search result is a negative finding about the pages inspected, not proof that the original national announcement never existed.
+
+## 7. Binding decision: model-slot identity and training eligibility
+
+A model slot is not a timeless label such as “set 1”. Its canonical training population key is the pair `(equipment_regime_id, reported_set_index)`. A regime change creates a new population key even if the displayed index is unchanged. Two keys may be merged only after primary official evidence explicitly establishes physical identity continuity or an authoritative renumbering map. Similar draw frequencies, matching numbers, calendar proximity, and raw `source_equipment_count` are not continuity evidence.
+
+Keep three concepts separate in every record and UI:
+1. `reported_set_index`: the literal 1/2/3 printed in that draw's official announcement;
+2. `equipment_regime_id`: the independently adjudicated regime in force for that draw (nullable while unresolved);
+3. `physical_ball_set_id`: nullable stable physical identity, populated only when authoritative continuity evidence supports it.
+
+A verified label with unresolved regime/physical identity remains useful archival evidence, but is not eligible to train a cross-regime physical-set model. Never coerce a null regime ID into a default regime.
+
+For modeling, call these **set-conditioned historical models**, not proven physical-ball causal models. One draw's use of a reported set does not prove that the set caused any number-frequency difference. Differences may be sampling noise, temporal drift, or source/selection effects. Three slot outputs are three conditional historical distributions, not evidence of three independent predictive edges.
+
+### Per-slot rolling-origin eligibility and denominator
+
+For target draw t and slot key g=(regime,index), training rows must be strictly earlier than t, have primary_verified A1/A2 labels, and match exactly the same g. Never include unlabeled rows, B1/C1 labels, other indices, or other regimes in that slot's training set.
+
+A slot is eligible at t only after at least 300 earlier verified rows for that exact key, and only while its regime is adjudicated stable. The 300-row threshold is a minimum data-adequacy floor, not a claim of statistical power; slot-specific performance must still pass all preregistered out-of-sample gates. The first eligible target is later than the pooled model's first target and must be reported explicitly.
+
+Evaluate a slot-specific model only on target draws whose own archived primary_verified label matches that same key and whose pre-target training count is at least 300. Compare it against pooled and uniform baselines on exactly that same target subset. Publish per slot: eligible target IDs, prior labeled training count at each cutoff, excluded target IDs and reasons, coverage, and calendar/regime span. Missing labels are not negative examples and target slot identity must never be inferred.
+
+If any slot has insufficient history, unresolved regime, or incomplete primary evidence, mark it `ineligible`; do not relax the threshold, borrow another slot's data, or copy another model's output. The three-slot product remains blocked unless all three slots independently satisfy evidence, data, numerical, and predictive gates.
+
+### Current evidence consequence
+
+The presently known chronology does not yet provide an adjudicated historical regime boundary or physical continuity map. Therefore no historical record may be assigned to a stable physical-set model slot solely from its printed set index. The C1 11105/11119 reports remain discovery leads only; the official 11004 retrospective is B1, not an A1/A2 per-draw observation. These records cannot satisfy the primary-verified slot-training rule.
