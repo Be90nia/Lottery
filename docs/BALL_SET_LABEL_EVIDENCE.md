@@ -28,7 +28,21 @@ The official China Sports Lottery 2019 Social Responsibility Report also describ
 - https://www.sport.gov.cn/n315/n20067006/c20260981/part/20260998.pdf
 - Printed page 49, section “体彩彩票乐透摇奖球”.
 
-**The exact transition date, the reason for the change, and whether set identities were carried forward or renumbered are not established by these sources.** Do not infer them. The transition occurred after the documented 2007 two-set procedure and no later than the 2019 three-set description, but its exact effective date remains unresolved. A later machine replacement is documented separately and must not be conflated with a ball-set transition.
+**The exact transition date, the reason for the change, and whether set identities were carried forward or renumbered are not established by these official sources. Secondary result archives point to third-set use by September 2011, but require recovery of the original official draw notices before acceptance.** Do not infer them. The transition occurred after the documented 2007 two-set procedure and no later than the 2019 three-set description, but its exact effective date remains unresolved. A later machine replacement is documented separately and must not be conflated with a ball-set transition.
+
+### 1.3 Earlier secondary records point to three-set use by 2011, but are not accepted as official labels
+
+Searches found secondary lottery-result archives reporting explicit third-set use before the 2019 official three-set descriptions:
+
+| Draw | Date | Reported index | Secondary source |
+|---|---|---:|---|
+| 11105 | 2011-09-07 | 3 | https://news.zgzcw.com/news/4/5/2011-09-07/349957.shtml |
+| 11119 | 2011-10-10 | 3 | https://news.zgzcw.com/news/4/21/2011-10-11/353222.shtml |
+| 11147 | 2011-12-14 | 3 | https://news.zgzcw.com/news/4/21/2011-12-15/361064.shtml |
+| 12047 | 2012-04-25 | 3 | https://news.zgzcw.com/news/48/21/2012-04-26/382339.shtml |
+| 12052 | 2012-05-07 | 2 | https://news.zgzcw.com/news/48/21/2012-05-08/384626.shtml |
+
+These records materially narrow the search target: the third set may already have been in use by September 2011. However, these pages are not the issuing provincial/national lottery authority's archived original announcement, so they are **discovery leads only**. They must not populate the verified row-level label ledger or establish the formal transition date. LOT-058 should use the draw IDs/dates above as priority recovery targets for matching original official notices. If original official bytes cannot be recovered, retain the records as secondary corroboration only.
 
 ### 1.3 Machine replacement is a separate event, not proof of ball-set transition
 
@@ -71,7 +85,7 @@ The evidence ledger must distinguish:
 
 Do not assume that “set 1” in the two-set period is the same physical equipment as “set 1” in the three-set period. Only explicit official continuity/renumbering evidence can establish that mapping.
 
-The 2007 source documents the two-set procedure at launch; official material documents a three-set regime by 2019. They do not establish the exact effective date of the transition. This interval is a required research item, not a date to be guessed.
+The 2007 source documents the two-set procedure at launch; official material documents a three-set regime by 2019. Secondary archives point to third-set use by September 2011, but do not establish an official effective date. The exact transition remains unresolved. This interval is a required research item, not a date to be guessed.
 
 ## 3. What the repository currently establishes
 
@@ -88,7 +102,7 @@ The canonical official history collector currently consumes draw number, draw da
 1. Enumerate every draw ID in the frozen 2,949-row canonical dataset.
 2. Resolve each draw to an official national or provincial result-announcement URL. Preserve exact HTML/PDF response bytes, retrieval timestamp, SHA-256, and parser version.
 3. Extract a set index only when the official per-draw source explicitly states “本期使用第X套摇奖球”. A search snippet is discovery evidence only, not an archived row-level source.
-4. Find authoritative evidence for the two-set to three-set transition date, including any equipment replacement, renumbering, or continuity statement. If no exact date can be established, retain an unresolved regime interval and exclude it from cross-regime identity claims.
+4. Prioritize recovery of original official announcements for draws 11105, 11119, 11147, 12047, and 12052, whose secondary mirrors report set indices 3/3/3/3/2. Then find authoritative evidence for the two-set to three-set transition date, including any equipment replacement, renumbering, or continuity statement. If no exact date can be established, retain an unresolved regime interval and exclude it from cross-regime identity claims.
 5. Assign separate statuses: `verified_two_set_regime_index_1/2`, `verified_three_set_regime_index_1/2/3`, `unknown_regime`, `missing_official_label`, `conflicting_official_sources`, and `unavailable_record`.
 6. Publish a row-level map with draw ID, draw date, regime ID, official index, source URL/hash, parser version, and extraction evidence.
 7. Report coverage by calendar year, regime, and source domain; include missingness, conflicts, first/last verified draw per index, longest gaps, and denominators.
