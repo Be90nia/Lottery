@@ -4,6 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from lottery.rules import ruleset_for_draw
 from lottery.prizes import (
     PrizeDataError, audit_prize_rows, classify_prize_label,
     reconcile_additional_awards,
@@ -136,6 +137,40 @@ class PrizeAuditTests(unittest.TestCase):
         self.assertEqual(report["additional_pairs_checked"], 3)
         self.assertEqual(report["additional_pair_mismatches"], 0)
         self.assertEqual(report["unexpected_additional_row_count"], 0)
+
+    def test_official_2017_results_reconcile_base_and_additional_amounts(self):
+        # Official Jiangsu result pages:
+        # https://www.js-lottery.com/cms/post-77220.html (17045)
+        # https://www.js-lottery.com/cms/post-77436.html (17052)
+        rows = [
+            prize("17045", "三等奖", "7124", 683, "4865692"),
+            prize("17045", "三等奖(追加)", "4274", 259, "1106966"),
+            prize("17045", "四等奖", "200", 20110, "4022000"),
+            prize("17045", "四等奖(追加)", "100", 11473, "1147300"),
+            prize("17045", "五等奖", "10", 390457, "3904570"),
+            prize("17045", "五等奖(追加)", "5", 216069, "1080345"),
+            prize("17052", "二等奖", "81082", 93, "7540626"),
+            prize("17052", "二等奖(追加)", "48649", 55, "2675695"),
+            prize("17052", "三等奖", "1829", 1679, "3070891"),
+            prize("17052", "三等奖(追加)", "1097", 821, "900637"),
+            prize("17052", "四等奖", "200", 41671, "8334200"),
+            prize("17052", "四等奖(追加)", "100", 24690, "2469000"),
+        ]
+        report = reconcile_additional_awards(rows)
+        self.assertEqual(report["additional_pairs_checked"], 6)
+        self.assertEqual(report["additional_pair_mismatches"], 0)
+        self.assertEqual(report["unexpected_additional_row_count"], 0)
+
+    def test_2026_official_result_uses_half_up_for_80_percent_additional(self):
+        # Official Jiangsu result: https://www.js-lottery.com/cms/post-146412.html
+        self.assertEqual(ruleset_for_draw("26016").additional_award_rounding, "half_up")
+        rows = [
+            prize("26016", "一等奖", "5925957", 13, "77037441"),
+            prize("26016", "一等奖(追加)", "4740766", 4, "18963064"),
+        ]
+        report = reconcile_additional_awards(rows)
+        self.assertEqual(report["additional_pairs_checked"], 1)
+        self.assertEqual(report["additional_pair_mismatches"], 0)
 
     def test_later_fixed_tier_additional_is_flagged(self):
         rows = [
