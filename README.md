@@ -15,7 +15,7 @@
 
 ## 项目状态
 
-仓库初始化中。历史原始数据、字段映射和统计结果必须在官方来源核验后导入；未核验的数据不会被当作训练集。
+仓库已建立基础采集、校验、奖级审计和 Monte Carlo 随机基线。旧项目的 2,901 期数据已导入为候选集，但官方原始数据核验尚未完成，不能作为可信训练集。
 
 ## 研究范围
 
@@ -52,6 +52,7 @@ Python 3.10+ is sufficient; the initial collector uses only the standard library
 python scripts/fetch_history.py --max-pages 2
 python scripts/validate_dataset.py
 python scripts/validate_legacy_prizes.py
+python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl --simulations 999 --seed 20261118
 python -m unittest discover -s tests -v
 ```
 
@@ -62,3 +63,6 @@ The live endpoint has not yet passed this repository's end-to-end verification. 
 ## Legacy historical candidate data
 
 An existing 2,901-draw dataset from the earlier `dlt-analysis` project has been imported under `data/candidates/`. It is explicitly marked **unverified candidate data**, not a trusted training dataset. Its structure and cleaning-script defects are documented in [the legacy data audit](docs/LEGACY_DATA_AUDIT.md). Do not use its promotion, prize, sales, or equipment fields as ground truth until they are reconciled with immutable official source snapshots.
+
+
+Monte Carlo frequency baseline details are documented in [research methods](docs/RESEARCH_METHODS.md). The baseline uses legal draws without replacement within each number zone and reports global frequency diagnostics; it does not produce a predictive number ranking.
