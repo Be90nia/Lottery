@@ -20,7 +20,7 @@ jobs:
       - name: Validate imported legacy draw candidate
         run: python scripts/validate_dataset.py data/candidates/legacy_draws.jsonl
       - name: Audit imported legacy prize rows
-        run: python scripts/validate_legacy_prizes.py
+        run: python scripts/validate_legacy_prizes.py --output prize-reconciliation.json
       - name: Reconcile legacy candidate with independent CSV snapshot
         run: python scripts/reconcile_sources.py
       - name: Run legal-draw Monte Carlo baseline smoke test
@@ -54,6 +54,7 @@ jobs:
             pair-cooccurrence.json
             chronological-split/
             rolling-origin-benchmark.json
+            prize-reconciliation.json
           retention-days: 30
 
   windows-ledger-locks:
