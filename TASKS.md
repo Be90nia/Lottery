@@ -40,7 +40,8 @@
 - [x] LOT-043 Add paired rolling-origin score comparisons by fixed calendar eras and assess descriptive stability without tuning. Results are exploratory/post-hoc, not confirmatory; see docs/ERA_STABILITY_RESULTS.md.
 
 
-- [ ] LOT-044 Verify `lotteryUnsortDrawresult` and `lotteryEquipmentCount` semantics against authorized immutable official raw snapshots; reconcile row-level order/equipment provenance before positional or equipment-stratified inference. Audit: [DRAW_ORDER_METADATA_AUDIT.md](docs/DRAW_ORDER_METADATA_AUDIT.md).
+- [ ] LOT-044 Verify `lotteryUnsortDrawresult` and `lotteryEquipmentCount` semantics against authorized immutable official raw snapshots; reconcile row-level order/equipment provenance before positional or equipment-stratified inference.
+- [x] LOT-045 Add offline immutable JSON snapshot import with SHA-256 sidecar verification, duplicate reconciliation, dataset validation, output manifest, and explicit unverified status when provenance is incomplete. Audit: [DRAW_ORDER_METADATA_AUDIT.md](docs/DRAW_ORDER_METADATA_AUDIT.md).
 
 ## Acceptance criteria
 
