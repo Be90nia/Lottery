@@ -116,3 +116,21 @@ python scripts/outcome_ledger.py score --forecasts data/holdout/forecast-ledger.
 This is instrumentation, not evidence of predictive skill. The prospective
 500-draw holdout has not started; do not use interim scores to select or tune
 models. Metadata checks and hashes are not digital authentication.
+
+
+### Ledger writer coordination (LOT-048)
+
+Forecast and outcome appends now use a persistent sibling `.lock` file and an
+OS advisory lock. The lock covers chain verification, duplicate-target checks,
+sequence/hash construction, and append+flush+fsync as one transaction. POSIX
+uses `flock`; Windows uses a one-byte `msvcrt.locking` region. Both paths use
+a 30-second acquisition timeout. The OS releases the lock when a process exits,
+including abnormal termination; the lock file itself is intentionally retained.
+
+Do not delete or replace a ledger's `.lock` file while writers may be active:
+doing so can split contenders across different lock inodes. All writers must
+cooperate with this locking protocol. Advisory-lock guarantees on network,
+cloud-synced, and unusual filesystems vary; use a local filesystem for the
+active ledger and independently archive ledger heads. This mechanism prevents
+cooperating local processes from racing; it is not a distributed transaction
+or protection against a malicious writer.
