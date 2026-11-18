@@ -160,6 +160,24 @@ class PrizeAuditTests(unittest.TestCase):
         self.assertEqual(report["additional_pair_mismatches"], 0)
         self.assertEqual(report["unexpected_additional_row_count"], 0)
 
+    def test_official_2017_draw_17062_result_reconciles(self):
+        # Official Jiangsu result: https://www.js-lottery.com/cms/post-77775.html
+        rows = [
+            prize("17062", "二等奖", "191426", 57, "10911282"),
+            prize("17062", "二等奖(追加)", "114855", 19, "2182245"),
+            prize("17062", "三等奖", "8612", 467, "4021804"),
+            prize("17062", "三等奖(追加)", "5167", 207, "1069569"),
+            prize("17062", "四等奖", "200", 22123, "4424600"),
+            prize("17062", "四等奖(追加)", "100", 10096, "1009600"),
+            prize("17062", "五等奖", "10", 430836, "4308360"),
+            prize("17062", "五等奖(追加)", "5", 210646, "1053230"),
+        ]
+        report = reconcile_additional_awards(rows)
+        self.assertEqual(report["additional_pairs_checked"], 4)
+        self.assertEqual(report["floating_pairs_within_rounding_tolerance"], 2)
+        self.assertEqual(report["additional_pair_mismatches"], 0)
+        self.assertEqual(report["unexpected_additional_row_count"], 0)
+
     def test_2026_official_floating_awards_allow_independent_display_rounding(self):
         # Official Jiangsu results:
         # https://www.js-lottery.com/cms/post-146412.html (26016)
