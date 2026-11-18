@@ -15,7 +15,8 @@ import re
 import sys
 from typing import Any
 
-from .validate import validate_records\nfrom .backtest import (
+from .validate import validate_records
+from .backtest import (
     DEFAULT_ALPHA,
     FRONT_SIZE,
     FRONT_PICK,
@@ -166,7 +167,7 @@ def append_forecast(
     }
     record = {**body, "event_hash": _event_hash(body)}
     with ledger_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\\n")
+        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
         handle.flush()
     return {"sequence": record["sequence"], "event_hash": record["event_hash"]}
 
