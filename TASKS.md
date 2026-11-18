@@ -14,7 +14,7 @@
 - [x] LOT-009 Implement legal-draw random simulation.
 - [x] LOT-010 Add initial descriptive frequency diagnostics; gap analysis remains open.
 - [ ] LOT-011 Add pair/co-occurrence statistics.
-- [ ] LOT-012 Add multiple-testing correction.
+- [x] LOT-012 Add Holm multiple-testing correction for defined test families.
 - [ ] LOT-013 Add equipment/ball-set/event metadata with citations.
 - [ ] LOT-014 Add chronological dataset split utility.
 - [ ] LOT-015 Add random baseline and rolling-origin backtest harness.
@@ -38,3 +38,5 @@ A task is complete only when code, tests, provenance, and documentation are upda
 - [ ] LOT-036 Reconcile legacy promotion flags, prize award types, equipment codes, and monetary fields against raw official records.
 - [ ] LOT-037 Extend the candidate dataset from draw 26083 through the latest verified official draw.
 - [ ] LOT-038 Promote a versioned canonical dataset only after source overlap, completeness, and prize-field checks pass.
+
+- [ ] LOT-039 Investigate early-era front-zone frequency deviations using authoritative equipment and ball-set histories, then run predeclared stratified tests.
