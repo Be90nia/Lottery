@@ -178,6 +178,10 @@ def audit_prize_rows(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     promotion_rows = 0
     promotion_zero_amount_positive_total = 0
     promotion_total_yuan = Decimal("0")
+    promotion_draw_ids: set[str] = set()
+    promotion_rows_by_label: Counter[str] = Counter()
+    promotion_zero_by_label: Counter[str] = Counter()
+    promotion_prefix_summary: dict[str, dict[str, Any]] = {}
     examples: list[dict[str, Any]] = []
     promotion_examples: list[dict[str, Any]] = []
 
@@ -215,9 +219,21 @@ def audit_prize_rows(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
 
         if parsed["award_kind"] == "promotion_overlay":
             promotion_rows += 1
+            promotion_draw_ids.add(draw_id)
+            promotion_rows_by_label[label] += 1
+            prefix = draw_id[:2] if len(draw_id) == 5 and draw_id.isdigit() else "unknown"
+            prefix_summary = promotion_prefix_summary.setdefault(
+                prefix, {"rows": 0, "draw_ids": set(), "zero_amount_positive_total_rows": 0,
+                         "total_yuan": Decimal("0")}
+            )
+            prefix_summary["rows"] += 1
+            prefix_summary["draw_ids"].add(draw_id)
             if total is not None:
                 promotion_total_yuan += total
+                prefix_summary["total_yuan"] += total
             if amount == 0 and total is not None and total > 0:
+                promotion_zero_by_label[label] += 1
+                prefix_summary["zero_amount_positive_total_rows"] += 1
                 promotion_zero_amount_positive_total += 1
                 if len(promotion_examples) < 10:
                     promotion_examples.append({
@@ -247,8 +263,20 @@ def audit_prize_rows(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "amount_times_count_mismatch_rows_excluding_promotions": amount_total_mismatches,
         "mismatch_examples": examples,
         "promotion_rows": promotion_rows,
+        "promotion_draw_ids": len(promotion_draw_ids),
+        "promotion_rows_by_label": dict(sorted(promotion_rows_by_label.items())),
         "promotion_zero_amount_positive_total_rows": promotion_zero_amount_positive_total,
+        "promotion_zero_amount_positive_total_by_label": dict(sorted(promotion_zero_by_label.items())),
         "promotion_total_yuan": str(promotion_total_yuan),
+        "promotion_summary_by_draw_id_prefix": {
+            prefix: {
+                "rows": values["rows"],
+                "draw_ids": len(values["draw_ids"]),
+                "zero_amount_positive_total_rows": values["zero_amount_positive_total_rows"],
+                "total_yuan": str(values["total_yuan"]),
+            }
+            for prefix, values in sorted(promotion_prefix_summary.items())
+        },
         "promotion_examples": promotion_examples,
         "additional_reconciliation": reconcile_additional_awards(records),
     }
