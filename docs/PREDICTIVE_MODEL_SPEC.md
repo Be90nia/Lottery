@@ -123,6 +123,7 @@ Every artifact must include:
 - fitted theta (or centered log-weights for a weighted-subset model);
 - training cutoff draw, training row count, training snapshot SHA-256, and code revision;
 - optimizer/calibration configuration, convergence status, termination reason, objective, gradient infinity norm, and iteration count;
+- for regularized exponential-family fits, `objective_scale="mean_nll"`, fixed `lambda`, unregularized mean NLL, and penalized objective; do not use the penalized objective as the forecast comparison score;
 - numeric dtype, implementation/runtime version, and deterministic sampling algorithm identifier.
 
 Do not make a dense support probability vector the only source of truth. Retain parameters and schemas sufficient to recompute probabilities. Any cached support/probability table is derived and must be hash-linked to the artifact. A failed or non-converged fit must never be marked forecast-ready.
