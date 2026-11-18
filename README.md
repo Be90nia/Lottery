@@ -52,6 +52,7 @@ Python 3.10+ is sufficient; the initial collector uses only the standard library
 
 ```bash
 python scripts/fetch_history.py --max-pages 2
+python scripts/fetch_history.py --snapshots-dir data/raw/user-supplied --require-manifests --output data/processed/from-snapshots.jsonl
 python scripts/validate_dataset.py
 python scripts/validate_legacy_prizes.py
 python scripts/reconcile_sources.py
@@ -61,7 +62,7 @@ python -m unittest discover -s tests -v
 
 Remove `--max-pages 2` to request all available pages. The collector writes immutable raw page snapshots and SHA-256 manifests under `data/raw/sporttery/`, then writes normalized JSON Lines to `data/processed/draws.jsonl`. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
 
-The live endpoint has not yet passed this repository's end-to-end verification. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset.
+The live endpoint has not yet passed this repository's end-to-end verification. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset. If an authorized party supplies raw JSON response snapshots, they can be imported offline with `--snapshots-dir`; use `--require-manifests` to require matching per-file SHA-256 sidecars. This checks byte integrity and manifest completeness, not source authenticity or uncertain field semantics.
 
 ## Legacy historical candidate data
 
