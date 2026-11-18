@@ -52,3 +52,12 @@ Every source snapshot should record:
 ## Time splits
 
 All model splits use draw_date/draw_id chronology. A feature is eligible only if it would have been available before the target draw. Metadata published after the draw may be used for retrospective explanation, not prediction.
+
+## Versioned prize rules
+
+The optional `ruleset_id` on a draw identifies the rules effective for that
+draw. The current registry in `src/lottery/rules.py` selects the legacy
+nine-tier rules through draw 26013 and the revised seven-tier rules from draw
+26014 (2026-02-02). Do not infer a ruleset for missing or unresolved draw IDs.
+Keep campaign promotions as separately sourced overlays; do not merge them
+into base prize amounts. See [PRIZE_RULES.md](PRIZE_RULES.md).
