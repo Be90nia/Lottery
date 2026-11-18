@@ -42,6 +42,15 @@
 - [奖金规则时期](docs/PRIZE_RULE_ERAS.md)
 - [初步随机基线结果](docs/BASELINE_RESULTS.md)
 - [任务清单](TASKS.md)
+
+### 当前预测模型研发任务
+
+- [LOT-054：完整无序组合概率引擎与基线](https://github.com/Be90nia/Lottery/issues/17)
+- [LOT-055：冻结数据滚动回测](https://github.com/Be90nia/Lottery/issues/18)
+- [LOT-056：官方三套球标识核验](https://github.com/Be90nia/Lottery/issues/19)
+- [LOT-057：三模型 N → 3N 生成器（依赖模型晋级）](https://github.com/Be90nia/Lottery/issues/20)
+
+执行顺序：先完成 LOT-054，再进行 LOT-055；LOT-056 独立核验球套数据；LOT-057 必须等待三套独立模型全部通过晋级门槛。以上均为待实施任务，不代表代码或模型已经完成。
 - [测试计划](TEST_PLAN.md)
 
 ## 重要声明
