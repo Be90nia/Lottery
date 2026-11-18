@@ -17,7 +17,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .backtest import _scores, FRONT_SIZE, FRONT_PICK, BACK_SIZE, BACK_PICK
-from .ledger_lock import ledger_lock
+from .ledger_lock import LedgerLockError, ledger_lock
 from .forecast import (
     GENESIS_HASH,
     ForecastLedgerError,
@@ -294,7 +294,7 @@ def main() -> int:
             result = append_outcome(args.outcomes, event)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, LedgerLockError) as exc:
         print(f"OUTCOME_LEDGER_FAILED: {exc}", file=sys.stderr)
         return 1
 
