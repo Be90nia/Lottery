@@ -47,11 +47,12 @@
 
 - [LOT-054：完整无序组合概率引擎与基线](https://github.com/Be90nia/Lottery/issues/17)
 - [LOT-055：冻结数据滚动回测](https://github.com/Be90nia/Lottery/issues/18)
-- [LOT-056：官方三套球标识核验](https://github.com/Be90nia/Lottery/issues/19)
+- [LOT-056：历史球套制度时期重建与逐行证据映射](https://github.com/Be90nia/Lottery/issues/19)
 - [LOT-057：三模型 N → 3N 生成器（依赖模型晋级）](https://github.com/Be90nia/Lottery/issues/20)
 - [LOT-058：官方逐期开奖球套证据归档与时期感知解析](https://github.com/Be90nia/Lottery/issues/21)
+- [LOT-059：每期开奖后持续采集官方球套标签](https://github.com/Be90nia/Lottery/issues/22)
 
-执行顺序：先完成 LOT-054，再进行 LOT-055；LOT-056 负责球套制度时期与历史标签核验，LOT-058 负责逐期开奖原始证据归档；LOT-057 必须等待三个时期兼容、证据充分且全部通过晋级门槛的模型槽位。以上均为待实施任务，不代表代码或模型已经完成。
+执行顺序：先完成 LOT-054，再进行 LOT-055；LOT-056 负责球套制度时期与历史标签核验，LOT-058 负责历史逐期开奖原始证据归档，LOT-059 负责未来每期开奖后的持续采集；LOT-057 必须等待三个时期兼容、证据充分且全部通过晋级门槛的模型槽位。以上均为待实施任务，不代表代码或模型已经完成。
 - [测试计划](TEST_PLAN.md)
 
 ## 重要声明
