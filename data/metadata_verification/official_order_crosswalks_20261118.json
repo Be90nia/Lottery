@@ -1,7 +1,7 @@
 {
   "schema": "dlt-official-order-crosswalks/v1",
   "created_on": "2026-11-18",
-  "sample_design": "Purposive convenience sample from searchable official provincial announcements and adjacent issue links; not random or representative.",
+  "sample_design": "Mixed sample: 16 purposive convenience crosswalks plus 5 official-page matches from a reproducible one-draw-per-year stratified random sample (seed 20261118). The random audit selected 16 rows across 2011-2026; 5 official DLT pages were located and all 5 matched, while 11 selected rows had no official DLT announcement URL located in this search pass. Source availability is unknown and may be non-random.",
   "source_capture_status": "Official announcement URLs and displayed values transcribed; raw HTML/HTTP response bytes are not archived or hashed in this registry.",
   "interpretation": "The pages explicitly label the listed order as 本期出球顺序 and the equipment value as 本期使用第N套摇奖球. This registry is evidence for the listed rows only.",
   "records": [
@@ -35,7 +35,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第2套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-77220.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "17052",
@@ -67,7 +68,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第3套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-77436.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "17061",
@@ -99,7 +101,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第1套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-77749.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "17062",
@@ -131,7 +134,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第2套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-77775.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "17063",
@@ -163,7 +167,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第2套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-77825.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "17145",
@@ -195,7 +200,41 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第2套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-80978.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
+    },
+    {
+      "draw_id": "17153",
+      "draw_date": "2017-12-30",
+      "front_numbers": [
+        1,
+        9,
+        24,
+        26,
+        34
+      ],
+      "back_numbers": [
+        9,
+        12
+      ],
+      "front_draw_order": [
+        1,
+        26,
+        24,
+        9,
+        34
+      ],
+      "back_draw_order": [
+        9,
+        12
+      ],
+      "equipment_set": 1,
+      "source_authority": "provincial sports lottery center official website",
+      "source_label_order": "本期出球顺序",
+      "source_label_equipment": "本期使用第1套摇奖球",
+      "source_url": "https://www.js-lottery.com/cms/post-81240.html",
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "stratified_random_1_per_year_seed_20261118"
     },
     {
       "draw_id": "18001",
@@ -227,7 +266,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第1套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-81256.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "19001",
@@ -259,7 +299,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第1套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-86432.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "20001",
@@ -291,7 +332,74 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第1套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-89613.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
+    },
+    {
+      "draw_id": "20075",
+      "draw_date": "2020-08-12",
+      "front_numbers": [
+        2,
+        9,
+        10,
+        21,
+        35
+      ],
+      "back_numbers": [
+        1,
+        7
+      ],
+      "front_draw_order": [
+        21,
+        10,
+        35,
+        2,
+        9
+      ],
+      "back_draw_order": [
+        7,
+        1
+      ],
+      "equipment_set": 2,
+      "source_authority": "provincial sports lottery center official website",
+      "source_label_order": "本期出球顺序",
+      "source_label_equipment": "本期使用第2套摇奖球",
+      "source_url": "https://www.js-lottery.com/cms/post-91093.html",
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "stratified_random_1_per_year_seed_20261118"
+    },
+    {
+      "draw_id": "21010",
+      "draw_date": "2021-01-23",
+      "front_numbers": [
+        1,
+        5,
+        16,
+        22,
+        34
+      ],
+      "back_numbers": [
+        8,
+        11
+      ],
+      "front_draw_order": [
+        1,
+        34,
+        22,
+        5,
+        16
+      ],
+      "back_draw_order": [
+        8,
+        11
+      ],
+      "equipment_set": 3,
+      "source_authority": "provincial sports lottery center official website",
+      "source_label_order": "本期出球顺序",
+      "source_label_equipment": "本期使用第3套摇奖球",
+      "source_url": "https://www.js-lottery.com/cms/post-92380.html",
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "stratified_random_1_per_year_seed_20261118"
     },
     {
       "draw_id": "22001",
@@ -323,7 +431,41 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第3套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-133442.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
+    },
+    {
+      "draw_id": "22034",
+      "draw_date": "2022-03-30",
+      "front_numbers": [
+        2,
+        10,
+        24,
+        27,
+        28
+      ],
+      "back_numbers": [
+        6,
+        7
+      ],
+      "front_draw_order": [
+        2,
+        24,
+        28,
+        27,
+        10
+      ],
+      "back_draw_order": [
+        7,
+        6
+      ],
+      "equipment_set": 1,
+      "source_authority": "provincial sports lottery center official website",
+      "source_label_order": "本期出球顺序",
+      "source_label_equipment": "本期使用第1套摇奖球",
+      "source_url": "https://www.js-lottery.com/cms/post-134150.html",
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "stratified_random_1_per_year_seed_20261118"
     },
     {
       "draw_id": "23001",
@@ -355,7 +497,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第3套摇奖球",
       "source_url": "https://www.js-lottery.com/cms/post-137213.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "24001",
@@ -387,7 +530,41 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第3套摇奖球",
       "source_url": "https://api.js-lottery.com/cms/post-140462.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
+    },
+    {
+      "draw_id": "24093",
+      "draw_date": "2024-08-12",
+      "front_numbers": [
+        16,
+        24,
+        26,
+        28,
+        29
+      ],
+      "back_numbers": [
+        8,
+        12
+      ],
+      "front_draw_order": [
+        16,
+        29,
+        28,
+        26,
+        24
+      ],
+      "back_draw_order": [
+        8,
+        12
+      ],
+      "equipment_set": 3,
+      "source_authority": "provincial sports lottery center official website",
+      "source_label_order": "本期出球顺序",
+      "source_label_equipment": "本期使用第3套摇奖球",
+      "source_url": "https://api.js-lottery.com/cms/post-142296.html",
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "stratified_random_1_per_year_seed_20261118"
     },
     {
       "draw_id": "25001",
@@ -419,7 +596,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第2套摇奖球",
       "source_url": "https://api.js-lottery.com/cms/post-143433.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "25100",
@@ -451,7 +629,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第1套摇奖球",
       "source_url": "https://www.gdlottery.cn/f_html/kjgg_pdf_bak/P085_25100.pdf",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "25112",
@@ -483,7 +662,8 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第3套摇奖球",
       "source_url": "https://www.gdlottery.cn/f_html/kjgg_pdf_bak/P085_25112.pdf",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     },
     {
       "draw_id": "26083",
@@ -515,7 +695,32 @@
       "source_label_order": "本期出球顺序",
       "source_label_equipment": "本期使用第3套摇奖球",
       "source_url": "https://www.cqtcw.net/h5/aritcle/1534974555978928128/h5/content_1534974555978928128.html",
-      "source_capture_status": "url_transcribed_not_archived"
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "purposive_convenience"
     }
-  ]
+  ],
+  "source_selection": {
+    "candidate_blob_sha1": "bde880c7272f70b4e558ee01b58c63c1e65e632c",
+    "random_sample_seed": 20261118,
+    "random_generator": "xorshift32",
+    "selection": "one draw per year from rows with a seven-value order and nonzero equipment code; sorted by draw ID; exclude the original 16 purposive crosswalks; select index xorshift32(seed) modulo available row count",
+    "selected_ids": [
+      "11038",
+      "12120",
+      "13071",
+      "14128",
+      "15138",
+      "16029",
+      "17153",
+      "18070",
+      "19011",
+      "20075",
+      "21010",
+      "22034",
+      "23048",
+      "24093",
+      "25006",
+      "26025"
+    ]
+  }
 }
