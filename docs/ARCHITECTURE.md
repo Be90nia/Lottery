@@ -57,3 +57,12 @@ tests/
 configs/
 reports/
 ```
+
+
+## Durable publication and recovery
+
+Git is for code, schemas, compact manifests and documentation; GitHub Actions artifacts are ephemeral transport only. Canonical evidence, snapshots, model artifacts and ledgers require durable versioned storage with content hashes and manifests.
+
+Publish immutable objects by staging, read-back hash verification, schema validation, conditional create, durable receipt, then CAS update of the active pointer. Never expose partially written objects or mixed three-slot registry generations. A workflow is not successful until its durable commit receipt exists. Retries are idempotent and stale workers are fenced out. Reconciliation is read-only by default; repairs are explicit and audited.
+
+Backups must be independently stored and periodically restored in isolation. Backup success without a restore drill is not proof of recoverability. Preserve old objects through corrections and schema migrations; write new versions with explicit lineage. Do not enable production collection, promotion or serving before fault-injection and restore acceptance tests pass.
