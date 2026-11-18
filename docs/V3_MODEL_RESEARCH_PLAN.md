@@ -61,10 +61,14 @@ Only after Phase B's test family and implementation are frozen:
 
 ## Phase D — order/equipment research gate
 
-The legacy candidate contains 2,341 structurally valid order rows and 2,336 nonzero equipment codes, but the field semantics and row-level provenance remain unverified. The 2026 official snapshot parser retains source fields, yet the current archived rows show blank order strings and zero equipment metadata. Therefore:
-- Do not call the legacy values verified physical extraction order, machine ID, or ball-set ID.
-- Complete LOT-044: authorized raw-row reconciliation, official field semantics, equipment-code mapping, and missingness assessment.
-- Only then predeclare position-by-number and equipment-stratified tests, with correction and a later untouched confirmation period.
+The legacy candidate contains 2,341 structurally valid order rows and 2,336 nonzero equipment codes. The upstream project code directly fetched the official Sporttery history API and read `lotteryUnsortDrawresult` / `lotteryEquipmentCount`. Sixteen purposive official-page crosswalks and five matches from a reproducible stratified random audit sample now match the legacy values exactly. However, the raw API response bodies and row-level hashes were not retained; eleven rows in the random sample did not have an official DLT page URL located in the current search pass; and the remaining 2,320 order-bearing rows are not directly reconciled.
+
+The official provincial announcements label the sequence “本期出球顺序” and identify equipment codes as numbered draw-ball sets (codes 1, 2, and 3 are all cross-checked). This validates the published meaning for the crosswalked rows, not the complete legacy history or every operational detail of the physical extraction process.
+
+- Do not use the full legacy history for confirmatory position/equipment inference yet.
+- Complete LOT-044 row-level provenance and missingness assessment, or acquire an authorized immutable official order/equipment snapshot.
+- The position/ball-set analysis family is now predeclared in [POSITION_EQUIPMENT_ANALYSIS_PREREGISTRATION.md](POSITION_EQUIPMENT_ANALYSIS_PREREGISTRATION.md). It uses within-draw conditional permutations, preserves each selected set and ball-set label, and separates overall position tests from within-ball-set tests.
+- No tests are run until the eligibility gate in that preregistration is satisfied.
 
 ## Phase E — prospective holdout
 
