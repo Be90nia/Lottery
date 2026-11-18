@@ -15,7 +15,7 @@ import re
 import sys
 from typing import Any
 
-from .backtest import (
+from .validate import validate_records\nfrom .backtest import (
     DEFAULT_ALPHA,
     FRONT_SIZE,
     FRONT_PICK,
@@ -90,6 +90,7 @@ def create_forecast_event(
     half_life: float = 100.0,
 ) -> dict[str, Any]:
     records = _validate_rows(rows)
+    validate_records(records)
     if not target_draw_id.strip():
         raise ForecastLedgerError("target draw id must not be empty")
     if not re.fullmatch(r"[0-9a-f]{64}", training_sha256):
