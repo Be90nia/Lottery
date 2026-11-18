@@ -55,6 +55,18 @@ def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
         raw_order = row.get("source_unsort_drawresult")
         if raw_order is not None and not isinstance(raw_order, str):
             errors.append(f"row {index} ({draw_id}): source_unsort_drawresult must be a string or null")
+        elif isinstance(raw_order, str) and raw_order.strip():
+            try:
+                raw_order_numbers = [int(part) for part in raw_order.split()]
+            except ValueError:
+                errors.append(f"row {index} ({draw_id}): source_unsort_drawresult contains a non-integer")
+            else:
+                if len(raw_order_numbers) != 7:
+                    errors.append(f"row {index} ({draw_id}): source_unsort_drawresult must contain 7 numbers")
+                elif (front_order is None or back_order is None
+                      or raw_order_numbers[:5] != front_order
+                      or raw_order_numbers[5:] != back_order):
+                    errors.append(f"row {index} ({draw_id}): raw source order disagrees with parsed draw order")
         front_order, back_order = row.get("front_draw_order"), row.get("back_draw_order")
         if (front_order is None) != (back_order is None):
             errors.append(f"row {index} ({draw_id}): front/back draw order must both be present or both be null")
