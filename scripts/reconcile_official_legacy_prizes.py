@@ -18,7 +18,7 @@ def dec(v: Any):
     if v is None:
         return None
     text = str(v).strip().replace(",", "").replace("，", "")
-    if not text:
+    if not text or text in {"-", "--", "---", "—", "–", "N/A", "n/a"}:
         return None
     try:
         return Decimal(text)
