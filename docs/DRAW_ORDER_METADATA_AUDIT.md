@@ -16,7 +16,7 @@ The candidate contains 2,901 draws (07001–26083). Its structural counts are:
 | `back_draw_order` | 2,341 | 560 | Imported from legacy `order[5:]` |
 | legacy equipment code | 2,336 nonzero | 565 zero/unknown | Imported from `lotteryEquipmentCount` |
 
-All 2,341 non-null front/back order pairs are structurally valid permutations of the selected numbers. This only proves internal consistency, not that the upstream field's semantics or values are authentic.
+All 2,341 non-null front/back order pairs are structurally valid permutations of the selected numbers. In addition, seven exact row-level matches to official provincial announcements now validate the published order/equipment semantics for those specific records; the other 2,334 rows still lack direct official crosswalks.
 
 ### Calendar coverage of order metadata
 
@@ -57,21 +57,21 @@ It then writes these into `dlt_clean.json`. The current imported JSONL retains o
 The raw `dlt_history_raw.json` file and its per-record source evidence are not present in this repository. Consequently:
 
 1. We can trace the transformation logic, but cannot independently compare each order/equipment value with the raw source payload.
-2. The name `lotteryUnsortDrawresult` and the legacy comment “出球顺序” suggest an unsorted/draw-order field, but this audit does not treat that naming/comment as authoritative proof of the physical extraction sequence.
-3. `lotteryEquipmentCount` is a source field whose exact semantics and code-to-equipment mapping still require official documentation or raw source corroboration. Do not relabel it as a verified machine identifier or ball-set identifier.
+2. Official provincial announcements explicitly label the corresponding values “本期出球顺序”; seven exact crosswalks confirm the legacy arrays match this published sequence for those rows. The precise operational timing semantics (e.g. whether the published sequence is exactly the mechanical extraction sequence) still require a technical description.
+3. Six exact official row crosswalks confirm that equipment codes 1, 2, and 3 correspond to “第1/2/3套摇奖球” for those records. Treat this as a numbered draw-ball set, not as a machine identifier. The remaining historical rows still require row-level reconciliation.
 4. A permutation check cannot detect a consistently reordered, sorted, display-derived, or otherwise semantically misinterpreted sequence.
 
 ## Research decision
 
-**Do not yet run confirmatory “fifth ball” tests, interpret number 19 at position five, or stratify by equipment code.** The available evidence is adequate to define a targeted verification task, not to support a claim of positional bias.
+**Do not yet run confirmatory position-by-number or equipment-stratified tests across the full legacy dataset.** Seven exact crosswalks establish the published field meanings for those records, but they are not a substitute for validating the remaining 2,334 rows or defining a representative eligible period.
 
-Before inferential analysis:
+Before full-history inference:
 
-1. Obtain an authorized copy of the original raw response records or immutable official API snapshots for a sample spanning the full period, including representative records with and without order metadata.
-2. Confirm the official meanings and ordering semantics of `lotteryUnsortDrawresult` and `lotteryEquipmentCount`; establish whether the five front values are emitted sequentially and whether zone boundaries are unambiguous.
-3. Reconcile raw values to the imported candidate row-by-row, recording source URL, retrieval timestamp, response hash, parser version, and draw ID.
+1. Continue obtaining authorized official announcement/raw-response evidence across the remaining historical eras, with special attention to the 2011–2016 onset/coverage boundary.
+2. Reconcile each candidate row to a direct official record where available, recording draw ID, official URL, retrieved timestamp, raw-page/snapshot hash when bytes can be archived, parser version, and exact order/equipment values. Mark rows without direct evidence as unverified rather than silently inheriting trust from the seven samples.
+3. Confirm the precise operational timing semantics of “本期出球顺序” and the ball-set code mapping from authoritative technical documentation if available.
 4. Define the eligible period and missingness mechanism before testing. Do not impute missing order or equipment values.
-5. Predeclare the position-by-number test family and use a legal without-replacement null plus Holm correction. Reserve a later untouched period for independent confirmation.
+5. Predeclare the position-by-number test family, legal without-replacement null, Holm correction, and later untouched confirmation period.
 
 ## Reproducibility
 
