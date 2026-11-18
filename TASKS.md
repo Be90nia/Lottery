@@ -21,7 +21,7 @@
 - [x] LOT-016 Add deterministic benchmark configuration and JSON report with input hash; artifact archival/CI acceptance remains open.
 
 ## P2 — Domain accounting and publication
-- [x] LOT-017 Version prize rules by effective draw: legacy nine-tier rules through 26013 and 2026 seven-tier rules from 26014, including match patterns, fixed-prize schedules, ¥800m jackpot threshold, floating-award caps/multipliers, and separate promotion overlays. Official references, tests, and CI passed in [run 44227797058](https://github.com/Be90nia/Lottery/actions/runs/44227797058).
+- [ ] LOT-017 Version prize rules by effective draw. Corrected scope now covers 2014 six-tier rules (14052–19018), 2019 nine-tier rules (19019–26013), and 2026 seven-tier rules (26014 onward); pre-14052 rules fail closed pending evidence. Additional-bet multipliers and fixed awards are era-specific. Revised tests/docs/CI pending. Track in [issue #5](https://github.com/Be90nia/Lottery/issues/5).
 - [ ] LOT-018 Reconcile base and additional awards.
 - [ ] LOT-019 Model promotion eligibility and ticket-level thresholds.
 - [ ] LOT-020 Add prize-calculator regression fixtures.
