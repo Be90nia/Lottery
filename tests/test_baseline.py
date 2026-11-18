@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.baseline import analyze_frequency_baseline
+from lottery.baseline import analyze_frequency_baseline, holm_adjust
 
 
 def draw(front, back):
@@ -33,6 +33,12 @@ class FrequencyBaselineTests(unittest.TestCase):
         self.assertEqual(sum(x["count"] for x in report["front_frequency"]), 10)
         self.assertEqual(sum(x["count"] for x in report["back_frequency"]), 4)
         self.assertEqual(report["draw_count"], 2)
+
+    def test_holm_adjustment_controls_familywise_error(self):
+        adjusted = holm_adjust({"a": 0.001, "b": 0.01, "c": 0.5})
+        self.assertAlmostEqual(adjusted["a"], 0.003)
+        self.assertAlmostEqual(adjusted["b"], 0.02)
+        self.assertAlmostEqual(adjusted["c"], 0.5)
 
     def test_invalid_simulation_count_rejected(self):
         with self.assertRaises(ValueError):
