@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 
@@ -44,7 +44,10 @@ class PrizeRuleset:
             raise ValueError(f"unknown prize tier {tier_number} for {self.ruleset_id}")
         if tier.floating:
             return None
-        jackpot = Decimal(str(jackpot_yuan))
+        try:
+            jackpot = Decimal(str(jackpot_yuan))
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ValueError("jackpot_yuan must be a valid decimal amount") from exc
         if not jackpot.is_finite() or jackpot < 0:
             raise ValueError("jackpot_yuan must be finite and nonnegative")
         if self.jackpot_threshold_yuan is not None and jackpot >= self.jackpot_threshold_yuan:
@@ -143,8 +146,8 @@ RULES_2026 = PrizeRuleset(
 
 
 def ruleset_for_draw(draw_id: str) -> PrizeRuleset:
-    if not isinstance(draw_id, str) or not draw_id.isdigit():
-        raise ValueError("draw_id must be a numeric string")
+    if not isinstance(draw_id, str) or len(draw_id) != 5 or not draw_id.isdigit():
+        raise ValueError("draw_id must be a five-digit numeric string")
     if int(draw_id) >= int(RULES_2026.effective_from_draw_id or "26014"):
         return RULES_2026
     return LEGACY_RULES
