@@ -91,3 +91,28 @@ python scripts/forecast_ledger.py verify data/holdout/forecast-ledger.jsonl
 The ledger is not a digital signature or proof of source authenticity. See
 [the prospective holdout protocol](docs/HOLDOUT_PREREGISTRATION.md) for
 eligibility, archival, and analysis rules. The prospective test has not started.
+
+
+### Post-draw outcome capture and scoring (in progress)
+
+After a result is officially published and its raw response snapshot is
+captured, `scripts/outcome_ledger.py` can append a separately hash-chained
+outcome event linked to the pre-draw forecast event. It checks the submitted
+official-domain URL, HTTP status, timestamp ordering, result number ranges,
+and hashes the exact snapshot bytes. It never fetches results itself and never
+modifies the forecast ledger.
+
+```bash
+python scripts/outcome_ledger.py record --forecasts data/holdout/forecast-ledger.jsonl \
+  --outcomes data/holdout/outcome-ledger.jsonl --target-draw-id 27XXX \
+  --published-at 2027-01-01T20:40:00+08:00 --captured-at 2027-01-01T20:41:00+08:00 \
+  --source-url https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry \
+  --snapshot data/raw/sporttery/official-response.json --http-status 200 \
+  --front 1,2,3,4,5 --back 1,2
+python scripts/outcome_ledger.py score --forecasts data/holdout/forecast-ledger.jsonl \
+  --outcomes data/holdout/outcome-ledger.jsonl
+```
+
+This is instrumentation, not evidence of predictive skill. The prospective
+500-draw holdout has not started; do not use interim scores to select or tune
+models. Metadata checks and hashes are not digital authentication.
