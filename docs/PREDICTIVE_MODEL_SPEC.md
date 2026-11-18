@@ -321,3 +321,12 @@ Do not assign an arbitrary finite penalty score to a failed model and do not sil
 For every scored target require 0 < p <= 1 and finite log(p), calculated from the exact normalized complete-subset distribution. Zero, negative, NaN, infinite, or unnormalized probabilities are hard evaluation failures, not values to average as negative infinity. Independently verify log probability from the artifact's log partition and subset feature/weight calculation within a frozen float64 tolerance.
 
 The 1,000-replicate moving-block bootstrap (block length 50, fixed seed) operates on the chronological paired per-target score-difference sequence, never independently sampled model rows. Preserve the same paired sequence in every replicate and state the interval method explicitly before scoring. No promotion on a favorable complete-case subset is permitted if full-denominator coverage fails.
+
+
+### Frozen moving-block bootstrap implementation
+
+For every preregistered candidate-vs-uniform comparison, define the paired per-target difference as candidate NLL minus uniform NLL; negative values favor the candidate. Front and back zones are separate co-primary comparisons.
+
+Use a non-circular moving-block bootstrap on the chronological paired difference vector of length n: valid contiguous block starts are 0 through n−50; sample starts uniformly with replacement until at least n observations are collected; concatenate the sampled length-50 blocks in sampled order and truncate to n; compute the replicate mean paired difference. Repeat exactly 1,000 times with the frozen bootstrap seed. Use the percentile 95% interval (2.5th and 97.5th percentiles under one documented deterministic quantile convention). The candidate must have the entire interval below zero in both zones. Do not use circular wraparound blocks, iid row resampling, or independent resampling of candidate and comparator.
+
+If multiple non-baseline candidate/model families are compared with the same baseline, apply Holm correction across the complete preregistered candidate × zone hypothesis family at family-wise alpha=0.05. Report raw and Holm-adjusted p-values. Multiplicity correction does not replace the both-zone interval and coverage gates. Freeze the exact comparison family before inspecting scores.
