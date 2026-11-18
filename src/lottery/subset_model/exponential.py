@@ -1,12 +1,13 @@
 """Exact complete-subset exponential-family probabilities and fitting."""
 from __future__ import annotations
 
+from bisect import bisect_left
 from dataclasses import dataclass
 from math import exp, isfinite, log
 from typing import Sequence
 
 from .features import extract_features
-from .support import validate_subset
+from .support import enumerate_support, validate_subset
 from .uniform import UniformFeatureTable
 
 
@@ -62,6 +63,7 @@ class ExponentialFamily:
             raise ValueError("feature schema has no non-degenerate features")
         if table.multiplicity_sum != table.stats.support_count:
             raise ValueError("feature table does not cover the complete support")
+        self._sampling_cache = {}
 
     def _theta(self, theta: Sequence[float]) -> tuple[float, ...]:
         values = _finite_vector(theta, "theta")
@@ -112,6 +114,42 @@ class ExponentialFamily:
         terms = self._cell_terms(values)
         normalizer = logsumexp(terms)
         return sum(exp(term - normalizer) for term in terms)
+
+    def sample(self, theta: Sequence[float], rng) -> tuple[int, ...]:
+        """Draw one exact full-support categorical subset using an injected RNG."""
+        values = self._theta(theta)
+        if not callable(getattr(rng, "random", None)):
+            raise TypeError("rng must expose a random() method")
+        cached = self._sampling_cache.get(values)
+        if cached is None:
+            support = tuple(enumerate_support(self.m, self.k))
+            log_scores = []
+            include_gap = "gap_variance" in self.table.stats.candidate_feature_names
+            for subset in support:
+                raw = extract_features(subset, self.m, self.k, include_gap_variance=include_gap)
+                log_scores.append(_dot(values, self.table.stats.standardize(raw)))
+            maximum = max(log_scores)
+            cumulative = []
+            running = 0.0
+            for score in log_scores:
+                running += exp(score - maximum)
+                cumulative.append(running)
+            if not isfinite(running) or running <= 0.0:
+                raise ArithmeticError("categorical sampler has invalid total weight")
+            cached = (support, tuple(cumulative), running)
+            self._sampling_cache[values] = cached
+        support, cumulative, total = cached
+        draw = rng.random()
+        if not isinstance(draw, (int, float)) or not isfinite(float(draw)) or not 0.0 <= draw < 1.0:
+            raise ValueError("rng.random() must return a finite value in [0, 1)")
+        index = bisect_left(cumulative, float(draw) * total)
+        return support[min(index, len(support) - 1)]
+
+    def sample_many(self, count: int, theta: Sequence[float], rng) -> tuple[tuple[int, ...], ...]:
+        """Draw count independent tickets with replacement; preserve duplicates."""
+        if type(count) is not int or count < 1:
+            raise ValueError("count must be a positive integer")
+        return tuple(self.sample(theta, rng) for _ in range(count))
 
     def objective_and_gradient(
         self,
