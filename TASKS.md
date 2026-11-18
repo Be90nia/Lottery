@@ -11,8 +11,8 @@
 - [ ] LOT-008 Complete live-source verification and ingestion-run provenance acceptance test.
 
 ## P1 — Research quality
-- [ ] LOT-009 Implement legal-draw random simulation.
-- [ ] LOT-010 Add descriptive frequency and gap analysis.
+- [x] LOT-009 Implement legal-draw random simulation.
+- [x] LOT-010 Add initial descriptive frequency diagnostics; gap analysis remains open.
 - [ ] LOT-011 Add pair/co-occurrence statistics.
 - [ ] LOT-012 Add multiple-testing correction.
 - [ ] LOT-013 Add equipment/ball-set/event metadata with citations.
