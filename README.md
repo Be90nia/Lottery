@@ -37,6 +37,7 @@
 - [架构设计](docs/ARCHITECTURE.md)
 - [数据规范](docs/DATA_SPEC.md)
 - [研究方法](docs/RESEARCH_METHODS.md)
+- [奖金规则时期](docs/PRIZE_RULE_ERAS.md)
 - [任务清单](TASKS.md)
 - [测试计划](TEST_PLAN.md)
 
