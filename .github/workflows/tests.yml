@@ -56,6 +56,11 @@ jobs:
           python scripts/backtest_models.py data/candidates/legacy_draws.jsonl \
             --min-train 300 --alpha 100 --half-life 100 \
             --output rolling-origin-benchmark.json
+      - name: Run exploratory benchmark on official selected-number snapshot
+        run: |
+          python scripts/backtest_models.py data/processed/draws-20261118.jsonl \
+            --min-train 300 --alpha 100 --half-life 100 \
+            --output official-snapshot-rolling-origin-benchmark.json
       - name: Upload research reports
         uses: actions/upload-artifact@v4
         with:
@@ -66,6 +71,7 @@ jobs:
             pair-cooccurrence.json
             chronological-split/
             rolling-origin-benchmark.json
+            official-snapshot-rolling-origin-benchmark.json
             prize-reconciliation.json
             official-legacy-prize-reconciliation.json
             official-legacy-promotion-audit.json
