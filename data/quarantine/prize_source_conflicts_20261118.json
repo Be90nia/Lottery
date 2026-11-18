@@ -3,13 +3,18 @@
   "snapshot_date": "2026-11-18",
   "status": "minimum_known_conflicts_not_exhaustive",
   "affected_draw_ids": [
+    "07006",
+    "07007",
     "07008",
+    "07009",
+    "07010",
+    "07011",
     "17045",
     "17052",
     "17062",
     "17063"
   ],
-  "reason": "Minimum known conflicts between archived Sporttery API prize rows and contemporaneous provincial result announcements; see docs/OFFICIAL_API_PROVINCIAL_PRIZE_CONFLICTS_2026-11-18.md",
+  "reason": "Minimum known conflicts between archived Sporttery API prize rows and contemporaneous provincial result announcements; see docs/OFFICIAL_API_PROVINCIAL_PRIZE_CONFLICTS_2026-11-18.md and docs/EARLY_2007_ADDITIONAL_PRIZE_AUDIT_2026-11-18.md",
   "handling": {
     "payout_calculation": "exclude_until_adjudicated",
     "prize_model_targets": "exclude_until_adjudicated",
@@ -17,8 +22,9 @@
     "raw_source_retention": "preserve_all_sources_without_overwrite"
   },
   "limitations": [
-    "Issue 07008 includes API additional-tier rows that duplicate basic-tier counts and are not present in the official main-game additional-bet table.",
+    "Issues 07006-07011: the API's fourth- and fifth-prize additional rows duplicate the corresponding basic-tier unit amounts and winner counts, but are absent from the contemporaneous Jiangsu main-game additional-bet tables; issue 07008 also has a third-prize additional amount conflict.",
     "This is a minimum known-conflict list, not an exhaustive scan of the historical archive.",
+    "Issues 07001-07005 show the same API row shape but remain leads pending contemporaneous independent announcement verification; they are not added to the confirmed quarantine set by shape alone.",
     "Draw-number/date records are not quarantined by this prize-specific list.",
     "A source conflict does not by itself establish which source is correct."
   ]
