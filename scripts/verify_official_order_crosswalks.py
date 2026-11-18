@@ -23,6 +23,53 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+
+def _xorshift32(state: int) -> tuple[int, int]:
+    state ^= (state << 13) & 0xFFFFFFFF
+    state ^= state >> 17
+    state ^= (state << 5) & 0xFFFFFFFF
+    return state & 0xFFFFFFFF, state & 0xFFFFFFFF
+
+
+def selected_random_sample_ids(candidate_rows: list[dict[str, Any]],
+                               registry: dict[str, Any]) -> list[str] | None:
+    selection = registry.get("source_selection")
+    if not isinstance(selection, dict):
+        return None
+    seed = selection.get("random_sample_seed")
+    expected_ids = selection.get("selected_ids")
+    if not isinstance(seed, int) or not isinstance(expected_ids, list):
+        raise ValueError("source_selection must define integer seed and selected_ids")
+
+    purposive_ids = {
+        str(record.get("draw_id"))
+        for record in registry.get("records", [])
+        if record.get("sample_group") == "purposive_convenience"
+    }
+    by_year: dict[str, list[dict[str, Any]]] = {}
+    for row in candidate_rows:
+        draw_id = str(row.get("draw_id", ""))
+        draw_date = str(row.get("draw_date", ""))
+        front_order = row.get("front_draw_order")
+        back_order = row.get("back_draw_order")
+        if (not draw_id or len(draw_date) < 4
+                or not isinstance(front_order, list) or len(front_order) != 5
+                or not isinstance(back_order, list) or len(back_order) != 2
+                or not row.get("equipment_code_legacy")):
+            continue
+        if draw_id in purposive_ids:
+            continue
+        by_year.setdefault(draw_date[:4], []).append(row)
+
+    state = seed & 0xFFFFFFFF
+    selected: list[str] = []
+    for year in sorted(by_year):
+        options = sorted(by_year[year], key=lambda row: str(row["draw_id"]))
+        state, value = _xorshift32(state)
+        selected.append(str(options[value % len(options)]["draw_id"]))
+    return selected
+
+
 def verify(candidate_rows: list[dict[str, Any]],
            registry: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
@@ -112,8 +159,23 @@ def verify(candidate_rows: list[dict[str, Any]],
 
         compared += 1
 
+    random_selection_verified = None
+    if registry.get("source_selection"):
+        try:
+            selected_ids = selected_random_sample_ids(candidate_rows, registry)
+            expected_ids = [str(value) for value in registry["source_selection"]["selected_ids"]]
+            random_selection_verified = selected_ids == expected_ids
+            if not random_selection_verified:
+                errors.append(
+                    "stratified random sample selection mismatch; "
+                    f"recomputed={selected_ids!r}, registry={expected_ids!r}"
+                )
+        except (KeyError, TypeError, ValueError) as exc:
+            errors.append(f"invalid source_selection metadata: {exc}")
+
     return {
         "registry_schema": registry.get("schema"),
+        "random_sample_selection_verified": random_selection_verified,
         "candidate_draw_count": len(candidate_rows),
         "crosswalk_records": len(records),
         "compared_records": compared,
