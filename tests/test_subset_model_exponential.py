@@ -72,6 +72,36 @@ class ExponentialFamilyTests(unittest.TestCase):
         self.assertTrue(math.isfinite(result.unregularized_mean_nll))
         self.assertTrue(math.isfinite(result.penalized_objective))
 
+
+    def test_full_front_and_back_supports_normalize(self):
+        from lottery.subset_model import (
+            FRONT_POPULATION, FRONT_SELECTION, BACK_POPULATION, BACK_SELECTION,
+            build_uniform_feature_table,
+        )
+        for m, k, include_gap in (
+            (FRONT_POPULATION, FRONT_SELECTION, True),
+            (BACK_POPULATION, BACK_SELECTION, False),
+        ):
+            table = build_uniform_feature_table(m, k, include_gap_variance=include_gap)
+            model = ExponentialFamily(table)
+            theta = tuple(0.01 * (index + 1) for index in range(model.dimension))
+            self.assertAlmostEqual(model.probability_sum(theta), 1.0, delta=1e-12)
+            self.assertAlmostEqual(
+                model.log_probability(tuple(range(1, k + 1)), (0.0,) * model.dimension),
+                -math.log(math.comb(m, k)),
+                delta=1e-12,
+            )
+
+    def test_solver_failure_is_not_marked_converged(self):
+        result = self.model.fit(
+            [(1, 2, 3), (1, 2, 4), (2, 4, 6)],
+            max_iterations=1,
+            gradient_tolerance=1e-30,
+        )
+        self.assertFalse(result.converged)
+        self.assertIn(result.terminal_status, ("max_iterations", "line_search_failed"))
+        self.assertEqual(result.solver, "deterministic_unbounded_lbfgs_armijo_v1")
+
     def test_repeating_full_training_multiset_preserves_objective(self):
         observations = [(1, 2, 3), (1, 2, 4), (2, 4, 6), (3, 6, 8)]
         once = self.model.fit(observations)
