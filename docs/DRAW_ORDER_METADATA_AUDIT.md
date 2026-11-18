@@ -78,6 +78,18 @@ Before full-history inference:
 The structural counts above were recomputed from the committed candidate JSONL blob. The source transformation was inspected at the upstream `scripts/clean_dlt.py` revision available on 2026-11-18. Neither source inspection establishes official authenticity of the legacy raw data.
 
 
+### Machine-readable crosswalk registry
+
+The thirteen manually transcribed official-page crosswalks are recorded in `data/metadata_verification/official_order_crosswalks_20261118.json`. Run:
+
+```bash
+python scripts/verify_official_order_crosswalks.py \
+  --candidate data/candidates/legacy_draws.jsonl \
+  --crosswalks data/metadata_verification/official_order_crosswalks_20261118.json
+```
+
+The verifier compares draw ID, date, sorted numbers, front/back order, and equipment-set code. CI runs the same check. This makes the transcription and legacy-row match reproducible, but it does not cryptographically authenticate the linked web pages: raw HTML/HTTP bytes are not archived in the registry, and the sample remains purposive rather than representative.
+
 ## Ingestion hardening follow-up (2026-11-18)
 
 The live-source parser now retains the upstream `lotteryUnsortDrawresult` value and `lotteryEquipmentCount` value in separately named source fields in the parsed JSONL output. These fields are preserved as source metadata and are not normalized into verified equipment/ball-set identities. The exact response bytes and SHA-256 snapshots remain the authoritative evidence.
