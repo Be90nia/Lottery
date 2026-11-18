@@ -55,8 +55,8 @@ All model splits use draw_date/draw_id chronology. A feature is eligible only if
 
 ## Versioned prize rules
 
-The rules registry currently covers draws 14052 onward: six-tier 2014 rules
-(14052–19018), nine-tier 2019 rules (19019–26013), and seven-tier 2026 rules
-(from 26014). Earlier draws deliberately have no automatic ruleset assignment
-until the 2007–2014 changes and effective boundaries are verified. See
-[PRIZE_RULES.md](PRIZE_RULES.md).
+The rules registry currently covers draws 09121 onward: eight-tier 2009/2013
+rules (09121–14051), six-tier 2014 rules (14052–19018), nine-tier 2019 rules
+(19019–26013), and seven-tier 2026 rules (from 26014). Earlier draws deliberately
+have no automatic ruleset assignment until the pre-2009 historical rules and
+effective boundaries are verified. See [PRIZE_RULES.md](PRIZE_RULES.md).
