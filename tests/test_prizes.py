@@ -82,7 +82,7 @@ class PrizeAuditTests(unittest.TestCase):
         report = reconcile_additional_awards(rows)
         self.assertEqual(report["additional_pairs_checked"], 3)
         self.assertEqual(report["additional_pair_mismatches"], 0)
-        self.assertEqual(report["unexpected_additional_rows"], 1)
+        self.assertEqual(report["unexpected_additional_row_count"], 1)
         self.assertEqual(report["unexpected_additional_rows"][0]["tier"], 4)
 
     def test_2009_and_2014_fixed_additional_multipliers(self):
@@ -97,7 +97,7 @@ class PrizeAuditTests(unittest.TestCase):
         report = reconcile_additional_awards(rows)
         self.assertEqual(report["additional_pairs_checked"], 3)
         self.assertEqual(report["additional_pair_mismatches"], 0)
-        self.assertEqual(report["unexpected_additional_rows"], 0)
+        self.assertEqual(report["unexpected_additional_row_count"], 0)
 
     def test_later_fixed_tier_additional_is_flagged(self):
         rows = [
