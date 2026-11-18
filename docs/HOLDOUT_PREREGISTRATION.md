@@ -162,3 +162,42 @@ have concurrent processes append to the same ledger.
 This tool records forecasts only. It does not fetch outcomes, inspect scores,
 or declare the prospective holdout started. LOT-042 remains open until the
 frozen protocol's 500 eligible future draws are collected and analyzed once.
+
+
+## 10. Post-draw outcome ledger and scoring (LOT-047; implementation in progress)
+
+The repository adds `scripts/outcome_ledger.py` and `lottery.outcomes` as a
+separate post-draw path. An outcome event references both the target draw ID
+and the exact pre-draw forecast event hash. It records publication and capture
+timestamps, official Sporttery HTTPS URL, HTTP status, and the SHA-256 computed
+from the exact raw snapshot file supplied to the CLI. The scorer joins the two
+verified ledgers and emits per-draw Brier, Bernoulli Log Loss, and Top-K
+contributions for the fixed uniform, expanding, and EWMA marginal forecasts.
+
+Example, only after an actual official result has been published and the raw
+response has been captured:
+
+```bash
+python scripts/outcome_ledger.py record \
+  --forecasts data/holdout/forecast-ledger.jsonl \
+  --outcomes data/holdout/outcome-ledger.jsonl \
+  --target-draw-id 27XXX \
+  --published-at 2027-01-01T20:40:00+08:00 \
+  --captured-at 2027-01-01T20:41:00+08:00 \
+  --source-url https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry \
+  --snapshot data/raw/sporttery/official-response.json \
+  --http-status 200 --front 1,2,3,4,5 --back 1,2
+python scripts/outcome_ledger.py verify data/holdout/outcome-ledger.jsonl
+python scripts/outcome_ledger.py score \
+  --forecasts data/holdout/forecast-ledger.jsonl \
+  --outcomes data/holdout/outcome-ledger.jsonl
+```
+
+The CLI does not fetch results and must not be populated with fabricated or
+retrospective rows. The domain, timestamp, and HTTP checks validate submitted
+metadata, not source authenticity; the SHA-256 identifies bytes but does not
+prove who supplied them. Retain the exact snapshot and independently archive
+the ledger head. Use a single writer for each ledger. Per-draw scores are
+instrumentation only: do not inspect aggregate rankings or claim holdout
+success before all 500 preregistered eligible draws have accrued and the
+single final analysis is run. LOT-042 remains unstarted.
