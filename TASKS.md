@@ -22,7 +22,7 @@
 
 ## P2 — Domain accounting and publication
 - [x] LOT-017 Version prize rules by effective draw across six eras: 2007 launch eight-tier (07001–09120, reconstructed with explicit source-quality caveat), 2009 eight-tier, 2013 funding revision, 2014 six-tier, 2019 nine-tier, and 2026 seven-tier. Added per-era hit patterns, fixed prizes, add-on multipliers, Decimal-safe threshold handling, floating-award metadata, docs, and tests. Linux CI [44228536870](https://github.com/Be90nia/Lottery/actions/runs/44228536870) passed (96 tests); Windows ledger CI also passed.
-- [ ] LOT-018 Reconcile base/additional awards and promotion overlays. Implemented 25-label classification, per-draw/tier base-additional joins, ruleset multiplier checks with floor rounding, separate promotion totals, full discrepancy output, source file hashes, and CI artifact. Known 07001 candidate rows show unauthorized fixed-tier add-ons; original records remain unchanged. CI pending. Track in [issue #6](https://github.com/Be90nia/Lottery/issues/6).
+- [ ] LOT-018 Reconcile base/additional awards and promotion overlays. Label classification, effective-ruleset multiplier screening, promotion-total isolation, coverage summaries, complete discrepancy output, source hashes, and tests are implemented. CI green; official raw prize snapshots, 07001 source resolution, and campaign eligibility reconciliation remain open. See [PRIZE_AUDIT.md](docs/PRIZE_AUDIT.md) and [issue #6](https://github.com/Be90nia/Lottery/issues/6).
 - [ ] LOT-019 Model promotion eligibility and ticket-level thresholds.
 - [ ] LOT-020 Add prize-calculator regression fixtures.
 - [ ] LOT-021 Publish data dictionary and methodology reports.
