@@ -74,14 +74,12 @@ class UniformTableTests(unittest.TestCase):
         for index in range(len(table.stats.feature_names)):
             mean = sum(Fraction(row[index]) for row in raw) / len(raw)
             variance = sum((Fraction(row[index]) - mean) ** 2 for row in raw) / len(raw)
-            self.assertEqual(table.stats.mean_fractions[index], f"{mean.numerator}/{mean.denominator}")
-            self.assertEqual(table.stats.variance_fractions[index], f"{variance.numerator}/{variance.denominator}")
+            self.assertEqual(table.stats.all_mean_fractions[index], f"{mean.numerator}/{mean.denominator}")
+            self.assertEqual(table.stats.all_variance_fractions[index], f"{variance.numerator}/{variance.denominator}")
 
     def test_standardized_non_degenerate_features_have_zero_mean_unit_variance(self):
         table = build_uniform_feature_table(8, 3, include_gap_variance=True)
         for index, name in enumerate(table.stats.feature_names):
-            if name in table.stats.zero_variance_features:
-                continue
             weighted_mean = sum(
                 cell.standardized_features[index] * cell.multiplicity for cell in table.cells
             ) / table.stats.support_count
@@ -101,7 +99,8 @@ class UniformTableTests(unittest.TestCase):
     def test_back_zero_variance_feature_is_explicitly_omitted(self):
         table = build_uniform_feature_table(12, 2, include_gap_variance=True)
         self.assertIn("gap_variance", table.stats.zero_variance_features)
-        self.assertEqual(len(table.stats.standard_deviations), 5)
+        self.assertEqual(len(table.stats.standard_deviations), 4)
+        self.assertEqual(table.stats.feature_names, ("sum", "odd_count", "range", "adjacent_count"))
 
 
 if __name__ == "__main__":
