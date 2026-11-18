@@ -80,3 +80,8 @@ Artifact digests are signed by protected identities and verified against expecte
 The system exposes derived readiness states: `NOT_READY`, `READY_FOR_OFFLINE_VALIDATION`, `READY_FOR_SHADOW`, and `READY_FOR_PRODUCTION`. State is computed from immutable receipts bound to one release-manifest digest. Unknown or missing evidence is not a pass; issue closure is not readiness.
 
 The release manifest links source/workflow/dependencies, SBOM and provenance, canonical data/evidence, model and evaluation artifacts, Champion generation, sampler/RNG version, durable commit receipts, backup/restore drill, policy and approvals. Integration gates cover data, numerical correctness, experiment validity, regime evidence, lifecycle/serving, feedback, storage/recovery and security. Fault injection must demonstrate fail-closed behavior and no partial user-visible batches. Production requires protected approval for the exact manifest and successful restore/rollback drills.
+
+
+## Legacy pipeline isolation
+
+Existing `baseline.py`, `backtest.py` and `forecast.py` implement an older marginal-frequency research/holdout path. They are not the new complete-subset probability engine. Preserve the LOT-042 forecast path and data unchanged; do not silently reuse marginal inclusion vectors as exact ticket probabilities. Build LOT-054 in an isolated `src/lottery/subset_model/` package, beginning with strict support enumeration, symmetric features, exact uniform moments and multiplicity aggregation, then add probability fitting and sampling in later independently tested slices.
