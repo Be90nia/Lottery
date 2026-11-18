@@ -14,6 +14,7 @@ class ParsePageTests(unittest.TestCase):
             "lotteryDrawNum": "26131",
             "lotteryDrawTime": "2026-11-16",
             "lotteryDrawResult": result,
+            "lotteryEquipmentCount": 2,
         }
         if order is not None:
             row["lotteryUnsortDrawresult"] = order
@@ -25,11 +26,21 @@ class ParsePageTests(unittest.TestCase):
         self.assertEqual(rows[0].draw_id, "26131")
         self.assertEqual(rows[0].front_numbers, [1, 2, 3, 4, 5])
         self.assertEqual(rows[0].back_numbers, [1, 2])
+        self.assertEqual(rows[0].source_equipment_count, 2)
+        self.assertIsNone(rows[0].source_unsort_drawresult)
 
     def test_draw_order_is_preserved_by_zone(self):
         rows = _parse_page(self.payload(order="03 01 05 02 04 02 01"), 1, "x")
         self.assertEqual(rows[0].front_draw_order, [3, 1, 5, 2, 4])
         self.assertEqual(rows[0].back_draw_order, [2, 1])
+        self.assertEqual(rows[0].source_unsort_drawresult, "03 01 05 02 04 02 01")
+        self.assertEqual(rows[0].source_equipment_count, 2)
+
+    def test_non_string_draw_order_rejected(self):
+        row = json.loads(self.payload().decode())
+        row["value"]["list"][0]["lotteryUnsortDrawresult"] = [1, 2, 3, 4, 5, 1, 2]
+        with self.assertRaises(IngestionError):
+            _parse_page(json.dumps(row).encode(), 1, "x")
 
     def test_invalid_draw_order_rejected(self):
         with self.assertRaises(IngestionError):
