@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from collections import Counter
+
+from .rules import UnsupportedRulesetError, ruleset_for_draw
 from typing import Any, Iterable
 
 
@@ -26,6 +29,9 @@ def _decimal_or_none(value: Any, field: str, row_no: int) -> Decimal | None:
 def audit_prize_rows(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     seen: set[tuple[str, str]] = set()
     labels: set[str] = set()
+    label_counts: Counter[str] = Counter()
+    ruleset_counts: Counter[str] = Counter()
+    unsupported_ruleset_rows = 0
     draws: set[str] = set()
     count = 0
     missing_amount = 0
@@ -50,6 +56,11 @@ def audit_prize_rows(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
         seen.add(key)
         draws.add(draw_id)
         labels.add(label)
+        label_counts[label] += 1
+        try:
+            ruleset_counts[ruleset_for_draw(draw_id).ruleset_id] += 1
+        except UnsupportedRulesetError:
+            unsupported_ruleset_rows += 1
         winners = row["winner_count"]
         if type(winners) is not int or winners < 0:
             raise PrizeDataError(f"row {count}: winner_count must be a nonnegative integer")
@@ -69,6 +80,9 @@ def audit_prize_rows(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "prize_rows": count,
         "draw_ids": len(draws),
         "tier_label_kinds": len(labels),
+        "tier_label_counts": dict(sorted(label_counts.items())),
+        "ruleset_row_counts": dict(sorted(ruleset_counts.items())),
+        "unsupported_ruleset_rows": unsupported_ruleset_rows,
         "missing_amount_rows": missing_amount,
         "missing_total_rows": missing_total,
         "amount_times_count_mismatch_rows": amount_total_mismatches,
