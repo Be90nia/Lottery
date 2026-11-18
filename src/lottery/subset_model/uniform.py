@@ -23,23 +23,32 @@ class FeatureStats:
     population_size: int
     selection_size: int
     feature_schema_version: str
+    candidate_feature_names: tuple[str, ...]
     feature_names: tuple[str, ...]
     support_count: int
-    mean_fractions: tuple[str, ...]
-    variance_fractions: tuple[str, ...]
+    all_mean_fractions: tuple[str, ...]
+    all_variance_fractions: tuple[str, ...]
     means: tuple[float, ...]
     standard_deviations: tuple[float, ...]
     zero_variance_features: tuple[str, ...]
 
     def standardize(self, raw: RawFeatureKey) -> tuple[float, ...]:
-        if len(raw) != len(self.feature_names):
+        if len(raw) != len(self.candidate_feature_names):
             raise ValueError("raw feature vector has the wrong dimension")
         result: list[float] = []
-        for value, mean, scale in zip(raw, self.means, self.standard_deviations):
+        for value, mean, scale in zip(raw, self._all_means, self._all_standard_deviations):
             if scale == 0.0:
                 continue
             result.append((float(value) - mean) / scale)
         return tuple(result)
+
+    @property
+    def _all_means(self) -> tuple[float, ...]:
+        return tuple(float(Fraction(value)) for value in self.all_mean_fractions)
+
+    @property
+    def _all_standard_deviations(self) -> tuple[float, ...]:
+        return tuple(sqrt(float(Fraction(value))) for value in self.all_variance_fractions)
 
 
 @dataclass(frozen=True)
@@ -101,12 +110,13 @@ def build_uniform_feature_table(
         population_size=m,
         selection_size=k,
         feature_schema_version=feature_schema_version,
-        feature_names=names,
+        candidate_feature_names=names,
+        feature_names=tuple(name for name, scale in zip(names, stds) if scale > 0.0),
         support_count=expected,
-        mean_fractions=tuple(_fraction_text(value) for value in means_exact),
-        variance_fractions=tuple(_fraction_text(value) for value in variances_exact),
-        means=tuple(float(value) for value in means_exact),
-        standard_deviations=stds,
+        all_mean_fractions=tuple(_fraction_text(value) for value in means_exact),
+        all_variance_fractions=tuple(_fraction_text(value) for value in variances_exact),
+        means=tuple(float(value) for value, scale in zip(means_exact, stds) if scale > 0.0),
+        standard_deviations=tuple(scale for scale in stds if scale > 0.0),
         zero_variance_features=zero,
     )
 
