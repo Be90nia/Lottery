@@ -61,3 +61,20 @@ for trying multiple models, feature families, cut points, or hyperparameters.
 A candidate should not be considered predictive unless improvements are
 material, stable across predeclared periods, and replicated on a later,
 untouched holdout.
+
+## Calendar-era score stability
+
+The rolling-origin report now partitions evaluation targets into fixed descriptive
+five-calendar-year bins (2007-2011, 2012-2016, 2017-2021, and 2022-2026).
+Each target is still scored using only draws strictly earlier than that target;
+training history is not reset at era boundaries. For every era with evaluation
+targets, paired candidate-minus-uniform Brier and log-loss differences are
+summarized with a 1,000-replicate moving-block bootstrap (maximum block length
+50 draws).
+
+These bins were introduced after inspection of earlier full-period results.
+They are therefore exploratory, not preregistered confirmatory periods.
+Per-era intervals are not multiplicity-adjusted and must not be used to select
+a winning era or model. A genuinely confirmatory stability claim requires a
+future protocol fixed before observing the corresponding evaluation outcomes
+and replication on a later untouched holdout.
