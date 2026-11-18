@@ -42,15 +42,15 @@ Predeclared statistics:
 
 ### Randomization and multiplicity
 
-The implemented null is exact enumeration of all non-zero circular shifts of the complete draw-row sequence. This preserves each draw's legal fixed-size set, the per-number inclusion totals, and front/back separation. It conditions on observed marginal frequencies and asks whether any particular temporal phase is unusually aligned.
+The null is a Monte Carlo uniform permutation of complete draw rows without replacement. Each permutation preserves every draw's legal fixed-size front/back sets and all per-number inclusion totals, while breaking chronological order between draws. This directly tests temporal dependence conditional on the observed draw rows; it does not model or imply a physical draw mechanism.
 
-The circular-shift null assumes that, under no temporal dependence, no cyclic time origin is privileged. It includes wraparound at the series boundary; this assumption and limitation are recorded in the output. It is a conditional phase-randomization diagnostic, not a physical model of the draw mechanism.
+Two independent, seeded permutation samples are used: one estimates the null mean/standard deviation for every ordered transition and aggregate set-overlap statistic; the second estimates the maximum-statistic tail probability. The default is 1,999 permutations for each sample, with the seed and Monte Carlo uncertainty recorded in the output. The p-value uses the plus-one correction.
 
-To avoid impossible p-value resolution from applying thousands of individual tests to only 2,948 available shifts, the confirmatory family is **eight omnibus tests**: four lags × two zones. Each omnibus statistic is the maximum absolute standardized deviation across all ordered number transitions (including the same-number diagonal) and aggregate set overlap for that zone and lag. Its exact randomization p-value is computed against the maximum-statistic distribution over all non-zero shifts. Holm correction is then applied across all eight omnibus tests. Per-number and per-pair results are effect-size diagnostics only; they do not carry individual significance claims.
+To control multiplicity without treating thousands of pair-level p-values as separately confirmatory, the family is **eight omnibus tests**: four lags × two zones. Each omnibus statistic is the maximum absolute standardized deviation across all ordered number transitions (including the same-number diagonal) and aggregate set overlap for that zone and lag. The maximum is evaluated against the independently generated row-permutation null. Holm correction is applied across all eight omnibus tests. Per-number and per-pair results are effect-size diagnostics only; they do not carry individual significance claims.
 
-The report includes raw transition counts, conditional expected counts, effect sizes, recurrence totals, set overlaps, exact shift counts, omnibus statistics, raw p-values, and Holm-adjusted p-values. There is no Monte Carlo sampling and therefore no simulation seed or Monte Carlo error interval.
+The report includes raw transition counts, permutation expectations and standard deviations, effect sizes, recurrence totals, set overlaps, permutation counts/seeds, Monte Carlo uncertainty, omnibus statistics, raw p-values, and Holm-adjusted p-values.
 
-A statistically unusual transition is a diagnostic, not evidence of manipulation and not automatically a useful forecast feature. Because the circular boundary assumption is imperfect for a finite chronological series, any apparent signal must be independently checked before Phase C.
+A statistically unusual transition is a diagnostic, not evidence of manipulation and not automatically a useful forecast feature. Any apparent signal must be independently checked before Phase C.
 
 ## Phase C — lag-feature predictive experiment
 
