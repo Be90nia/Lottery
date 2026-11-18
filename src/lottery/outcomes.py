@@ -56,6 +56,35 @@ def _read_events(path: Path) -> list[dict[str, Any]]:
     return events
 
 
+def _validate_outcome_payload(event: dict[str, Any]) -> None:
+    target = event.get("target_draw_id")
+    if not isinstance(target, str) or not target:
+        raise OutcomeLedgerError("outcome target_draw_id must be a non-empty string")
+    forecast_hash = event.get("forecast_event_hash")
+    if (not isinstance(forecast_hash, str) or len(forecast_hash) != 64
+            or any(c not in "0123456789abcdef" for c in forecast_hash)):
+        raise OutcomeLedgerError("forecast_event_hash must be a SHA-256 hex digest")
+    publication = _aware(event.get("published_at", ""), "published_at")
+    capture = _aware(event.get("captured_at", ""), "captured_at")
+    recorded = _aware(event.get("recorded_at", ""), "recorded_at")
+    if capture < publication:
+        raise OutcomeLedgerError("capture timestamp precedes publication timestamp")
+    if recorded < capture:
+        raise OutcomeLedgerError("recorded_at precedes capture timestamp")
+    parsed = urlparse(event.get("source_url", ""))
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not (host == "sporttery.cn" or host.endswith(".sporttery.cn")):
+        raise OutcomeLedgerError("source URL must use HTTPS on an official sporttery.cn host")
+    if event.get("source_http_status") != 200:
+        raise OutcomeLedgerError("source HTTP status must be 200")
+    digest = event.get("source_snapshot_sha256")
+    if (not isinstance(digest, str) or len(digest) != 64
+            or any(c not in "0123456789abcdef" for c in digest)):
+        raise OutcomeLedgerError("source snapshot SHA-256 must be 64 lowercase hex characters")
+    _validate_numbers(event.get("front_numbers"), FRONT_SIZE, FRONT_PICK, "front_numbers")
+    _validate_numbers(event.get("back_numbers"), BACK_SIZE, BACK_PICK, "back_numbers")
+
+
 def _verify_chain(path: Path, event_type: str) -> dict[str, Any]:
     previous = GENESIS_HASH
     targets: set[str] = set()
@@ -65,6 +94,8 @@ def _verify_chain(path: Path, event_type: str) -> dict[str, Any]:
         supplied = event.get("event_hash")
         if body.get("event_type") != event_type:
             raise OutcomeLedgerError(f"line {line_no}: unexpected event type")
+        if event_type == "post_draw_outcome":
+            _validate_outcome_payload(body)
         if body.get("sequence") != count + 1:
             raise OutcomeLedgerError(f"line {line_no}: sequence is not contiguous")
         if body.get("previous_event_hash") != previous:
@@ -192,6 +223,10 @@ def score_ledgers(forecast_path: Path, outcome_path: Path) -> dict[str, Any]:
         forecast = forecasts.get(target)
         if forecast is None or forecast.get("event_hash") != outcome.get("forecast_event_hash"):
             raise OutcomeLedgerError(f"outcome {target} does not link to its forecast event")
+        if _aware(outcome["published_at"], "published_at") < _aware(
+            forecast["target_draw_at"], "forecast target_draw_at"
+        ):
+            raise OutcomeLedgerError(f"outcome {target} was published before its target draw time")
         zones = {}
         for model, probabilities in forecast["models"].items():
             front = _scores(probabilities["front_inclusion_probabilities"], outcome["front_numbers"])
