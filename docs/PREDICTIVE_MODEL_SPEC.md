@@ -83,7 +83,7 @@ LOT-053 is a distinct conditional experiment. It may reuse the exact model famil
 
 The historical equipment regime is not constant across the full dataset:
 - The official 2007-06-04 launch-era procedure describes selecting one set from two formal sets.
-- Official State General Administration of Sport material by 2018 describes three formal sets.
+- Official State General Administration of Sport material by 2019 describes three formal sets.
 - The exact transition date, reason, and physical identity continuity/renumbering are not established.
 
 This establishes a documented two-set procedure at launch and a three-set regime by 2018, but not the date or mechanism of transition. A 2019 official source also describes replacement of the “Venus” drawing machine after more than twelve years of service; that source does not say the ball sets changed at the same time, nor that the physical sets were renumbered. Machine replacement must not be used as evidence of ball-set replacement or continuity.
