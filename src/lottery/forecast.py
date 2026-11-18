@@ -170,7 +170,7 @@ def append_forecast(
         }
         record = {**body, "event_hash": _event_hash(body)}
         with ledger_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\\n")
+            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
             handle.flush()
             import os
             os.fsync(handle.fileno())
