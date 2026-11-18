@@ -60,6 +60,7 @@
 - [LOT-066：GitHub Actions、依赖、产物溯源与发布安全](https://github.com/Be90nia/Lottery/issues/29)
 - [LOT-067：端到端就绪判定、集成门禁与故障注入验收](https://github.com/Be90nia/Lottery/issues/30)
 - [LOT-068：精确无序子集概率引擎离线实现](https://github.com/Be90nia/Lottery/issues/31)
+- [LOT-069：冻结 exact-set NLL 滚动回测实现](https://github.com/Be90nia/Lottery/issues/35)
 
 当前实现边界：已有 `src/lottery/backtest.py` 和 `src/lottery/forecast.py` 属于旧的边际概率模型/LOT-042 预测账本，不是完整无序子集概率引擎；不得直接改名或复用为新生产服务。第一批离线算法实现由 LOT-068 细化，完成后再接 LOT-055 的冻结 exact-set NLL 回测。\n\n执行顺序：先完成 LOT-054，再进行 LOT-055；LOT-056 负责球套制度时期与历史标签核验，LOT-058 负责历史逐期开奖原始证据归档，LOT-059 负责未来每期开奖后的持续采集；LOT-057 必须等待三个时期兼容、证据充分且全部通过晋级门槛的模型槽位；LOT-060 规定候选模型、影子验证、不可变晋级、回滚与暂停规则；LOT-061 规定分阶段 Action 编排，LOT-062 规定三模型预测服务与批次溯源。以上均为待实施任务，不代表代码或模型已经完成。
 - [测试计划](TEST_PLAN.md)
