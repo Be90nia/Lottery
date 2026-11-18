@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import math
+import random
 from pathlib import Path
 import sys
 from typing import Any, Iterable
@@ -92,6 +93,44 @@ def _scores(probabilities: list[float], actual: list[int]) -> tuple[float, float
     return brier, log_loss, hits
 
 
+
+
+def _moving_block_bootstrap_ci(values: list[float], *, replicates: int = 1000,
+                              block_length: int = 50, seed: int = 20261118) -> dict[str, float]:
+    """Paired moving-block bootstrap CI for a mean score difference.
+
+    Negative differences mean the candidate model scores better than uniform.
+    The interval is descriptive; it does not correct for model selection.
+    """
+    if not values:
+        raise ValueError("bootstrap values must not be empty")
+    if replicates < 1 or block_length < 1:
+        raise ValueError("replicates and block_length must be positive")
+    n = len(values)
+    block_length = min(block_length, n)
+    rng = random.Random(seed)
+    means: list[float] = []
+    blocks_needed = math.ceil(n / block_length)
+    max_start = n - block_length
+    for _ in range(replicates):
+        sample: list[float] = []
+        for _block in range(blocks_needed):
+            start = rng.randint(0, max_start)
+            sample.extend(values[start:start + block_length])
+        means.append(sum(sample[:n]) / n)
+    means.sort()
+    lower_index = int(0.025 * (replicates - 1))
+    upper_index = int(0.975 * (replicates - 1))
+    return {
+        "mean_delta": sum(values) / n,
+        "ci_95_lower": means[lower_index],
+        "ci_95_upper": means[upper_index],
+        "replicates": replicates,
+        "block_length_draws": block_length,
+        "seed": seed,
+    }
+
+
 def rolling_origin_backtest(rows: Iterable[dict[str, Any]], *,
                             min_train: int = DEFAULT_MIN_TRAIN,
                             alpha: float = DEFAULT_ALPHA,
@@ -105,6 +144,10 @@ def rolling_origin_backtest(rows: Iterable[dict[str, Any]], *,
     models = ("uniform", "expanding", "ewma")
     metrics = {model: {zone: {"brier_sum": 0.0, "log_loss_sum": 0.0, "topk_hits": 0}
                        for zone in ("front", "back")} for model in models}
+    paired_deltas = {
+        model: {zone: {"brier": [], "log_loss": []} for zone in ("front", "back")}
+        for model in ("expanding", "ewma")
+    }
     evaluated = 0
     for target_index in range(min_train, len(records)):
         train, target = records[:target_index], records[target_index]
@@ -121,6 +164,11 @@ def rolling_origin_backtest(rows: Iterable[dict[str, Any]], *,
                 bucket["brier_sum"] += brier
                 bucket["log_loss_sum"] += log_loss
                 bucket["topk_hits"] += hits
+                if model != "uniform":
+                    uniform_probs = [pick / size] * size
+                    uniform_brier, uniform_log_loss, _ = _scores(uniform_probs, target[field])
+                    paired_deltas[model][zone]["brier"].append(brier - uniform_brier)
+                    paired_deltas[model][zone]["log_loss"].append(log_loss - uniform_log_loss)
 
     summary: dict[str, Any] = {}
     for model in models:
@@ -134,6 +182,16 @@ def rolling_origin_backtest(rows: Iterable[dict[str, Any]], *,
                 "mean_hits_in_top_k": bucket["topk_hits"] / evaluated,
                 "uniform_expected_top_k_hits": pick * pick / size,
             }
+    paired_vs_uniform: dict[str, Any] = {}
+    for model in ("expanding", "ewma"):
+        paired_vs_uniform[model] = {}
+        for zone in ("front", "back"):
+            paired_vs_uniform[model][zone] = {
+                metric: _moving_block_bootstrap_ci(values, replicates=1000,
+                                                    block_length=50, seed=20261118)
+                for metric, values in paired_deltas[model][zone].items()
+            }
+
     return {
         "method": "expanding rolling-origin; target uses only strictly earlier draws",
         "draw_count": len(records),
@@ -144,6 +202,8 @@ def rolling_origin_backtest(rows: Iterable[dict[str, Any]], *,
         "configuration": {"expanding_dirichlet_pseudo_draws": alpha,
                           "ewma_half_life_draws": half_life},
         "metrics": summary,
+        "paired_score_delta_vs_uniform": paired_vs_uniform,
+        "bootstrap_method": "paired moving-block bootstrap; 1000 replicates; 50-draw blocks; fixed seed",
         "interpretation": (
             "Lower Brier/log loss is better; top-k hits are descriptive. "
             "This marginal-probability benchmark is not a joint ticket model."
