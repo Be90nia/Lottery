@@ -1,12 +1,14 @@
+import hashlib
 import json
 import sys
+import tempfile
 from dataclasses import asdict
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page
+from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page, ingest_snapshot_directory
 from lottery.validate import validate_records
 
 
@@ -83,6 +85,62 @@ class ParsePageTests(unittest.TestCase):
         with self.assertRaises(IngestionError):
             _parse_page(payload, 1, "x")
 
+
+
+    def test_offline_snapshot_import_writes_verified_output_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_dir = root / "raw"
+            raw_dir.mkdir()
+            raw = self.payload(order="03 01 05 02 04 02 01")
+            digest = hashlib.sha256(raw).hexdigest()
+            name = f"page-00001-{digest[:12]}.json"
+            (raw_dir / name).write_bytes(raw)
+            (raw_dir / f"page-00001-{digest[:12]}.manifest.json").write_text(
+                json.dumps({
+                    "url": "https://webapi.sporttery.cn/example",
+                    "retrieved_at": "2026-11-18T00:00:00+00:00",
+                    "http_status": 200,
+                    "sha256": digest,
+                    "raw_file": name,
+                }),
+                encoding="utf-8",
+            )
+            output = root / "processed" / "draws.jsonl"
+            report = ingest_snapshot_directory(raw_dir, output, require_manifests=True)
+            self.assertTrue(report["provenance_complete"])
+            self.assertEqual(report["validation"]["records"], 1)
+            self.assertEqual(report["trust_status"], "source_manifest_verified_not_semantically_authoritative")
+            row = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(row["source_unsort_drawresult"], "03 01 05 02 04 02 01")
+            self.assertTrue(output.with_suffix(".jsonl.manifest.json").exists())
+
+    def test_offline_snapshot_import_rejects_tampered_manifest_hash(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_dir = root / "raw"
+            raw_dir.mkdir()
+            raw = self.payload()
+            name = "page-00001.json"
+            (raw_dir / name).write_bytes(raw)
+            (raw_dir / "page-00001.manifest.json").write_text(
+                json.dumps({"sha256": "0" * 64, "raw_file": name}),
+                encoding="utf-8",
+            )
+            with self.assertRaises(IngestionError):
+                ingest_snapshot_directory(raw_dir, root / "draws.jsonl")
+
+    def test_offline_snapshot_import_without_sidecar_remains_unverified(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_dir = root / "raw"
+            raw_dir.mkdir()
+            (raw_dir / "page-00001.json").write_bytes(self.payload())
+            report = ingest_snapshot_directory(raw_dir, root / "draws.jsonl")
+            self.assertFalse(report["provenance_complete"])
+            self.assertEqual(report["trust_status"], "candidate_unverified")
+            with self.assertRaises(IngestionError):
+                ingest_snapshot_directory(raw_dir, root / "strict.jsonl", require_manifests=True)
 
     def test_identical_duplicate_across_pages_is_accepted(self):
         rows = {}
