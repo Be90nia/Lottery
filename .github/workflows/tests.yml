@@ -27,6 +27,10 @@ jobs:
         run: |
           python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl \
             --simulations 199 --seed 20261118 --output baseline-candidate.json
+      - name: Run Holm-controlled pair co-occurrence diagnostic
+        run: |
+          python scripts/analyze_pairs.py data/candidates/legacy_draws.jsonl \
+            --output pair-cooccurrence.json
       - name: Run calendar-era diagnostic smoke test
         run: |
           python scripts/analyze_eras.py data/candidates/legacy_draws.jsonl \
@@ -43,6 +47,7 @@ jobs:
           path: |
             baseline-candidate.json
             era-diagnostic.json
+            pair-cooccurrence.json
             rolling-origin-benchmark.json
           retention-days: 30
 
