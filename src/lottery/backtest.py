@@ -1,8 +1,7 @@
 """Leakage-safe expanding-window evaluation for marginal number probabilities.
 
-This is a research benchmark, not a claim that past draws predict future draws.
-All model parameters are fixed in the experiment config; no tuning is performed
-on the evaluation period.
+This benchmark compares historical-frequency estimators with the legal uniform
+baseline. It does not imply that lottery draws are predictable.
 """
 from __future__ import annotations
 
@@ -27,6 +26,8 @@ def _validate_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     required = {"draw_id", "draw_date", "front_numbers", "back_numbers"}
     seen: set[str] = set()
     for index, row in enumerate(records):
+        if not isinstance(row, dict):
+            raise ValueError(f"row {index} must be an object")
         missing = required - row.keys()
         if missing:
             raise ValueError(f"row {index} missing fields: {sorted(missing)}")
@@ -55,10 +56,9 @@ def _inclusion_counts(rows: list[dict[str, Any]], field: str, pool_size: int) ->
     return counts
 
 
-def _probabilities(
-    train: list[dict[str, Any]], field: str, pool_size: int, pick: int,
-    *, model: str, alpha: float = DEFAULT_ALPHA, half_life: float = 100.0,
-) -> list[float]:
+def _probabilities(train: list[dict[str, Any]], field: str, pool_size: int, pick: int,
+                   *, model: str, alpha: float = DEFAULT_ALPHA,
+                   half_life: float = 100.0) -> list[float]:
     prior = pick / pool_size
     if model == "uniform":
         return [prior] * pool_size
@@ -66,7 +66,6 @@ def _probabilities(
         counts = _inclusion_counts(train, field, pool_size)
         return [(count + alpha * prior) / (len(train) + alpha) for count in counts]
     if model == "ewma":
-        # Weights depend only on the age of each already-observed training draw.
         weights = [0.5 ** ((len(train) - 1 - i) / half_life) for i in range(len(train))]
         total_weight = sum(weights)
         counts = [0.0] * pool_size
@@ -93,10 +92,10 @@ def _scores(probabilities: list[float], actual: list[int]) -> tuple[float, float
     return brier, log_loss, hits
 
 
-def rolling_origin_backtest(
-    rows: Iterable[dict[str, Any]], *, min_train: int = DEFAULT_MIN_TRAIN,
-    alpha: float = DEFAULT_ALPHA, half_life: float = 100.0,
-) -> dict[str, Any]:
+def rolling_origin_backtest(rows: Iterable[dict[str, Any]], *,
+                            min_train: int = DEFAULT_MIN_TRAIN,
+                            alpha: float = DEFAULT_ALPHA,
+                            half_life: float = 100.0) -> dict[str, Any]:
     records = _validate_rows(rows)
     if min_train < 1 or min_train >= len(records):
         raise ValueError("min_train must be >= 1 and less than number of draws")
@@ -104,25 +103,19 @@ def rolling_origin_backtest(
         raise ValueError("alpha and half_life must be positive")
 
     models = ("uniform", "expanding", "ewma")
-    metrics = {
-        model: {zone: {"brier_sum": 0.0, "log_loss_sum": 0.0, "topk_hits": 0}
-                for zone in ("front", "back")}
-        for model in models
-    }
+    metrics = {model: {zone: {"brier_sum": 0.0, "log_loss_sum": 0.0, "topk_hits": 0}
+                       for zone in ("front", "back")} for model in models}
     evaluated = 0
     for target_index in range(min_train, len(records)):
-        train = records[:target_index]
-        target = records[target_index]
+        train, target = records[:target_index], records[target_index]
         evaluated += 1
         for model in models:
             for zone, field, size, pick in (
                 ("front", "front_numbers", FRONT_SIZE, FRONT_PICK),
                 ("back", "back_numbers", BACK_SIZE, BACK_PICK),
             ):
-                probs = _probabilities(
-                    train, field, size, pick, model=model,
-                    alpha=alpha, half_life=half_life,
-                )
+                probs = _probabilities(train, field, size, pick, model=model,
+                                       alpha=alpha, half_life=half_life)
                 brier, log_loss, hits = _scores(probs, target[field])
                 bucket = metrics[model][zone]
                 bucket["brier_sum"] += brier
@@ -132,9 +125,8 @@ def rolling_origin_backtest(
     summary: dict[str, Any] = {}
     for model in models:
         summary[model] = {}
-        for zone, size, pick in (
-            ("front", FRONT_SIZE, FRONT_PICK), ("back", BACK_SIZE, BACK_PICK)
-        ):
+        for zone, size, pick in (("front", FRONT_SIZE, FRONT_PICK),
+                                 ("back", BACK_SIZE, BACK_PICK)):
             bucket = metrics[model][zone]
             summary[model][zone] = {
                 "mean_brier_per_number": bucket["brier_sum"] / evaluated,
@@ -143,7 +135,7 @@ def rolling_origin_backtest(
                 "uniform_expected_top_k_hits": pick * pick / size,
             }
     return {
-        "method": "expanding rolling-origin; each target uses strictly earlier draws",
+        "method": "expanding rolling-origin; target uses only strictly earlier draws",
         "draw_count": len(records),
         "first_evaluation_draw": records[min_train]["draw_id"],
         "last_evaluation_draw": records[-1]["draw_id"],
@@ -154,8 +146,7 @@ def rolling_origin_backtest(
         "metrics": summary,
         "interpretation": (
             "Lower Brier/log loss is better; top-k hits are descriptive. "
-            "A small observed difference is not evidence of a stable edge. "
-            "This is a marginal-probability benchmark, not a joint ticket model."
+            "This marginal-probability benchmark is not a joint ticket model."
         ),
     }
 
@@ -169,16 +160,18 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
+        from lottery.validate import validate_jsonl
+        validation = validate_jsonl(args.dataset)
         raw = args.dataset.read_bytes()
-        rows = [json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()]
-        report = rolling_origin_backtest(
-            rows, min_train=args.min_train, alpha=args.alpha, half_life=args.half_life
-        )
+        rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
+        report = rolling_origin_backtest(rows, min_train=args.min_train,
+                                          alpha=args.alpha, half_life=args.half_life)
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         print(f"BACKTEST_FAILED: {exc}", file=sys.stderr)
         return 1
     report["dataset"] = {"path": str(args.dataset),
-                         "sha256": hashlib.sha256(raw).hexdigest()}
+                         "sha256": hashlib.sha256(raw).hexdigest(),
+                         "validation": validation}
     rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
