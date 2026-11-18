@@ -31,9 +31,10 @@
 ## Additional data-reconciliation tasks
 - [ ] LOT-035 Obtain an authorized network path or official response snapshots for source verification; do not bypass the source WAF.
 - [ ] LOT-036 Reconcile legacy promotion flags, prize award types, equipment codes, and monetary fields against raw official records.
-- [ ] LOT-037 Extend the candidate dataset from draw 26083 through the latest verified official draw.
+- [ ] LOT-037 Extend the candidate dataset from draw 26083 through the latest verified official draw (official provincial result page currently exposes draw 26131 dated 2026-11-16; reconcile the intervening 48 draws before use).
 - [ ] LOT-038 Promote a versioned canonical dataset only after source overlap, completeness, and prize-field checks pass.
 - [ ] LOT-039 Investigate early-era front-zone frequency deviations using authoritative equipment and ball-set histories, then run predeclared stratified tests.
+- [ ] LOT-040 Run the new rolling-origin benchmark against the repository dataset in CI; review test logs and preserve the JSON report before interpreting model performance.
 
 ## Acceptance criteria
 
