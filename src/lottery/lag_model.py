@@ -62,18 +62,8 @@ def _pattern_for_number(history: list[dict[str, Any]], target_index: int,
     return pattern
 
 
-def _fit_coefficients(history: list[dict[str, Any]], field: str, pool_size: int,
-                      pick: int, ridge: float = RIDGE_LAMBDA) -> tuple[list[float], dict[str, Any]]:
-    """Fit a 4-feature ridge logistic marginal model using past target rows only.
-
-    The 4-bit lag pattern is sufficient for the shared-coefficient logistic
-    likelihood, so training examples are aggregated into 16 pattern cells.
-    """
-    if len(history) < LAG_COUNT + 1:
-        raise ValueError("at least five historical draws are required")
-    if ridge <= 0:
-        raise ValueError("ridge penalty must be positive")
-
+def _aggregate_training_cells(history: list[dict[str, Any]], field: str,
+                              pool_size: int) -> tuple[list[int], list[int]]:
     counts = [0] * (1 << LAG_COUNT)
     successes = [0] * (1 << LAG_COUNT)
     for target_index in range(LAG_COUNT, len(history)):
@@ -83,7 +73,34 @@ def _fit_coefficients(history: list[dict[str, Any]], field: str, pool_size: int,
             counts[pattern] += 1
             if number in selected:
                 successes[pattern] += 1
+    return counts, successes
 
+
+def _prefix_training_cells(records: list[dict[str, Any]], field: str,
+                           pool_size: int) -> tuple[list[list[int]], list[list[int]]]:
+    """Precompute causal prefix sufficient statistics for every rolling origin."""
+    n = len(records)
+    prefix_counts = [[0] * (1 << LAG_COUNT) for _ in range(n + 1)]
+    prefix_successes = [[0] * (1 << LAG_COUNT) for _ in range(n + 1)]
+    for target_index in range(n):
+        prefix_counts[target_index + 1] = prefix_counts[target_index].copy()
+        prefix_successes[target_index + 1] = prefix_successes[target_index].copy()
+        if target_index < LAG_COUNT:
+            continue
+        selected = set(records[target_index][field])
+        for number in range(1, pool_size + 1):
+            pattern = _pattern_for_number(records, target_index, field, number)
+            prefix_counts[target_index + 1][pattern] += 1
+            if number in selected:
+                prefix_successes[target_index + 1][pattern] += 1
+    return prefix_counts, prefix_successes
+
+
+def _fit_coefficients_from_cells(counts: list[int], successes: list[int],
+                                 pick: int, pool_size: int,
+                                 ridge: float = RIDGE_LAMBDA) -> tuple[list[float], dict[str, Any]]:
+    if ridge <= 0:
+        raise ValueError("ridge penalty must be positive")
     feature_rows = [
         [1.0] + [float((pattern >> lag) & 1) for lag in range(LAG_COUNT)]
         for pattern in range(1 << LAG_COUNT)
@@ -139,22 +156,37 @@ def _fit_coefficients(history: list[dict[str, Any]], field: str, pool_size: int,
             break
 
     return theta, {
-        "training_target_draws": max(0, len(history) - LAG_COUNT),
+        "training_target_draws": sum(counts) // pool_size,
         "training_number_examples": sum(counts),
         "iterations": iterations,
         "ridge_lambda": ridge,
     }
 
 
+def _fit_coefficients(history: list[dict[str, Any]], field: str, pool_size: int,
+                      pick: int, ridge: float = RIDGE_LAMBDA) -> tuple[list[float], dict[str, Any]]:
+    """Fit coefficients from a historical prefix (convenience path for tests)."""
+    if len(history) < LAG_COUNT + 1:
+        raise ValueError("at least five historical draws are required")
+    counts, successes = _aggregate_training_cells(history, field, pool_size)
+    return _fit_coefficients_from_cells(counts, successes, pick, pool_size, ridge)
+
 def lag_probabilities(history: list[dict[str, Any]], field: str,
                       pool_size: int, pick: int,
-                      ridge: float = RIDGE_LAMBDA) -> tuple[list[float], list[float], dict[str, Any]]:
+                      ridge: float = RIDGE_LAMBDA,
+                      training_cells: tuple[list[int], list[int]] | None = None
+                      ) -> tuple[list[float], list[float], dict[str, Any]]:
     """Predict the next draw from four prior draws; probabilities sum exactly to pick."""
     if len(history) < LAG_COUNT:
         raise ValueError("four prior draws are required to construct lag features")
     # At least one historical labelled target is required to fit coefficients.
     if len(history) >= LAG_COUNT + 1:
-        theta, fit_info = _fit_coefficients(history, field, pool_size, pick, ridge)
+        if training_cells is None:
+            theta, fit_info = _fit_coefficients(history, field, pool_size, pick, ridge)
+        else:
+            theta, fit_info = _fit_coefficients_from_cells(
+                training_cells[0], training_cells[1], pick, pool_size, ridge
+            )
     else:
         theta = [math.log((pick / pool_size) / (1.0 - pick / pool_size))] + [0.0] * LAG_COUNT
         fit_info = {"training_target_draws": 0, "training_number_examples": 0,
@@ -218,6 +250,10 @@ def rolling_origin_lag_backtest(rows: list[dict[str, Any]], *,
     coefficient_history = {
         zone: [] for zone in ("front", "back")
     }
+    prefix_cells = {
+        "front": _prefix_training_cells(records, "front_numbers", FRONT_SIZE),
+        "back": _prefix_training_cells(records, "back_numbers", BACK_SIZE),
+    }
 
     evaluated = 0
     for target_index in range(min_train, len(records)):
@@ -229,7 +265,11 @@ def rolling_origin_lag_backtest(rows: list[dict[str, Any]], *,
             ("back", "back_numbers", BACK_SIZE, BACK_PICK),
         ):
             candidate_probs, theta, _ = lag_probabilities(
-                history, field, size, pick, ridge
+                history, field, size, pick, ridge,
+                training_cells=(
+                    prefix_cells[zone][0][target_index],
+                    prefix_cells[zone][1][target_index],
+                ),
             )
             coefficient_history[zone].append(theta[1:])
             brier, log_loss, hits = _scores(candidate_probs, target[field])
