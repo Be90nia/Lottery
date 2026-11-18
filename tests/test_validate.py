@@ -46,6 +46,18 @@ class DatasetValidationTests(unittest.TestCase):
         with self.assertRaises(DatasetValidationError):
             validate_records([record(draw_date="2026-02-30")])
 
+    def test_raw_source_order_must_be_string_or_null(self):
+        row = record()
+        row["source_unsort_drawresult"] = [2, 11, 18, 19, 29, 4, 7]
+        with self.assertRaises(DatasetValidationError):
+            validate_records([row])
+
+    def test_raw_source_metadata_is_optional_and_preserved(self):
+        row = record()
+        row["source_unsort_drawresult"] = "02 11 18 19 29 04 07"
+        row["source_equipment_count"] = 2
+        self.assertEqual(validate_records([row])["records"], 1)
+
     def test_invalid_draw_order_rejected(self):
         row = record()
         row["front_draw_order"] = [2, 11, 18, 19, 28]
