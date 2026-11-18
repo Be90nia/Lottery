@@ -39,6 +39,9 @@
 - [ ] LOT-042 Define a later untouched holdout and a preregistered model-selection protocol before any parameter tuning.
 - [ ] LOT-043 Repeat paired score comparisons within predeclared calendar eras and assess stability without tuning on those eras.
 
+
+- [ ] LOT-044 Verify `lotteryUnsortDrawresult` and `lotteryEquipmentCount` semantics against authorized immutable official raw snapshots; reconcile row-level order/equipment provenance before positional or equipment-stratified inference. Audit: [DRAW_ORDER_METADATA_AUDIT.md](docs/DRAW_ORDER_METADATA_AUDIT.md).
+
 ## Acceptance criteria
 
 A task is complete only when code, tests, provenance, and documentation are updated together. Research claims require reproducible evidence and an explicit limitations section.
