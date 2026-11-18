@@ -96,7 +96,7 @@ A targeted search found a useful primary-source cross-check on the official Chon
 
 The official Jiangsu Sports Lottery Center and Chongqing Sports Lottery Center announcements explicitly publish “本期出球顺序” and “本期使用第N套摇奖球”. The official-site identity is visible in the site footers; the Jiangsu announcement footer states “江苏省体育彩票管理中心版权所有”, while the Chongqing institutional page identifies the Chongqing Sports Lottery Management Center as a public institution under the Chongqing Municipal Sports Bureau.
 
-Six records were cross-checked against the repository's legacy candidate blob. In every case, the sorted numbers, front/back order arrays, and equipment code match the official announcement exactly:
+Seven records were cross-checked against the repository's legacy candidate blob. In every case, the sorted numbers, front/back order arrays, and equipment code match the official announcement exactly:
 
 | Draw | Official date | Official front draw order | Official back draw order | Ball set | Legacy row |
 |---|---|---|---|---:|---|
@@ -104,6 +104,7 @@ Six records were cross-checked against the repository's legacy candidate blob. I
 | 17052 | 2017-05-08 | 24, 28, 33, 19, 03 | 12, 04 | 3 | Exact match |
 | 17062 | 2017-05-31 | 06, 08, 01, 28, 04 | 12, 08 | 2 | Exact match |
 | 17145 | 2017-12-11 | 04, 18, 19, 17, 07 | 10, 03 | 2 | Exact match |
+| 18001 | 2018-01-01 | 13, 35, 01, 25, 22 | 03, 04 | 1 | Exact match |
 | 20001 | 2020-01-01 | 26, 34, 17, 32, 25 | 04, 07 | 1 | Exact match |
 | 26083 | 2026-07-25 | 15, 16, 23, 26, 14 | 09, 07 | 3 | Exact match |
 
@@ -112,12 +113,13 @@ Official announcements:
 - 17052: https://www.js-lottery.com/cms/post-77436.html
 - 17062: https://www.js-lottery.com/cms/post-77775.html
 - 17145: https://www.js-lottery.com/cms/post-80978.html
+- 18001: https://www.js-lottery.com/cms/post-81256.html
 - 20001: https://www.js-lottery.com/cms/post-89613.html
 - 26083: https://www.cqtcw.net/h5/aritcle/1534974555978928128/h5/content_1534974555978928128.html
 
 For example, draw 17045's official result is `01 08 11 21 35 / 09 12`, its published draw order is `21 08 35 01 11 / 09 12`, and it used ball set 2. The candidate row has `front_draw_order=[21,8,35,1,11]`, `back_draw_order=[9,12]`, and `equipment_code_legacy=2`. The same exact correspondence holds for the other four rows.
 
-This is now more than a structural plausibility check: it is six direct row-level crosswalks spanning 2017, 2020, and 2026, and covering equipment codes 1, 2, and 3. It supports interpreting the order arrays as the official published draw-order sequence and the equipment code as the numbered draw-ball set for these records. It still does not prove that all 2,341 legacy rows were faithfully copied, nor does it define every operational detail of the physical extraction sequence.
+This is now more than a structural plausibility check: it is seven direct row-level crosswalks spanning 2017, 2018, 2020, and 2026, and covering equipment codes 1, 2, and 3. It supports interpreting the order arrays as the official published draw-order sequence and the equipment code as the numbered draw-ball set for these records. It still does not prove that all 2,341 legacy rows were faithfully copied, nor does it define every operational detail of the physical extraction sequence.
 
 ### Independent recent examples
 
