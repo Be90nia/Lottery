@@ -414,3 +414,18 @@ Canonical inventory correction creates a new snapshot with supersedes lineage. M
 Backups cover raw evidence, snapshots, artifacts, ledgers, registries, policy/schema/code references and key-recovery metadata. Backups are isolated from the primary failure domain, hash-verified, and periodically restored in an isolated environment. A successful backup job alone does not prove recoverability. RPO/RTO must be measured and approved from restore drills; do not invent targets. Schema migrations write new immutable objects and preserve original bytes and lineage.
 
 Production remains disabled until fault-injection tests cover crashes at each write/publish boundary, duplicate/replayed requests, stale leases, concurrent CAS, corruption, reconciliation, backup restore, schema incompatibility and secret-leak checks.
+
+
+## 22. Software supply-chain security and artifact trust
+
+Treat source code, GitHub Actions, dependencies, runners, external source payloads, artifact storage, signing identities, registry writers and serving runtimes as separate trust domains. The current `source-probe.yml` references Actions by mutable version tags and does not explicitly disable checkout credential persistence; these are hardening tasks, not evidence of compromise. The inspected `pyproject.toml` has `requires-python >=3.10` and no declared dependencies, so a pinned dependency/runtime lock and CI security gate remain to be implemented.
+
+Pin every third-party Action to a reviewed full commit SHA. Set explicit least-privilege workflow/job permissions; source-probe remains read-only and receives no signing, artifact-write, registry-write or production credentials. Set checkout `persist-credentials: false` unless a reviewed step-specific exception exists. Never expose secrets to untrusted PR code or privileged `pull_request_target` execution. Protect release, signing, registry mutation and restore environments with reviewers and narrowly scoped identities.
+
+Lock all direct/transitive dependencies with exact versions and hashes; pin release runtime/toolchain; generate SBOM and retain vulnerability/license reports. Record source commit, workflow identity/run, lockfile hash, SBOM digest, builder/runtime identity, input hashes and output digest in machine-readable provenance.
+
+Sign artifact digests/manifests with protected signing identities unavailable to ordinary test jobs. Verify signature, signer, repository/workflow/source ref, provenance, schema and lifecycle state before evaluation, promotion and serving. Hashes prove byte identity; signatures prove signing-key control; neither alone proves model correctness. Numerical, statistical, evidence and Champion lifecycle gates remain independent.
+
+Keep signing keys, source credentials, cloud tokens and master RNG seeds out of logs and ordinary artifacts. Use short-lived narrowly scoped credentials; grant OIDC only to jobs requiring it. Separate source-read, object-write, registry-CAS, signing, backup-restore and serving identities. Record key IDs and preserve historical verification material; define rotation, revocation and compromise-window handling.
+
+Require protected branches, reviewed workflow/lockfile/signing/registry changes, CODEOWNERS and required checks. On compromise, suspend affected workflows/identities, revoke keys, quarantine affected artifacts, preserve evidence, rebuild from reviewed source on a clean runner, reverify provenance and rerun all required validation before authorized restoration. No automatic collection, promotion or public serving until LOT-066 acceptance gates pass.
