@@ -128,3 +128,37 @@ cannot be considered started or completed until the freeze boundary is
 committed, 500 subsequent eligible draws are captured and reconciled, and the
 single final analysis is run. Do not use the existing historical eras as a
 substitute for this future holdout.
+
+## 9. Pre-draw forecast ledger implementation
+
+The repository now includes `scripts/forecast_ledger.py` and
+`lottery.forecast`. Before a target draw, create a record using a canonical
+training JSONL and a full code commit SHA:
+
+```bash
+python scripts/forecast_ledger.py create data/canonical/draws.jsonl \
+  --target-draw-id 27XXX \
+  --target-draw-at 2027-01-01T20:30:00+08:00 \
+  --code-commit <40-character-commit-sha> \
+  --ledger data/holdout/forecast-ledger.jsonl
+python scripts/forecast_ledger.py verify data/holdout/forecast-ledger.jsonl
+```
+
+The command refuses a target timestamp that is not strictly in the future,
+requires the target calendar date to follow the latest training draw date,
+validates the training records, hashes the exact training file bytes, and
+records the fixed uniform/expanding/EWMA marginal probabilities. Each ledger
+event includes its training range, dataset hash, model parameters, code
+commit, UTC creation timestamp, sequence, previous-event hash, and event hash.
+Duplicate target IDs, broken chains, and altered records are rejected.
+
+The hash chain detects accidental edits, truncation, or reordering when the
+original chain head is retained independently. It is not a digital signature,
+does not authenticate the source dataset, and cannot prove that the command
+was run before the result became public. Archive the ledger and its latest
+hash outside the working checkout before the draw. Use a single writer; do not
+have concurrent processes append to the same ledger.
+
+This tool records forecasts only. It does not fetch outcomes, inspect scores,
+or declare the prospective holdout started. LOT-042 remains open until the
+frozen protocol's 500 eligible future draws are collected and analyzed once.
