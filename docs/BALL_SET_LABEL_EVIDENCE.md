@@ -30,7 +30,15 @@ The official China Sports Lottery 2019 Social Responsibility Report also describ
 
 **The exact transition date, the reason for the change, and whether set identities were carried forward or renumbered are not established by these official sources. Secondary result archives point to third-set use by September 2011, but require recovery of the original official draw notices before acceptance.** Do not infer them. The transition occurred after the documented 2007 two-set procedure and no later than the 2019 three-set description, but its exact effective date remains unresolved. A later machine replacement is documented separately and must not be conflated with a ball-set transition.
 
-### 1.3 Earlier secondary records point to three-set use by 2011, but are not accepted as official labels
+### 1.3 Official institutional retrospective: per-draw ball-set disclosure began in 2011
+
+A Jiangsu Provincial Sports Lottery Center article published 2011-01-10 states that, starting in 2011, the ball set used for each draw began to be formally disclosed to the public, citing draw announcements supplied by the national Sports Lottery Center. It gives draw 11004 (2011-01-08) as an example and reports set 2:
+
+- https://api.js-lottery.com/wfzq/dlt/xwzx/cms/post-32716.html
+
+This is an official provincial-center retrospective about the disclosure practice and an official institutional report of the 11004/set-2 observation. It is stronger than a commercial aggregator, but it is still not the original per-draw national announcement bytes. Record it as an official-retrospective observation, not as a substitute for the primary-source archive required by LOT-058. It also establishes a promising search boundary: prioritize official per-draw announcement recovery from 2011 onward, while not assuming every historical row is recoverable.
+
+### 1.4 Earlier secondary records point to three-set use by 2011, but are not accepted as official labels
 
 Searches found secondary lottery-result archives reporting explicit third-set use before the 2019 official three-set descriptions:
 
@@ -44,7 +52,7 @@ Searches found secondary lottery-result archives reporting explicit third-set us
 
 These records materially narrow the search target: the third set may already have been in use by September 2011. However, these pages are not the issuing provincial/national lottery authority's archived original announcement, so they are **discovery leads only**. They must not populate the verified row-level label ledger or establish the formal transition date. LOT-058 should use the draw IDs/dates above as priority recovery targets for matching original official notices. If original official bytes cannot be recovered, retain the records as secondary corroboration only.
 
-### 1.4 Machine replacement is a separate event, not proof of ball-set transition
+### 1.5 Machine replacement is a separate event, not proof of ball-set transition
 
 An official State General Administration of Sport article reports that the original “Venus” Super Lotto drawing machine, first introduced on 2007-05-10, was to be replaced after more than twelve years of service. It says the new machine retained the same drawing method and describes the machine replacement; it does **not** state that the physical ball sets were replaced, added, renumbered, or re-identified at the same time:
 
@@ -52,7 +60,7 @@ An official State General Administration of Sport article reports that the origi
 
 Accordingly, the machine replacement must not be used as a proxy date for the two-set to three-set change. It also cannot establish continuity of physical ball-set identity across the machine replacement. The 2007 two-set procedure and the three-set description by 2019 remain the current official bounds; the effective transition date and the physical identity mapping remain unresolved.
 
-### 1.5 Individual official draw announcements can publish the set index
+### 1.6 Individual official draw announcements can publish the set index
 
 The following Guangdong Sports Lottery draw-announcement pages explicitly state “本期使用第X套摇奖球”:
 
