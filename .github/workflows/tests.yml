@@ -19,6 +19,11 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Validate imported legacy draw candidate
         run: python scripts/validate_dataset.py data/candidates/legacy_draws.jsonl
+      - name: Verify official draw-order/equipment crosswalk sample
+        run: |
+          python scripts/verify_official_order_crosswalks.py \
+            --candidate data/candidates/legacy_draws.jsonl \
+            --crosswalks data/metadata_verification/official_order_crosswalks_20261118.json
       - name: Audit imported legacy prize rows
         run: python scripts/validate_legacy_prizes.py --output prize-reconciliation.json
       - name: Reconcile official snapshot prizes against legacy candidate
