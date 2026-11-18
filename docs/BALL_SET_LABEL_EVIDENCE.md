@@ -149,3 +149,54 @@ If one or more slots are ineligible, the N → 3N generator remains unavailable.
 - N → 3N remains a future gated behavior, not a currently available predictor.
 
 The blocker is now specifically historical regime reconstruction, identity continuity, and row-level source coverage. It does not prevent continued development of the pooled model.
+
+
+## Appendix A. Canonical row-level source observation
+
+LOT-058 should emit an append-only JSONL ledger with one record per draw × source-version. Keep source evidence class separate from label status and regime assignment.
+
+Illustrative shape (not an actual recovered record):
+
+```json
+{
+  "schema_version": "lottery.ball-set-observation/v1",
+  "observation_id": "<stable-id-from-draw-source-and-body-hash>",
+  "draw_id": "11105",
+  "draw_date": "2011-09-07",
+  "draw_date_original": "2011年09月07日",
+  "source": {
+    "authority_class": "C1",
+    "authority_name": "<publisher>",
+    "requested_url": "<exact-request-url>",
+    "final_url": "<final-response-url>",
+    "redirect_chain": [],
+    "retrieved_at_utc": "<ISO-8601>",
+    "http_status": 200,
+    "content_type": "text/html",
+    "body_byte_length": 0,
+    "body_sha256": "<sha256-of-exact-body-bytes>",
+    "raw_object_ref": "<immutable-object-reference>"
+  },
+  "parser": {
+    "name": "dlt-ball-set-announcement",
+    "version": "<parser-version>",
+    "evidence_locator": "<DOM-locator-or-text-span>",
+    "matched_text": "本期使用第3套摇奖球"
+  },
+  "reported_set_index": 3,
+  "equipment_regime_id": null,
+  "observation_status": "secondary_only",
+  "conflict_group_id": null,
+  "supersedes_observation_id": null
+}
+```
+
+The example is illustrative and explicitly secondary-only; it is not a verified 11105 label. The same draw/source/body hash must yield the same observation ID. A changed body hash creates a new immutable observation version. reported_set_index is nullable and may be 1, 2, or 3 only when explicitly extracted from the archived body. equipment_regime_id remains null until independently adjudicated.
+
+Evidence class values:
+- A1: original national Sports Lottery Center per-draw announcement.
+- A2: original provincial Sports Lottery Center per-draw announcement.
+- B1: official retrospective/procedural source, not the original per-draw announcement.
+- C1: third-party media, aggregator, cache, or mirror.
+
+Observation status values should distinguish at least primary_verified, official_retrospective_only, secondary_only, missing_label, source_unavailable, draw_mismatch, parse_error, and conflict. Only A1/A2 observations with matched draw ID/date, explicit evidence locator, preserved raw bytes, and no unresolved conflict may enter the derived verified-label view. Never infer a label from a source class, neighbouring draw, or source_equipment_count.
