@@ -1,61 +1,45 @@
-# Official vs legacy prize reconciliation plan
+# Official vs legacy prize reconciliation
 
-## Scope
+## Scope and inputs
 
-Compare the newly archived official Sporttery snapshot (2,949 draws) against the existing legacy candidate prize archive (2,901 draw IDs / 33,098 rows).
+Compare the official lossless prize rows generated from the 2026-11-18 snapshot with the legacy candidate archive.
 
-This is a comparison of **source representations and accounting consistency**, not an assumption that either side is automatically correct.
+- Official: 2,949 draws / 33,530 prize rows.
+- Legacy: 2,901 draws / 33,098 prize rows.
+- Legacy source status: `candidate_unverified`.
 
-## Required matching keys
+This is a comparison of source representations and accounting values. Neither dataset is assumed correct merely because it is present.
 
-1. Primary: draw ID.
-2. Within a draw: preserve source occurrence position and source identifiers such as `prizeLevelNo`, `relatedPrizeLevelNo`, `awardType`, and `sort` when present.
-3. Displayed `prizeLevel` is not a unique identity by itself because promotions and additional rows can reuse tier labels.
+## Matching contract
 
-## Comparison classes
+1. Primary partition key: draw ID.
+2. Within each draw, compare rows as a **multiset**, preserving duplicate occurrences rather than converting them to sets.
+3. Value comparison tuple: original tier label, unit amount, winner count, aggregate total, and condition.
+4. Official formatted money strings are parsed as decimal values after removing grouping commas. No floating-point arithmetic is used.
+5. Official source identity fields (including `awardType`, `group`, `prizeLevelNo`, `relatedPrizeLevelNo`, and `sort`) remain attached to the official row for investigation.
+6. The legacy transformation dropped these source identity fields. Therefore even a complete value match is reported as `value_match_without_source_identity`, **not** as an exact source identity match.
 
-Each comparison must end in exactly one status:
+## Per-draw statuses
 
-- `exact_source_match`
-- `source_row_present_only_official`
-- `source_row_present_only_legacy`
-- `same_label_different_source_identity`
-- `same_identity_different_amount`
-- `same_identity_different_winner_count`
-- `same_identity_different_total`
-- `promotion_or_side_game_not_comparable`
-- `insufficient_source_fields`
+- `value_match_without_source_identity`: all row values match as multisets, but source identity cannot be proven from legacy.
+- `same_label_different_values`: both sides have unmatched rows and at least one label appears on both sides.
+- `source_rows_differ`: both sides have unmatched rows but no shared label explains the difference.
+- `source_row_present_only_official`: only official rows remain unmatched for this draw.
+- `source_row_present_only_legacy`: only legacy rows remain unmatched for this draw.
 
-No row is silently repaired.
+Draws existing on only one side are counted separately as official-only or legacy-only draws. Row-level totals are also reported.
 
-## Official-side invariants
+## Important interpretation limits
 
-For every official draw:
+- A repeated raw prize fingerprint across draws is not a duplicate row; source occurrence identity includes draw and prize position.
+- Matching labels and amounts does not restore missing legacy source identity.
+- A difference is not automatically evidence of a source error, manipulation, or a ruleset change.
+- Promotions, additional prizes, side games, and rule-era transitions require targeted source review; this script does not silently classify or repair them.
+- Null amounts remain null. They are not converted to zero.
+- The script compares reported values; it does not infer payout rules from `amount × count`.
 
-- raw snapshot SHA-256 matches its sidecar;
-- draw ID is unique across the 30 pages;
-- `prizeLevelList` exists and is non-empty;
-- every prize entry is an object;
-- every prize object is preserved verbatim in the raw prize dataset.
+## Acceptance policy
 
-## Legacy-side constraints
+No automatic data repair or row deletion is performed. The reconciliation output is diagnostic evidence only.
 
-The existing candidate archive is not promoted to truth. Its own audit identifies 33,098 rows across 2,901 draw IDs and notes that source identifiers were dropped by the legacy cleaner.
-
-Therefore, a legacy row that cannot be mapped unambiguously must remain `insufficient_source_fields`, not be forced into a match.
-
-## Known investigation targets
-
-- Draw 07001 fixed-tier additional rows.
-- Candidate anomalies around 07008, 16106, 17045, 17052, 17062, 17063.
-- Promotion rows with zero unit amount and positive aggregate payout.
-- 2026 promotion issues 26050–26066.
-- The 26014 seven-tier ruleset transition.
-
-These are investigation targets, not pre-declared errors.
-
-## Acceptance rule
-
-Only `exact_source_match` and explicitly reviewed non-comparable rows may enter a validated accounting dataset.
-
-All other differences remain in the reconciliation report and are available for rule/source review.
+Only rows with adequate source identity and separately reviewed rule semantics may be promoted into a validated accounting dataset. Since the legacy archive has lost source identity, a value match alone is insufficient for that promotion.
