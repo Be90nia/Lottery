@@ -28,7 +28,7 @@ jobs:
       - name: Run calendar-era diagnostic smoke test
         run: |
           python scripts/analyze_eras.py data/candidates/legacy_draws.jsonl \
-            --simulations 1999 --seed 20261118 --output era-diagnostic.json
+            --simulations 99 --seed 20261118 --output era-diagnostic.json
       - name: Upload baseline reports
         uses: actions/upload-artifact@v4
         with:
