@@ -184,3 +184,10 @@ set. This is a conservative draw-level exclusion while the source rows are
 adjudicated; it does not mean the basic-prize rows in every one of those draws
 are themselves proven wrong. Issues 07001–07005 show a similar API row shape
 but remain unconfirmed leads, not confirmed conflicts.
+
+
+A further check of the official Jiangsu issue-07005 announcement found the
+same fourth-/fifth-additional duplication (¥3,000 × 57 and ¥500 × 1,726,
+matching the basic rows), while its main-game additional table lists only
+first through third prize. The confirmed early-era sequence is therefore
+07005–07011. Issues 07001–07004 remain unconfirmed leads.
