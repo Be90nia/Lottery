@@ -77,21 +77,30 @@ No candidate may replace uniform merely because its top-ranked tickets look plau
 
 The historical promotion gate remains the one in LOT-051: both zones must pass their preregistered criteria, and independent prospective confirmation is still required before user-facing promotion.
 
-## 5. LOT-053 ball-set conditioning
+## 5. LOT-053 equipment-regime and ball-set conditioning
 
-LOT-053 is a distinct conditional experiment. It may reuse the exact model family and feature/optimizer specification above, but it must train on verified rows assigned to the relevant ball set only.
+LOT-053 is a distinct conditional experiment. It may reuse the exact model family and feature/optimizer specification above, but it must train only on rows with authoritative per-draw ball-set evidence.
 
-Before partitioning, prove the meaning and historical coverage of the source label. The repository's existing schema intentionally stores `source_equipment_count` as raw metadata and does not assert it is a ball-set ID. The legacy candidate's equipment codes are not adequate ground truth for three physical ball sets.
+The historical equipment regime is not constant across the full dataset:
+- The official 2007-06-04 launch-era procedure describes selecting one set from two formal sets.
+- Official State General Administration of Sport material by 2018 describes three formal sets.
+- The exact transition date, reason, and physical identity continuity/renumbering are not established.
 
-For each verified set g, compare:
-- set-specific model trained only on g;
+This establishes a documented two-set procedure at launch and a three-set regime by 2018, but not the date or mechanism of transition. A 2019 official source also describes replacement of the “Venus” drawing machine after more than twelve years of service; that source does not say the ball sets changed at the same time, nor that the physical sets were renumbered. Machine replacement must not be used as evidence of ball-set replacement or continuity.
+
+Every verified per-draw label must be scoped to an equipment regime. Do not create one timeless three-way partition by grouping all historical “set 1/2/3” indices. Do not assume index 1 in the two-set regime is physically identical to index 1 in the later three-set regime. See `docs/BALL_SET_LABEL_EVIDENCE.md` for the official source ledger and archival audit requirements.
+
+The canonical `source_equipment_count` field remains raw metadata and is not an approved ball-set label. Only an explicit official per-draw announcement such as “本期使用第X套摇奖球”, preserved with source URL, retrieval timestamp, response hash, and parser version, can establish a row-level index. Missing or conflicting official labels remain unknown/conflicted; never infer them from draw order, neighboring draws, number patterns, or the raw equipment-count field.
+
+For each eligible regime-scoped set slot g, compare:
+- set-specific model trained only on verified rows in the same documented regime and set index;
 - pooled model trained on all otherwise eligible earlier rows;
 - uniform reference;
-- set-specific marginal baseline.
+- regime/set-specific marginal baseline.
 
-Use chronological cutoffs and report sample size, era coverage, missing labels, and fit eligibility at every target. Do not assume three separately trained models outperform the pooled model; splitting reduces training sample size.
+Use chronological cutoffs and report sample size, era coverage, missing labels, regime boundary assumptions, and fit eligibility at every target. Do not combine regimes to manufacture sample size. Do not assume separate set-conditioned models outperform the pooled model; splitting reduces training sample size.
 
-The three-batch generator is a downstream interface only. It becomes active only if all three set-conditioned model slots pass the preregistered data, fit, calibration, and out-of-sample promotion gates.
+The three-batch generator remains downstream and gated. It becomes active only if three distinct, contemporaneously meaningful, regime-compatible set-conditioned slots each pass the preregistered data, fit, calibration, and out-of-sample promotion gates. If historical evidence cannot establish three eligible slots within a coherent regime, the N → 3N behavior remains unavailable; do not duplicate pooled output or relabel two-set-era data to fill a slot.
 
 ## 6. Generation semantics after promotion
 
