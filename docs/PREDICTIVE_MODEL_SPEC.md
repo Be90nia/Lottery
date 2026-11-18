@@ -143,3 +143,69 @@ Benchmark support enumeration, feature-table construction, grouped log-partition
 Adversarial tests must cover invalid subsets, non-finite inputs, zero-variance features, extreme finite parameters, multiplicity mismatch, optimizer iteration-cap exit, infeasible weighted marginals, calibration non-convergence, artifact/schema mismatch, and deterministic replay.
 
 This implementation contract does not authorize model promotion, LOT-055 evaluation before preregistration verification, LOT-042 access, or production activation.
+
+
+## 9. Canonical forecast-artifact envelope
+
+LOT-054 must serialize a versioned artifact envelope rather than relying on implementation-specific pickles or an opaque in-memory object. The following is the canonical logical shape (illustrative values only; implementations must populate actual fitted values):
+
+```json
+{
+  "artifact_schema": "lottery.subset-probability-model/v1",
+  "artifact_id": "sha256:<canonical-payload-hash>",
+  "model_family": "regularized_exponential_subset",
+  "zone": "front",
+  "support": {
+    "population_size": 35,
+    "selection_size": 5,
+    "support_count": 324632,
+    "subset_order": "lexicographic_ascending"
+  },
+  "feature_schema": {
+    "version": "lottery-set-features/v1",
+    "names": ["sum", "odd", "range", "adjacent", "gap_var"],
+    "uniform_means": ["..."],
+    "uniform_population_stds": ["..."],
+    "zero_variance_policy": "drop_and_record"
+  },
+  "parameters": {
+    "theta": ["..."],
+    "parameter_order": "feature_schema.names"
+  },
+  "normalization": {
+    "method": "full_support_logsumexp",
+    "log_partition": "...",
+    "numeric_dtype": "float64"
+  },
+  "fit": {
+    "status": "converged",
+    "termination_reason": "gradient_tolerance",
+    "objective": "...",
+    "gradient_inf_norm": "...",
+    "iterations": 0,
+    "optimizer": "L-BFGS-B",
+    "lambda": 1.0
+  },
+  "training": {
+    "snapshot_sha256": "...",
+    "row_count": 0,
+    "first_draw_id": "...",
+    "last_draw_id": "...",
+    "cutoff_inclusive": true
+  },
+  "implementation": {
+    "code_revision": "...",
+    "runtime": "...",
+    "library_versions": {},
+    "rng_algorithm": "..."
+  }
+}
+```
+
+The example is a field contract, not a valid fitted artifact. The implementation must define canonical JSON serialization (UTF-8, stable key ordering, no NaN/Infinity, normalized numeric representation) before computing `artifact_id`. The hash is over the canonical payload excluding `artifact_id` itself. Parameters and schemas are the source of truth; cached support tables, probabilities, or marginal vectors are derived artifacts and must include the parent `artifact_id` plus their own content hash.
+
+Model-family-specific parameter payloads must be explicit. For a weighted-subset model, use a distinct `model_family` and store centered per-item log weights, calibration target marginals, achieved marginals, solver status, and calibration residual; do not overload `theta` or imply it is an exponential-family feature model.
+
+Forecast eligibility is a separate boolean/status decision derived from all checks, never inferred merely from successful serialization. A model with a failed fit, invalid artifact hash, mismatched support/feature schema, missing training snapshot provenance, or non-finite parameter is not forecast-ready.
+
+For every forecast request, the generation ledger must reference the exact artifact ID and record the target draw ID (or an explicit non-draw simulation label), request ID, batch/slot ID, RNG algorithm, seed, and generated canonical subset. Never embed training rows or raw source files inside the model artifact.
