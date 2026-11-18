@@ -1,11 +1,13 @@
 import json
 import sys
+from dataclasses import asdict
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page
+from lottery.validate import validate_records
 
 
 class ParsePageTests(unittest.TestCase):
@@ -35,6 +37,15 @@ class ParsePageTests(unittest.TestCase):
         self.assertEqual(rows[0].back_draw_order, [2, 1])
         self.assertEqual(rows[0].source_unsort_drawresult, "03 01 05 02 04 02 01")
         self.assertEqual(rows[0].source_equipment_count, 2)
+
+    def test_source_metadata_survives_json_roundtrip_and_dataset_validation(self):
+        rows = _parse_page(self.payload(order="03 01 05 02 04 02 01"), 1, "sha256:fixture")
+        encoded = json.dumps(asdict(rows[0]), ensure_ascii=False)
+        restored = json.loads(encoded)
+        report = validate_records([restored])
+        self.assertEqual(report["records"], 1)
+        self.assertEqual(restored["source_unsort_drawresult"], "03 01 05 02 04 02 01")
+        self.assertEqual(restored["source_equipment_count"], 2)
 
     def test_non_string_draw_order_rejected(self):
         row = json.loads(self.payload().decode())
