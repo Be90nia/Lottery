@@ -148,3 +148,15 @@ python scripts/analyze_pairs.py data/candidates/legacy_draws.jsonl \
 See [pair co-occurrence methodology](docs/PAIR_COOCCURRENCE.md). These are
 exploratory discrepancy diagnostics, not prediction features or evidence of
 manipulation; the binomial null assumes independence across draws.
+
+### Chronological train/validation/test splits
+
+```bash
+python scripts/split_dataset.py data/candidates/legacy_draws.jsonl \
+  --output-dir data/splits/legacy-70-15-15
+```
+
+This deterministic utility keeps every draw date intact and records input/output
+hashes and partition boundaries. It is for exploratory development only; it
+does not replace rolling-origin evaluation or the untouched prospective
+500-draw holdout. See [split methodology](docs/CHRONOLOGICAL_SPLITS.md).
