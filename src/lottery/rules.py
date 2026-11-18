@@ -107,12 +107,76 @@ class PrizeRuleset:
         }
 
 
+_RULES_2009_APPROVAL = "https://zhs.mof.gov.cn/zhengcefabu/201811/t20181122_3073538.htm"
+_RULES_2009_EFFECTIVE = "https://www.js-lottery.com/cms/post-2935.html"
+_RULES_2013_APPROVAL = "https://zhs.mof.gov.cn/zhengcefabu/201312/t20131219_1026921.htm"
+_RULES_2013_EFFECTIVE = "https://sports.sina.com.cn/l/2026-01-30/doc-inhkacxm7033487.shtml"
 _RULES_2014_SOURCE = "https://www.mof.gov.cn/tzgg/201404/t20140421_1069584.htm"
 _RULES_2014_EFFECTIVE_NOTICE = "https://yntc8.cn/news/2014042229140.html"
 _RULES_2019_SOURCE = "https://www.nmtc.com.cn/gyzl/17631.html"
 _RULES_2019_EFFECTIVE_SOURCE = "https://society.yunnan.cn/system/2019/02/28/030214030.shtml"
 _RULES_2026_PDF = "https://static.sporttery.cn/res_1_0/cmsv2/upload/docfile/202601/1511220935li.pdf"
 _RULES_2026_ANNOUNCEMENT = "https://www.sporttery.cn/digitallottery/cjdlt/20260205/10052315.html"
+
+_EIGHT_TIER_PATTERNS = (
+    ((5, 2),),
+    ((5, 1),),
+    ((5, 0),),
+    ((4, 2),),
+    ((4, 1),),
+    ((4, 0), (3, 2)),
+    ((3, 1), (2, 2)),
+    ((3, 0), (1, 2), (2, 1), (0, 2)),
+)
+
+
+def _eight_tier_schedule() -> tuple[PrizeTier, ...]:
+    return (
+        PrizeTier(1, _EIGHT_TIER_PATTERNS[0], None, None, True, Decimal("0.6")),
+        PrizeTier(2, _EIGHT_TIER_PATTERNS[1], None, None, True, Decimal("0.6")),
+        PrizeTier(3, _EIGHT_TIER_PATTERNS[2], None, None, True, Decimal("0.6")),
+        PrizeTier(4, _EIGHT_TIER_PATTERNS[3], Decimal("3000"), Decimal("3000"), False, Decimal("0.5")),
+        PrizeTier(5, _EIGHT_TIER_PATTERNS[4], Decimal("600"), Decimal("600"), False, Decimal("0.5")),
+        PrizeTier(6, _EIGHT_TIER_PATTERNS[5], Decimal("100"), Decimal("100"), False, Decimal("0.5")),
+        PrizeTier(7, _EIGHT_TIER_PATTERNS[6], Decimal("10"), Decimal("10"), False, Decimal("0.5")),
+        PrizeTier(8, _EIGHT_TIER_PATTERNS[7], Decimal("5"), Decimal("5")),
+    )
+
+
+RULES_2009 = PrizeRuleset(
+    ruleset_id="dlt_2009_from_09121",
+    effective_from_draw_id="09121",
+    effective_through_draw_id="13144",
+    effective_from_date="2009-10-14",
+    jackpot_threshold_yuan=None,
+    floating_per_ticket_cap_yuan=Decimal("5000000"),
+    floating_total_cap_per_tier_yuan=None,
+    floating_award_notes=(
+        "Tiers 1-3 are floating (75%/20%/5% of the amount remaining after "
+        "fixed awards); additional betting pays 60% on floating tiers and "
+        "50% on fixed tiers 4-7. This module does not calculate floating awards."
+    ),
+    source_urls=(_RULES_2009_APPROVAL, _RULES_2009_EFFECTIVE),
+    tiers=_eight_tier_schedule(),
+)
+
+RULES_2013 = PrizeRuleset(
+    ruleset_id="dlt_2013_from_13145",
+    effective_from_draw_id="13145",
+    effective_through_draw_id="14051",
+    effective_from_date="2013-12-09",
+    jackpot_threshold_yuan=None,
+    floating_per_ticket_cap_yuan=Decimal("5000000"),
+    floating_total_cap_per_tier_yuan=None,
+    floating_award_notes=(
+        "The 2013 change primarily altered funding proportions to 51% prize, "
+        "14% issue expense, and 35% public welfare (with 49% current prize "
+        "and 2% adjustment fund). The eight-tier prize schedule and 60%/50% "
+        "additional multipliers remain as in the 2009 schedule."
+    ),
+    source_urls=(_RULES_2013_APPROVAL, _RULES_2013_EFFECTIVE),
+    tiers=_eight_tier_schedule(),
+)
 
 RULES_2014 = PrizeRuleset(
     ruleset_id="dlt_2014_from_14052",
@@ -202,7 +266,11 @@ def ruleset_for_draw(draw_id: str) -> PrizeRuleset:
         return RULES_2019
     if numeric_id >= 14052:
         return RULES_2014
+    if numeric_id >= 13145:
+        return RULES_2013
+    if numeric_id >= 9121:
+        return RULES_2009
     raise UnsupportedRulesetError(
-        f"draw {draw_id} predates the evidenced 2014 rules boundary; "
-        "2007-2014 historical rulesets remain unverified and must not be guessed"
+        f"draw {draw_id} predates the evidenced 2009 rules boundary; "
+        "the 2007-2009 historical ruleset remains unverified and must not be guessed"
     )
