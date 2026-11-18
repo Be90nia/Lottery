@@ -172,4 +172,4 @@ rules = ruleset_for_draw("26014")
 tier = rules.tier_for_hits(front_hits=4, back_hits=2)
 ```
 
-The registry supports the six-tier 2014 rules (14052–19018), nine-tier 2019 rules (19019–26013), and seven-tier 2026 rules (26014 onward). Draws before 14052 fail closed because their earlier rulesets remain unverified. Floating awards and promotion overlays are not calculated by this registry. See [versioned prize rules](docs/PRIZE_RULES.md).
+The registry supports eight-tier 2009/2013 rules (09121–14051), six-tier 2014 rules (14052–19018), nine-tier 2019 rules (19019–26013), and seven-tier 2026 rules (26014 onward). Draws before 09121 fail closed because pre-2009 rules remain unverified. Floating awards and promotion overlays are not calculated by this registry. See [versioned prize rules](docs/PRIZE_RULES.md).
