@@ -81,6 +81,13 @@ game rule:
   detailed result page reports ¥2,131 per additional winning bet. This is a
   secondary-source cross-check, not an official immutable source snapshot.
   [Detailed 16106 result](https://news.zgzcw.com/dlt/zx_193.shtml)
+- Draw 17062: the official Jiangsu result reports second prize basic/additional
+  as ¥191,426/¥114,855, third prize as ¥8,612/¥5,167, fourth prize as
+  ¥200/¥100, and fifth prize as ¥10/¥5. The legacy candidate instead records
+  values such as second prize ¥893,219/¥714,575 and third prize
+  ¥10,000/¥3,000, with winner counts that do not match the official page.
+  This is a clear multi-row candidate mapping failure.
+  [Official Jiangsu draw 17062](https://www.js-lottery.com/cms/post-77775.html)
 - Draw 26016, first prize: the official Jiangsu result reports basic ¥5,925,957
   and additional ¥4,740,766; draw 26029 reports basic ¥7,877,022 and additional
   ¥6,301,617. Both satisfy the 80% relationship within one yuan, but the
