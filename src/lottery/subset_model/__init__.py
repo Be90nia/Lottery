@@ -1,3 +1,4 @@
+from .exponential import ExponentialFamily, FitResult, logsumexp
 """Exact unordered-subset probability model primitives.
 
 The package is intentionally isolated from the legacy LOT-042 marginal forecast
@@ -19,7 +20,7 @@ from .support import (
 from .uniform import FeatureCell, FeatureStats, UniformFeatureTable, build_uniform_feature_stats, build_uniform_feature_table
 
 __all__ = [
-    "BACK_POPULATION", "BACK_SELECTION", "BACK_SUPPORT_SIZE",
+    "ExponentialFamily", "FitResult", "logsumexp", "BACK_POPULATION", "BACK_SELECTION", "BACK_SUPPORT_SIZE",
     "BASE_FEATURE_NAMES", "FeatureCell", "FeatureStats", "FRONT_POPULATION",
     "FRONT_SELECTION", "FRONT_SUPPORT_SIZE", "GAP_VARIANCE_FEATURE",
     "InvalidSubsetError", "UniformFeatureTable", "build_uniform_feature_stats",
