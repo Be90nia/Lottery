@@ -173,6 +173,100 @@ def _add_draw(rows: dict[str, Draw], row: Draw) -> None:
     rows[row.draw_id] = row
 
 
+
+def ingest_snapshot_directory(
+    snapshots_dir: Path,
+    output: Path = Path("data/processed/draws.jsonl"),
+    require_manifests: bool = False,
+) -> dict[str, Any]:
+    """Rebuild normalized draws from immutable JSON response snapshots offline."""
+    if not snapshots_dir.is_dir():
+        raise IngestionError(f"snapshot directory does not exist: {snapshots_dir}")
+    snapshot_paths = sorted(
+        path for path in snapshots_dir.glob("*.json")
+        if not path.name.endswith(".manifest.json")
+    )
+    if not snapshot_paths:
+        raise IngestionError(f"no JSON response snapshots found in {snapshots_dir}")
+
+    all_rows: dict[str, Draw] = {}
+    snapshot_reports: list[dict[str, Any]] = []
+    provenance_complete = True
+    for path in snapshot_paths:
+        raw = path.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        sidecar_path = path.with_name(path.stem + ".manifest.json")
+        sidecar: dict[str, Any] | None = None
+        if sidecar_path.exists():
+            try:
+                sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise IngestionError(f"{sidecar_path}: invalid JSON manifest") from exc
+            if not isinstance(sidecar, dict):
+                raise IngestionError(f"{sidecar_path}: manifest must be a JSON object")
+            if sidecar.get("sha256") != digest:
+                raise IngestionError(f"{sidecar_path}: SHA-256 does not match snapshot bytes")
+            if sidecar.get("raw_file") not in (None, path.name):
+                raise IngestionError(f"{sidecar_path}: raw_file does not match snapshot filename")
+            if sidecar.get("http_status") not in (None, 200):
+                raise IngestionError(f"{sidecar_path}: snapshot HTTP status is not 200")
+        else:
+            provenance_complete = False
+            if require_manifests:
+                raise IngestionError(f"{path}: required sidecar manifest is missing")
+
+        rows = _parse_page(raw, len(snapshot_reports) + 1, f"sha256:{digest}")
+        for row in rows:
+            _add_draw(all_rows, row)
+        required_provenance = (
+            isinstance(sidecar, dict)
+            and isinstance(sidecar.get("url"), str) and bool(sidecar.get("url"))
+            and isinstance(sidecar.get("retrieved_at"), str) and bool(sidecar.get("retrieved_at"))
+            and sidecar.get("http_status") == 200
+            and sidecar.get("sha256") == digest
+        )
+        if not required_provenance:
+            provenance_complete = False
+        snapshot_reports.append({
+            "raw_file": path.name,
+            "sha256": digest,
+            "bytes": len(raw),
+            "records": len(rows),
+            "sidecar_manifest": sidecar_path.name if sidecar is not None else None,
+            "provenance_complete": bool(required_provenance),
+        })
+
+    ordered = sorted(all_rows.values(), key=lambda row: (row.draw_date, row.draw_id))
+    from .validate import validate_records
+    validation = validate_records([asdict(row) for row in ordered])
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix(output.suffix + ".tmp")
+    temporary.write_text(
+        "".join(json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered),
+        encoding="utf-8",
+    )
+    temporary.replace(output)
+
+    manifest = {
+        "source": "offline import of immutable JSON response snapshots",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "parser_version": PARSER_VERSION,
+        "snapshot_count": len(snapshot_reports),
+        "snapshot_sha256": [item["sha256"] for item in snapshot_reports],
+        "snapshots": snapshot_reports,
+        "provenance_complete": provenance_complete,
+        "validation": validation,
+        "output_file": output.name,
+        "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "trust_status": "candidate_unverified" if not provenance_complete else "source_manifest_verified_not_semantically_authoritative",
+    }
+    manifest_path = output.with_suffix(output.suffix + ".manifest.json")
+    manifest_tmp = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
+    manifest_tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    manifest_tmp.replace(manifest_path)
+    return manifest
+
 def fetch_history(
     output: Path = Path("data/processed/draws.jsonl"),
     raw_dir: Path = Path("data/raw/sporttery"),
