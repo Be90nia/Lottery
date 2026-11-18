@@ -77,7 +77,7 @@ upstream-shaped `prizeLevelList` fields, while its original raw input is not
 available for independent lineage verification.
 
 The legacy candidate and archived API rows remain quarantined for payout
-truth. At minimum, issues 17045, 17052, 17062, and 17063 must be excluded from
+truth. At minimum, issues 07008, 17045, 17052, 17062, and 17063 must be excluded from
 payout calculations and prize-model targets until source conflicts are
 adjudicated. The full comparison and evidence links are documented in
 [OFFICIAL_API_PROVINCIAL_PRIZE_CONFLICTS_2026-11-18.md](OFFICIAL_API_PROVINCIAL_PRIZE_CONFLICTS_2026-11-18.md).
