@@ -17,6 +17,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .backtest import _scores, FRONT_SIZE, FRONT_PICK, BACK_SIZE, BACK_PICK
+from .ledger_lock import ledger_lock
 from .forecast import (
     GENESIS_HASH,
     ForecastLedgerError,
@@ -200,17 +201,23 @@ def create_outcome_event(
 
 def append_outcome(path: Path, event: dict[str, Any]) -> dict[str, Any]:
     path.parent.mkdir(parents=True, exist_ok=True)
-    state = verify_outcome_ledger(path)
-    existing = {item.get("target_draw_id") for item in _read_events(path)}
-    if event["target_draw_id"] in existing:
-        raise OutcomeLedgerError(f"outcome already exists for target {event['target_draw_id']}")
-    body = {"sequence": state["events"] + 1,
-            "previous_event_hash": state["last_event_hash"], **event}
-    record = {**body, "event_hash": _event_hash(body)}
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
-        handle.flush()
-    return {"sequence": record["sequence"], "event_hash": record["event_hash"]}
+    _validate_outcome_payload(event)
+    # Lock before reading the chain: sequence, previous hash, duplicate check,
+    # and append must be one cross-process transaction.
+    with ledger_lock(path):
+        state = verify_outcome_ledger(path)
+        existing = {item.get("target_draw_id") for item in _read_events(path)}
+        if event["target_draw_id"] in existing:
+            raise OutcomeLedgerError(f"outcome already exists for target {event['target_draw_id']}")
+        body = {"sequence": state["events"] + 1,
+                "previous_event_hash": state["last_event_hash"], **event}
+        record = {**body, "event_hash": _event_hash(body)}
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\\n")
+            handle.flush()
+            import os
+            os.fsync(handle.fileno())
+        return {"sequence": record["sequence"], "event_hash": record["event_hash"]}
 
 
 def score_ledgers(forecast_path: Path, outcome_path: Path) -> dict[str, Any]:
