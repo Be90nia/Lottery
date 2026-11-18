@@ -35,8 +35,9 @@
 - [ ] LOT-038 Promote a versioned canonical dataset only after source overlap, completeness, and prize-field checks pass.
 - [ ] LOT-039 Investigate early-era front-zone frequency deviations using authoritative equipment and ball-set histories, then run predeclared stratified tests.
 - [x] LOT-040 Run the rolling-origin benchmark against the repository dataset in CI; first complete report archived as a GitHub Actions artifact. Initial performance is exploratory only.
-- [ ] LOT-041 Add paired moving-block bootstrap confidence intervals for Brier/log-loss differences versus uniform and review stability across predeclared periods.
+- [x] LOT-041 Add paired moving-block bootstrap confidence intervals for Brier/log-loss differences versus uniform; results recorded in docs/INITIAL_BACKTEST_RESULTS.md. Period stability review remains open.
 - [ ] LOT-042 Define a later untouched holdout and a preregistered model-selection protocol before any parameter tuning.
+- [ ] LOT-043 Repeat paired score comparisons within predeclared calendar eras and assess stability without tuning on those eras.
 
 ## Acceptance criteria
 
