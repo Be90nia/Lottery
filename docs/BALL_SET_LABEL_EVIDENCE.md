@@ -235,3 +235,32 @@ If any slot has insufficient history, unresolved regime, or incomplete primary e
 ### Current evidence consequence
 
 The presently known chronology does not yet provide an adjudicated historical regime boundary or physical continuity map. Therefore no historical record may be assigned to a stable physical-set model slot solely from its printed set index. The C1 11105/11119 reports remain discovery leads only; the official 11004 retrospective is B1, not an A1/A2 per-draw observation. These records cannot satisfy the primary-verified slot-training rule.
+
+
+## 8. Reproducible evidence coverage report
+
+LOT-058 must publish a reproducible coverage report from the canonical draw inventory and immutable observation ledger. This is descriptive evidence accounting; it must not infer labels/regimes and does not itself establish predictive readiness.
+
+### 8.1 Global evidence accounting
+
+Report counts and percentages against the exact canonical inventory denominator (read and verify the pinned snapshot; do not hardcode the current 2,949-row count): unique draw IDs; draws with at least one A1/A2 observation; draws with explicit A1/A2 labels and matched draw ID/date; B1-only; C1-only; missing label; source unavailable; parse error; draw mismatch; unresolved conflict; multiple official observations and agreement status; verified label with unresolved regime; and draws eligible for a regime-scoped slot after adjudication. Count each draw once in draw-level coverage, not once per source observation; preserve observation counts separately. Report official-label coverage and regime-assignment coverage separately.
+
+### 8.2 Per-regime × set-index table
+
+For each adjudicated (equipment_regime_id, reported_set_index), report primary-verified unique draw count; first/last draw ID and date; distinct calendar years and per-year counts; expected draws within the adjudicated regime interval; verified/missing counts and coverage rate; longest consecutive missing run measured in canonical inventory positions; largest gap between verified draws in inventory positions and elapsed days; conflicts, superseded observations, duplicate source observations, unresolved records; count of targets with at least 300 strictly earlier same-key verified training rows; first eligible target ID/date; and total eligible target count.
+
+Only calculate a regime-interval denominator when start/end boundaries are officially adjudicated. If boundaries are unresolved, set denominator_status=unknown_regime_boundary and leave expected count/coverage rate null. Never substitute the full historical dataset as denominator.
+
+### 8.3 Eligibility curve and target ledger
+
+For every canonical target draw, emit one row per candidate slot key: target ID/date; target label status and source observation IDs; target regime/index if primary-verified and adjudicated; prior same-key verified count strictly before cutoff; eligible boolean; exclusion reason (target_label_missing, target_label_not_primary, regime_unresolved, conflict, below_minimum_history, regime_not_stable, etc.). Show how eligible target counts accumulate as the 300-row minimum is reached. Keep the threshold fixed; do not tune it from performance.
+
+### 8.4 Output and reproducibility
+
+Publish machine-readable JSON, CSV tables, and a human-readable Markdown summary. Include schema version, generation timestamp, canonical inventory hash, evidence-ledger snapshot hash, regime adjudication version/hash, parser version set, code commit, and explicit denominators. Deterministic content hash excludes volatile generation timestamp and is computed over canonicalized report payload. Every aggregate must trace to row-level observation IDs and inventory draw IDs.
+
+Never count B1/C1 as verified; never infer a missing label; never map source_equipment_count to set index; never assign regime from date proximity alone. Surface source conflicts rather than silently choosing one.
+
+### 8.5 Current official source-format examples
+
+Recent official provincial per-draw pages demonstrate that the literal label is available in individual announcement bodies: Jiangsu's 26130 page states “本期使用第1套摇奖球”; 26131 states set 2; 26128 states set 3. These are useful parser fixtures for the explicit phrase and draw-ID/date matching, not evidence of historical physical identity continuity or complete archive coverage. Archive exact response bytes and metadata before treating any observation as verified.
