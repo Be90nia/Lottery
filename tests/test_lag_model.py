@@ -1,7 +1,10 @@
 import math
 import unittest
 
-from lottery.lag_model import lag_probabilities, rolling_origin_lag_backtest
+from lottery.lag_model import (
+    _fit_coefficients, _fit_coefficients_from_cells, _prefix_training_cells,
+    lag_probabilities, rolling_origin_lag_backtest,
+)
 
 
 def draw(draw_id, front, back):
@@ -32,6 +35,16 @@ class LagModelTests(unittest.TestCase):
         self.assertAlmostEqual(sum(back), 2.0, places=8)
         self.assertTrue(all(0 < p < 1 for p in front + back))
         self.assertTrue(all(math.isfinite(value) for value in front_theta + back_theta))
+
+    def test_prefix_sufficient_statistics_match_direct_historical_fit(self):
+        rows = self.sample_rows()
+        counts, successes = _prefix_training_cells(rows, "front_numbers", 35)
+        direct, _ = _fit_coefficients(rows[:9], "front_numbers", 35, 5)
+        prefix, _ = _fit_coefficients_from_cells(
+            counts[9], successes[9], 5, 35
+        )
+        for left, right in zip(direct, prefix):
+            self.assertAlmostEqual(left, right, places=9)
 
     def test_prediction_uses_only_four_prior_draws(self):
         rows = self.sample_rows()
