@@ -161,3 +161,26 @@ table against an independent contemporaneous result source or a verifiable
 official central archive, including promotion overlays and additional-bet
 rows. Where sources disagree, preserve both values and mark the draw/field
 unresolved. No automatic repair is authorized by this report.
+
+
+## Expanded early-era audit: issues 07006–07011
+
+A draw-by-draw comparison of the archived API rows with six contemporaneous
+Jiangsu Sports Lottery result announcements found a repeated structural
+discrepancy. In every issue from 07006 through 07011, the API's fourth- and
+fifth-prize additional rows duplicate the same unit amounts and winner counts
+as the corresponding basic rows. The provincial main-game additional-bet
+tables list first, second, and third prize only; they do not list fourth- or
+fifth-prize additional awards.
+
+For 07006, 07007, 07009, 07010, and 07011, the API third-prize additional
+amount/count also matches the provincial announcement. For 07008, the API
+reports ¥4,528 × 6 while the provincial announcement reports ¥4,582 × 6.
+The per-draw comparisons and exact values are recorded in
+[EARLY_2007_ADDITIONAL_PRIZE_AUDIT_2026-11-18.md](EARLY_2007_ADDITIONAL_PRIZE_AUDIT_2026-11-18.md).
+
+Issues 07006–07011 have therefore been added to the minimum known quarantine
+set. This is a conservative draw-level exclusion while the source rows are
+adjudicated; it does not mean the basic-prize rows in every one of those draws
+are themselves proven wrong. Issues 07001–07005 show a similar API row shape
+but remain unconfirmed leads, not confirmed conflicts.
