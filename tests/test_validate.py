@@ -63,6 +63,8 @@ class DatasetValidationTests(unittest.TestCase):
     def test_raw_source_metadata_is_optional_and_preserved(self):
         row = record()
         row["source_unsort_drawresult"] = "02 11 18 19 29 04 07"
+        row["front_draw_order"] = [2, 11, 18, 19, 29]
+        row["back_draw_order"] = [4, 7]
         row["source_equipment_count"] = 2
         self.assertEqual(validate_records([row])["records"], 1)
 
