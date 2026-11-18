@@ -40,7 +40,7 @@ A(θ) = log Σ_{T in Ω} exp(θᵀ z(T)).
 
 For a training window D with n observed subsets, fit θ by minimizing:
 
-L(θ) = −Σ_{S∈D} θᵀz(S) + n A(θ) + (λ/2)||θ||².
+L(θ) = −(1/n)Σ_{S∈D} θᵀz(S) + A(θ) + (λ/2)||θ||².
 
 Initial fixed implementation proposal: λ = 1.0, L-BFGS-B, zero initialization, maximum 5,000 iterations, gradient infinity-norm stopping tolerance 1e−8. These values are fixed design defaults, not tuned results. Any change must be made before the confirmatory evaluation is run and recorded in the preregistration; no target-wise, era-wise, or post-score tuning is permitted.
 
@@ -288,3 +288,9 @@ For EWMA with half-life h=100 draws, assign each prior training draw s at chrono
 The EWMA weights and counts use only draws strictly earlier than the target. The same fixed-size sum and interior constraints hold. Both target-marginal vectors are passed to the exact conditional-Poisson calibration routine; store the input target marginals, calibrated log weights, achieved marginals, and residual. If calibration fails, record a failed baseline for that target; do not replace it with independent Bernoulli sampling or silently substitute the uniform model.
 
 These formulas are the frozen baseline semantics. Do not retune α or h per target, zone, regime, or observed performance.
+
+### Regularization scale invariant across rolling-origin training sizes
+
+The objective is the mean per-observation negative log likelihood plus the fixed L2 penalty, not the summed negative log likelihood. This keeps the effective regularization strength constant as the expanding training window grows from the minimum 300 draws to later cutoffs. The fixed default λ=1.0 is interpreted on this mean-loss scale and is not retuned by target, zone, or era.
+
+Report both the unregularized mean NLL and penalized objective for each fit. The optimizer gradient is the mean-likelihood gradient plus λθ. Add a property test that exact replication of every training row leaves the mean objective, gradient, and fitted optimum unchanged (up to numerical tolerance); this catches accidental reintroduction of a summed-loss penalty. This is a design correction made before confirmatory evaluation; no historical target scores have been inspected to choose it.
