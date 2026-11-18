@@ -103,6 +103,19 @@ provincial announcement.
 Source: [Jiangsu Sports Lottery, issue 17045](https://www.js-lottery.com/cms/post-77220.html),
 published 2017-04-22; see the prize table around lines 89–105.
 
+## Nearby control: issue 17061 matches
+
+The immediately preceding issue 17061 provides a useful control. The API
+snapshot's second prize (¥65,013 / 116 winners), second-prize additional
+(¥39,007 / 53), third prize (¥3,223 / 878), fourth prize (¥200 / 39,951),
+fifth prize (¥10 / 712,112), and sixth prize (¥5 / 5,988,421) match the
+Jiangsu announcement's corresponding figures exactly. This shows the
+17062–17063 conflicts are not explained by a blanket formatting or rounding
+difference affecting every draw in that neighborhood.
+
+Source: [Jiangsu Sports Lottery, issue 17061](https://www.js-lottery.com/cms/post-77749.html),
+published 2017-05-29; see the prize table around lines 89–102.
+
 ## Consequences and handling
 
 1. Keep the raw API archive unchanged. It is evidence of what that API returned,
