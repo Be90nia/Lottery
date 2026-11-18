@@ -163,6 +163,8 @@ def _add_draw(rows: dict[str, Draw], row: Draw) -> None:
             and previous.back_numbers == row.back_numbers
             and previous.front_draw_order == row.front_draw_order
             and previous.back_draw_order == row.back_draw_order
+            and previous.source_unsort_drawresult == row.source_unsort_drawresult
+            and previous.source_equipment_count == row.source_equipment_count
         )
         if not same_result:
             raise IngestionError(f"conflicting duplicate draw_id: {row.draw_id}")
