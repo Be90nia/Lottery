@@ -52,6 +52,9 @@ def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
             errors.append(f"row {index} ({draw_id}): back_numbers must be distinct values in 1..12")
         if not isinstance(row["source_id"], str) or not row["source_id"]:
             errors.append(f"row {index} ({draw_id}): source_id must be non-empty")
+        raw_order = row.get("source_unsort_drawresult")
+        if raw_order is not None and not isinstance(raw_order, str):
+            errors.append(f"row {index} ({draw_id}): source_unsort_drawresult must be a string or null")
         front_order, back_order = row.get("front_draw_order"), row.get("back_draw_order")
         if (front_order is None) != (back_order is None):
             errors.append(f"row {index} ({draw_id}): front/back draw order must both be present or both be null")
