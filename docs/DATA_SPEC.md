@@ -16,6 +16,8 @@ This document defines a target schema. It is not a claim that every historical s
 | ruleset_id | string | required when resolved | Rule version applicable to draw |
 | equipment_id | string | nullable | Equipment metadata with source |
 | ball_set_id | string | nullable | Ball-set metadata with source |
+| source_unsort_drawresult | string | nullable | Exact source field value, retained for audit; not itself proof of physical draw sequence |
+| source_equipment_count | source scalar | nullable | Exact source metadata value; do not map to equipment identity without documentation |
 
 ## Prize record
 
@@ -26,6 +28,8 @@ Suggested fields: draw_id, tier_code, source_tier_label, base_winners, base_amou
 Amounts should use integer minor currency units (for example, fen) or decimal arithmetic, never binary floating-point for financial reconciliation.
 
 ## Provenance
+
+The ingestion JSONL also retains the upstream `lotteryUnsortDrawresult` and `lotteryEquipmentCount` values in explicitly source-named fields. These are evidence-preservation fields, not normalized claims about physical draw order, machine identity, or ball-set identity. Exact response bytes remain the primary evidence.
 
 Every source snapshot should record:
 - source URL and source organization
