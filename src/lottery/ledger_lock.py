@@ -50,8 +50,18 @@ def ledger_lock(ledger_path: Path, timeout: float = 30.0) -> Iterator[None]:
         else:
             import fcntl
 
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            locked = True
+            deadline = time.monotonic() + timeout
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    locked = True
+                    break
+                except BlockingIOError as exc:
+                    if time.monotonic() >= deadline:
+                        raise LedgerLockError(
+                            f"timed out acquiring ledger lock {lock_path}"
+                        ) from exc
+                    time.sleep(0.05)
         yield
     finally:
         if locked:
