@@ -399,3 +399,18 @@ Model-family identity includes probability definition, support, feature schema, 
 Three serving slots must not be called independent merely because labels, seeds, artifact IDs or hyperparameters differ. Record each slot's verified population/evidence key, family/schema, training draw IDs/hash/cutoff, fitting lineage, artifact identity, distribution diagnostics and pairwise training-population overlap. Distinguish distinct artifact, distinct fit, distinct population, distributionally distinct, and statistically independent. The last claim requires a formal definition and preregistered evidence protocol; current ball-set slots are regime-aware historical populations, not proven physical causal models. If fewer than three slots qualify, three-slot serving remains unavailable with no duplication, relabeling, seed-shifting, pooling or borrowing.
 
 Experiment ranking is not production promotion. LOT-060 alone controls challenger/shadow/Champion transitions. No leaderboard or researcher override may directly mutate the Champion registry.
+
+
+## 21. Durable storage, atomic publication, and recovery
+
+Canonical raw evidence, canonical snapshots, model artifacts, evaluation outputs, and event/receipt ledgers are durable immutable objects. GitHub Actions artifacts and caches are transport/ephemeral storage only, never the canonical source of truth. Mutable active-inventory and Champion references are small versioned registries updated only by compare-and-swap (CAS).
+
+Every immutable object is content-addressed and records exact byte length, SHA-256, schema/media version, producer commit/runtime, input references, and retention policy. Publication follows stage → read-back hash verification → schema/semantic validation → immutable conditional create → durable commit receipt → CAS pointer update → pointer read-back verification. A green workflow without a durable commit receipt is not a successful publication. Previous referenced objects are never deleted during publication.
+
+Distributed transactions across Actions, object storage, Git and registries are not assumed. Operations use durable state machines, idempotency keys, attempt records and fencing tokens. Same key/same inputs resumes or returns the same logical result; same key/different inputs conflicts. Stale workers cannot publish or update pointers. Orphan staged or committed-but-unreferenced objects are handled by read-only reconciliation first; repair is explicit and audited.
+
+Canonical inventory correction creates a new snapshot with supersedes lineage. Model artifacts are fully stored and validated before Champion registry CAS. Three-slot Champion state is published as one complete registry generation. Prediction batches stage all 3N tickets and provenance, verify legality and ledger hashes, then publish one final committed batch reference; any failure means no visible partial batch. Forecast/outcome/score records remain append-only.
+
+Backups cover raw evidence, snapshots, artifacts, ledgers, registries, policy/schema/code references and key-recovery metadata. Backups are isolated from the primary failure domain, hash-verified, and periodically restored in an isolated environment. A successful backup job alone does not prove recoverability. RPO/RTO must be measured and approved from restore drills; do not invent targets. Schema migrations write new immutable objects and preserve original bytes and lineage.
+
+Production remains disabled until fault-injection tests cover crashes at each write/publish boundary, duplicate/replayed requests, stale leases, concurrent CAS, corruption, reconciliation, backup restore, schema incompatibility and secret-leak checks.
