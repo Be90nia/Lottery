@@ -144,6 +144,13 @@ References:
 - [Versioned prize rules and source-quality notes](PRIZE_RULES.md)
 - [Data provenance specification](DATA_SPEC.md)
 
+The legacy source cleaner itself has a separate lineage audit:
+[LEGACY_PRIZE_TRANSFORM_AUDIT.md](LEGACY_PRIZE_TRANSFORM_AUDIT.md).
+Its replacement is tracked by
+[LOT-049](https://github.com/Be90nia/Lottery/issues/7); the current candidate
+prize files remain unchanged and unverified until source-preserving re-ingestion
+is possible.
+
 ## Next gates
 
 1. Obtain official immutable raw prize snapshots and verify each candidate
