@@ -92,25 +92,30 @@ Unit tests cover source metadata retention, malformed order-field types, and con
 A targeted search found a useful primary-source cross-check on the official Chongqing Sports Lottery Center website. The site's institutional page identifies the publisher as the Chongqing Sports Lottery Management Center, a public institution under the Chongqing Municipal Sports Bureau, and identifies `www.cqtcw.net` as its official website:
 - https://www.cqtcw.net/h5/aritcle/1343894432881582080/h5/content_1343894432881582080.html
 
-### Exact row-level match: draw 26083
+### Exact row-level matches: 2017 and 2026
 
-The official draw announcement for 26083 (2026-07-25) exposes both the sorted result and the explicitly labelled “本期出球顺序”, and states “本期使用第3套摇奖球”:
-- Official announcement: https://www.cqtcw.net/h5/aritcle/1534974555978928128/h5/content_1534974555978928128.html
-- Human-readable announcement version: https://www.cqtcw.net/h5/aritcle/1534974555978928128/h5/content_1534974555978928128.html
+The official Jiangsu Sports Lottery Center and Chongqing Sports Lottery Center announcements explicitly publish “本期出球顺序” and “本期使用第N套摇奖球”. The official-site identity is visible in the site footers; the Jiangsu announcement footer states “江苏省体育彩票管理中心版权所有”, while the Chongqing institutional page identifies the Chongqing Sports Lottery Management Center as a public institution under the Chongqing Municipal Sports Bureau.
 
-The announcement's underlying source fields are:
-- `drawResult`: `14+15+16+23+26 07+09`
-- `unSortDrawResult`: `15+16+23+26+14 09+07`
-- `lotteryEquipmentCount`: `3`
+Five records were cross-checked against the repository's legacy candidate blob. In every case, the sorted numbers, front/back order arrays, and equipment code match the official announcement exactly:
 
-The repository's legacy candidate row 26083 matches these values exactly:
-- `front_numbers`: `[14, 15, 16, 23, 26]`
-- `back_numbers`: `[7, 9]`
-- `front_draw_order`: `[15, 16, 23, 26, 14]`
-- `back_draw_order`: `[9, 7]`
-- `equipment_code_legacy`: `3`
+| Draw | Official date | Official front draw order | Official back draw order | Ball set | Legacy row |
+|---|---|---|---|---:|---|
+| 17045 | 2017-04-22 | 21, 08, 35, 01, 11 | 09, 12 | 2 | Exact match |
+| 17052 | 2017-05-08 | 24, 28, 33, 19, 03 | 12, 04 | 3 | Exact match |
+| 17062 | 2017-05-31 | 06, 08, 01, 28, 04 | 12, 08 | 2 | Exact match |
+| 17145 | 2017-12-11 | 04, 18, 19, 17, 07 | 10, 03 | 2 | Exact match |
+| 26083 | 2026-07-25 | 15, 16, 23, 26, 14 | 09, 07 | 3 | Exact match |
 
-This is a direct, exact row-level crosswalk. For draw 26083 it confirms that the legacy order arrays preserve the official announcement's published draw-order sequence, and that the legacy equipment value 3 corresponds to the announcement's “第3套摇奖球”. It is evidence for the semantics of these fields in this row, not proof that every legacy row has the same provenance or that all historical code values are correctly mapped.
+Official announcements:
+- 17045: https://www.js-lottery.com/cms/post-77220.html
+- 17052: https://www.js-lottery.com/cms/post-77436.html
+- 17062: https://www.js-lottery.com/cms/post-77775.html
+- 17145: https://www.js-lottery.com/cms/post-80978.html
+- 26083: https://www.cqtcw.net/h5/aritcle/1534974555978928128/h5/content_1534974555978928128.html
+
+For example, draw 17045's official result is `01 08 11 21 35 / 09 12`, its published draw order is `21 08 35 01 11 / 09 12`, and it used ball set 2. The candidate row has `front_draw_order=[21,8,35,1,11]`, `back_draw_order=[9,12]`, and `equipment_code_legacy=2`. The same exact correspondence holds for the other four rows.
+
+This is now more than a structural plausibility check: it is five direct row-level crosswalks spanning 2017 and 2026, including equipment codes 2 and 3. It supports interpreting the order arrays as the official published draw-order sequence and the equipment code as a numbered draw-ball set for these records. It still does not prove that all 2,341 legacy rows were faithfully copied, nor does it define every operational detail of the physical extraction sequence.
 
 ### Independent recent examples
 
