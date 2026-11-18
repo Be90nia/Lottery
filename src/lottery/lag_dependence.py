@@ -166,6 +166,7 @@ def zone_diagnostics(rows: list[dict[str, Any]], zone: tuple[str, str, int, int]
             "statistic": "maximum_absolute_standardized_ordered_transition",
             "observed_max_statistic": observed_stat,
             "exact_circular_shift_p": p_value,
+            "p_value": p_value,
             "null_shifts": shift_count,
             "p_value_resolution": 1 / shift_count,
         })
