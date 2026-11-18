@@ -93,7 +93,7 @@ The ledger is not a digital signature or proof of source authenticity. See
 eligibility, archival, and analysis rules. The prospective test has not started.
 
 
-### Post-draw outcome capture and scoring (in progress)
+### Post-draw outcome capture and scoring
 
 After a result is officially published and its raw response snapshot is
 captured, `scripts/outcome_ledger.py` can append a separately hash-chained
