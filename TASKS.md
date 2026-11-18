@@ -34,7 +34,9 @@
 - [ ] LOT-037 Extend the candidate dataset from draw 26083 through the latest verified official draw (official provincial result page currently exposes draw 26131 dated 2026-11-16; reconcile the intervening 48 draws before use).
 - [ ] LOT-038 Promote a versioned canonical dataset only after source overlap, completeness, and prize-field checks pass.
 - [ ] LOT-039 Investigate early-era front-zone frequency deviations using authoritative equipment and ball-set histories, then run predeclared stratified tests.
-- [ ] LOT-040 Run the new rolling-origin benchmark against the repository dataset in CI; review test logs and preserve the JSON report before interpreting model performance.
+- [x] LOT-040 Run the rolling-origin benchmark against the repository dataset in CI; first complete report archived as a GitHub Actions artifact. Initial performance is exploratory only.
+- [ ] LOT-041 Add paired moving-block bootstrap confidence intervals for Brier/log-loss differences versus uniform and review stability across predeclared periods.
+- [ ] LOT-042 Define a later untouched holdout and a preregistered model-selection protocol before any parameter tuning.
 
 ## Acceptance criteria
 
