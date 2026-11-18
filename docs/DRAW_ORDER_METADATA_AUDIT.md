@@ -131,7 +131,7 @@ Official announcements:
 
 For example, draw 17045's official result is `01 08 11 21 35 / 09 12`, its published draw order is `21 08 35 01 11 / 09 12`, and it used ball set 2. The candidate row has `front_draw_order=[21,8,35,1,11]`, `back_draw_order=[9,12]`, and `equipment_code_legacy=2`. The same exact correspondence holds for the other four rows.
 
-This is now more than a structural plausibility check: it is thirteen direct row-level crosswalks spanning 2017, 2018, 2020, and every year from 2022 through 2026, and covering equipment codes 1, 2, and 3. It supports interpreting the order arrays as the official published draw-order sequence and the equipment code as the numbered draw-ball set for these records. It still does not prove that all 2,341 legacy rows were faithfully copied, nor does it define every operational detail of the physical extraction sequence.
+This is now more than a structural plausibility check: it is thirteen direct row-level crosswalks spanning 2017, 2018, 2020, and every year from 2022 through 2026, and covering equipment codes 1, 2, and 3. It supports interpreting the order arrays as the official published draw-order sequence and the equipment code as the numbered draw-ball set for these records. However, this is a purposive/convenience sample assembled from searchable official announcements and adjacent issue links, not a random or representative sample; it cannot estimate the error rate of the remaining rows. It still does not prove that all 2,341 legacy rows were faithfully copied, nor does it define every operational detail of the physical extraction sequence.
 
 ### Independent recent examples
 
