@@ -250,3 +250,23 @@ Every operation must reject invalid dimensions, schema mismatches, duplicate or 
 Front and back are separate calls with support (35,5) and (12,2). The combined ticket distribution is the declared factorized product assumption only; the engine must not imply a learned cross-zone dependence. All public APIs must be deterministic for fixed inputs except `sample_subsets`, whose randomness is fully injected and recorded.
 
 Implementations should expose a lightweight support descriptor so callers can query support size and schema without materializing all subsets. The complete front support is small enough for exact enumeration (324,632 subsets); no Monte Carlo approximation is permitted for the preregistered full-support normalizer or exact uniform moments.
+
+## 12. Exact conditional-Poisson normalization and calibration
+
+For the fixed-size weighted-subset family, define positive item weights w_i = exp(η_i), with the scale gauge fixed by Σ_i η_i = 0. The normalizer is the elementary symmetric polynomial
+
+e_k(w_1,…,w_m) = Σ_{S:|S|=k} ∏_{i∈S} w_i.
+
+The probability of subset S is ∏_{i∈S}w_i / e_k(w). This is a fixed-size distribution, not independent Bernoulli sampling.
+
+An implementation may use full subset enumeration, or the exact dynamic-programming recurrence below. It must not approximate the normalizer:
+
+- E[i,0] = 1; E[0,j>0] = 0.
+- E[i,j] = E[i−1,j] + w_i E[i−1,j−1].
+- Compute in log space using logaddexp to avoid overflow/underflow.
+- The final log normalizer is log E[m,k].
+- The inclusion marginal is π_i = w_i e_{k−1}(w_{−i}) / e_k(w), computed with prefix/suffix DP or an equivalently exact stable method.
+
+Calibration minimizes the convex log-partition dual A(η) − ηᵀπ_target under the zero-sum gauge, where A=log e_k(exp η). The target must satisfy 0 < π_i < 1 and Σ_i π_i = k within a declared input tolerance. A boundary target, non-finite value, wrong sum, or solver non-convergence is an explicit failure. After calibration, independently recompute achieved marginals and require max absolute residual ≤ 1e−8; record both target and achieved vectors, solver status, objective, gradient norm, iteration count, and residual. Never silently renormalize invalid targets or accept a fit based only on optimizer success.
+
+For exact sampling, use the same suffix DP to choose whether item i is included conditional on the remaining selection count, with probability w_i E[i−1,r−1] / E[i,r] in the corresponding prefix recurrence (or an algebraically equivalent reverse traversal). Inject the RNG; return exactly k distinct indices. Tests must compare DP normalizers and marginals with brute-force enumeration for small m,k, verify permutation equivariance, and verify empirical sampling frequencies against exact marginals within predeclared Monte Carlo tolerance. The Monte Carlo check validates the sampler only; it must never replace exact normalization or calibration.
