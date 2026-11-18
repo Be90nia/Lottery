@@ -1,35 +1,57 @@
 # Ball-set label evidence and data readiness
 
-**Status: three-set semantics confirmed; historical row-level coverage still blocked pending an archival audit.** This document does not identify any numeric equipment-count field as a physical ball-set ID.
+**Status: multiple official equipment regimes are confirmed; the transition date and historical row-level coverage remain unresolved.** This document does not identify any numeric equipment-count field as a physical ball-set ID.
 
-## 1. What authoritative sources establish
+## 1. Authoritative evidence: the equipment regime changed or was described differently over time
 
-### 1.1 Three formal physical sets exist
+### 1.1 Initial 2007 procedure described two formal sets
 
-The State General Administration of Sport article “体彩品牌开放日：细节见证公信力” states that Super Lotto has three sets of formal draw balls, that all are kept by notaries, and that the set used on a given draw day is selected before the draw under notarial supervision:
+The State General Administration of Sport's “超级大乐透”开奖流程 article, published 2007-06-04 shortly after the game's first draw, states that the host/onsite audience selected one set from **two formal sets of draw balls** for that day's draw:
+
+- https://www.sport.gov.cn/cpzx/n5649/c663435/content.html
+- Published 2007-06-04; paragraph 2 of the procedure.
+
+This is contemporaneous official evidence for a two-set procedure at launch.
+
+### 1.2 Official material by 2019 describes three formal sets
+
+The State General Administration of Sport article “体彩品牌开放日：细节见证公信力” states that Super Lotto has three sets of formal draw balls, all kept by notaries, and that the set used on a given draw day is selected before the draw under notarial supervision:
 
 - https://www.sport.gov.cn/n20001280/n20067608/n20067637/c27201503/content.html
 
-The official China Sports Lottery 2019 Social Responsibility Report independently describes the three sets and their inspection/handling requirements:
+The official China Sports Lottery 2019 Social Responsibility Report independently describes three sets and their inspection/handling requirements:
 
 - https://www.sport.gov.cn/n315/n20067006/c20260981/part/20260998.pdf
-- Printed page 49, section “体彩彩票乐透摇奖球” (PDF page content around lines 1196–1208 in parsed text).
+- Printed page 49, section “体彩彩票乐透摇奖球”.
 
-These sources confirm the physical three-set concept. They do not map historical draw IDs to a set.
+**The exact transition date, the reason for the change, and whether set identities were carried forward or renumbered are not established by these sources.** Do not infer them. The historical span from 2007 to 2019 must therefore include an unresolved regime boundary until authoritative transition evidence is found.
 
-### 1.2 Individual official draw announcements can publish the set used
+### 1.3 Individual official draw announcements can publish the set index
 
 The following Guangdong Sports Lottery draw-announcement pages explicitly state “本期使用第X套摇奖球”:
 
-| Draw | Date | Officially stated set | Source |
+| Draw | Date | Officially stated index | Source |
 |---|---|---:|---|
 | 26104 | 2026-09-12 | 2 | https://www.gdlottery.cn/f_html/kjgg/P085_26104.html |
 | 26106 | 2026-09-16 | 3 | https://gdlottery.cn/f_html/kjgg/P085_26106.html |
-| 26110 | 2026-09-26 | 1 | https://gdlottery.cn/f_html/kjgg/P085_26110.html |
+| 26110 | 2026-09-26 | 1 | https://www.gdlottery.cn/f_html/kjgg/P085_26110.html |
 
-These examples establish that an explicit per-draw label is published in at least some provincial official result records. They are examples, not a complete coverage audit for the 2,949-row historical snapshot.
+These examples prove that explicit per-draw indices are published in at least some official provincial result records. They do not prove complete historical coverage or establish that an index has the same physical identity across equipment regimes.
 
-## 2. What the repository currently establishes
+## 2. Consequences for the historical data model
+
+A single timeless three-class label is not valid for the entire 2007–present dataset based on current evidence.
+
+The evidence ledger must distinguish:
+- equipment regime (for example, documented two-set regime, documented three-set regime, unresolved transition/unknown);
+- the official per-draw set index within that regime;
+- whether the physical identity is known to continue across a regime transition.
+
+Do not assume that “set 1” in the two-set period is the same physical equipment as “set 1” in the three-set period. Only explicit official continuity/renumbering evidence can establish that mapping.
+
+The 2007 source documents the two-set procedure at launch; the 2019 sources document a three-set regime by 2019. They do not establish the exact effective date of the transition. This interval is a required research item, not a date to be guessed.
+
+## 3. What the repository currently establishes
 
 The canonical ingestion schema retains the upstream `lotteryEquipmentCount` value as `source_equipment_count` and `lotteryUnsortDrawresult` as `source_unsort_drawresult`. These are raw source fields, not normalized claims about physical ball-set identity or actual draw sequence.
 
@@ -39,42 +61,43 @@ The independently cross-checked PickWise snapshot corroborates selected numbers 
 
 The canonical official history collector currently consumes draw number, draw date, and selected-number result; it does not yet archive and parse the explicit “本期使用第X套摇奖球” field from per-draw official announcements.
 
-## 3. Required archival coverage audit
-
-The next task is not to re-prove that three sets exist. It is to establish how completely and reproducibly official per-draw labels can be recovered.
+## 4. Required archival coverage and regime audit
 
 1. Enumerate every draw ID in the frozen 2,949-row canonical dataset.
-2. Resolve each draw to an official national or provincial result-announcement URL. Record the selected authority/domain and the exact source URL.
-3. Preserve the exact HTML/PDF response bytes, retrieval timestamp, SHA-256, and parser version. A search snippet is discovery evidence only, not an archived row-level source.
-4. Extract a set label only when the official per-draw source explicitly states “本期使用第1/2/3套摇奖球”. Do not infer from adjacent draws or other fields.
-5. Assign distinct statuses: `verified_set_1`, `verified_set_2`, `verified_set_3`, `missing_official_label`, `conflicting_official_sources`, and `unavailable_record`.
-6. Publish a row-level mapping with source URL/hash and extraction evidence for every verified row.
-7. Report coverage by calendar year, draw era, and source domain; include missingness, conflicts, first/last verified draw per set, longest gaps, and the denominator of all eligible draws.
-8. Manually verify a stratified sample and every conflict against the archived source bytes. Independent reviewers must be able to reproduce the mapping without inspecting drawn-number patterns.
+2. Resolve each draw to an official national or provincial result-announcement URL. Preserve exact HTML/PDF response bytes, retrieval timestamp, SHA-256, and parser version.
+3. Extract a set index only when the official per-draw source explicitly states “本期使用第X套摇奖球”. A search snippet is discovery evidence only, not an archived row-level source.
+4. Find authoritative evidence for the two-set to three-set transition date, including any equipment replacement, renumbering, or continuity statement. If no exact date can be established, retain an unresolved regime interval and exclude it from cross-regime identity claims.
+5. Assign separate statuses: `verified_two_set_regime_index_1/2`, `verified_three_set_regime_index_1/2/3`, `unknown_regime`, `missing_official_label`, `conflicting_official_sources`, and `unavailable_record`.
+6. Publish a row-level map with draw ID, draw date, regime ID, official index, source URL/hash, parser version, and extraction evidence.
+7. Report coverage by calendar year, regime, and source domain; include missingness, conflicts, first/last verified draw per index, longest gaps, and denominators.
+8. Manually verify a stratified sample and every conflict against archived source bytes. Independent reviewers must reproduce the mapping without inspecting drawn-number patterns.
 
-Do not map `source_equipment_count` to ball-set identity, even if values happen to be 1/2/3. The explicit per-draw official announcement is the required label evidence.
+Do not map `source_equipment_count` to ball-set identity, even if values happen to be 1/2/3. Do not infer from adjacent draws, draw order, or number patterns.
 
-## 4. Modeling eligibility
+## 5. Modeling eligibility and product consequence
 
-Do not set a minimum sample size after seeing which model performs best. Before scoring, preregister a per-set eligibility rule that considers:
+Do not train three timeless historical models by simply grouping every historical “set 1/2/3” index together. Before fitting, establish the regime boundary and whether identities are continuous. Otherwise, treat regimes as distinct conditional populations and preregister which regime has enough verified history for each model slot.
+
+Do not set minimum sample sizes after seeing model performance. Eligibility must consider:
 - minimum number of earlier verified labeled draws at every evaluated target;
 - temporal coverage and regime stability;
-- effective sample size for any weighted estimator;
+- effective sample size;
 - optimizer convergence and finite normalized probabilities;
 - calibration and uncertainty width;
-- performance relative to both pooled and uniform baselines.
+- performance relative to pooled and uniform baselines.
 
-If a set is ineligible, its independent model slot remains unavailable. Do not copy pooled output into that slot and call it set-specific. If official records cannot be recovered for older periods, use only a verified subset under the preregistered eligibility rule; never backfill labels by inference.
+If one or more slots are ineligible, the N → 3N generator remains unavailable. Do not copy pooled output into a missing slot or combine unrelated equipment regimes to manufacture sample size.
 
-## 5. Current decision
+## 6. Current decision
 
-- The official three-physical-set semantics are confirmed.
-- Explicit per-draw set labels are demonstrably published in some official result announcements.
-- Complete historical coverage and reproducible row-level mapping are **not yet established**.
+- Two formal sets are documented in the official 2007 launch-era procedure.
+- Three formal sets are documented in official material by 2019.
+- The transition date and physical identity continuity are not yet established.
+- Explicit per-draw set indices are demonstrably published in some later official result announcements.
+- Complete historical per-draw coverage and reproducible row-level mapping are not yet established.
 - `source_equipment_count` remains raw metadata and must not be used as a ball-set label.
-- No three-way historical training partition is approved until the archival audit is complete.
+- LOT-053 Stage 0 remains incomplete; a timeless three-way historical partition is not approved.
 - LOT-051 must exclude all equipment/ball-set fields from its confirmatory feature set.
-- LOT-053 Stage 0 remains incomplete.
-- The N → 3N product contract is a future gated behavior, not a currently available predictor.
+- N → 3N remains a future gated behavior, not a currently available predictor.
 
-This is now a historical-source coverage and archival reproducibility blocker, not a question about whether three physical sets exist. It does not prevent continued development of the pooled model.
+The blocker is now specifically historical regime reconstruction, identity continuity, and row-level source coverage. It does not prevent continued development of the pooled model.
