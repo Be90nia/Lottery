@@ -32,7 +32,7 @@ def ledger_lock(ledger_path: Path, timeout: float = 30.0) -> Iterator[None]:
             # the lock file, which could create different lock regions.
             if os.fstat(handle.fileno()).st_size == 0:
                 handle.seek(0)
-                handle.write(b"\\0")
+                handle.write(b"\0")
                 handle.flush()
             deadline = time.monotonic() + timeout
             while True:
