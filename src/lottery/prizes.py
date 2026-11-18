@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from typing import Any, Iterable
 
 from .rules import UnsupportedRulesetError, ruleset_for_draw
@@ -84,6 +84,7 @@ def reconcile_additional_awards(rows: Iterable[dict[str, Any]]) -> dict[str, Any
             additional_rows[key] = row
 
     checked = 0
+    floating_pairs_within_rounding_tolerance = 0
     unscorable = 0
     mismatches: list[dict[str, Any]] = []
     unexpected: list[dict[str, Any]] = []
@@ -128,29 +129,47 @@ def reconcile_additional_awards(rows: Iterable[dict[str, Any]]) -> dict[str, Any
         if base_amount is None or additional_amount is None:
             unscorable += 1
             continue
-        rounding_modes = {"floor": ROUND_DOWN, "half_up": ROUND_HALF_UP}
-        rounding_mode = rounding_modes.get(ruleset.additional_award_rounding)
-        if rounding_mode is None:
-            raise PrizeDataError(
-                f"unsupported additional-award rounding mode for {ruleset.ruleset_id}: "
-                f"{ruleset.additional_award_rounding!r}"
-            )
-        expected = (base_amount * multiplier).to_integral_value(rounding=rounding_mode)
+        expected_exact = base_amount * multiplier
         checked += 1
-        if additional_amount != expected:
-            mismatches.append({
-                "draw_id": draw_id, "tier": tier_number,
-                "ruleset_id": ruleset.ruleset_id,
-                "reason": "additional unit amount does not match the ruleset multiplier",
-                "base_amount_yuan": str(base_amount),
-                "multiplier": str(multiplier),
-                "expected_additional_amount_yuan": str(expected),
-                "actual_additional_amount_yuan": str(additional_amount),
-                "base_winner_count": base_winners,
-                "additional_winner_count": additional_winners,
-            })
+        if tier_number <= len(ruleset.tiers) and next(
+            item for item in ruleset.tiers if item.tier == tier_number
+        ).floating:
+            # Public result pages expose whole-yuan amounts, while the underlying
+            # floating-pool calculations can be rounded independently. Do not
+            # impose a false exact integer identity on two displayed values.
+            tolerance = Decimal("2")
+            if abs(additional_amount - expected_exact) <= tolerance:
+                floating_pairs_within_rounding_tolerance += 1
+            else:
+                mismatches.append({
+                    "draw_id": draw_id, "tier": tier_number,
+                    "ruleset_id": ruleset.ruleset_id,
+                    "reason": "floating additional unit amount differs from the multiplier by more than the display-rounding tolerance",
+                    "base_amount_yuan": str(base_amount),
+                    "multiplier": str(multiplier),
+                    "expected_additional_amount_exact_yuan": str(expected_exact),
+                    "rounding_tolerance_yuan": str(tolerance),
+                    "actual_additional_amount_yuan": str(additional_amount),
+                    "base_winner_count": base_winners,
+                    "additional_winner_count": additional_winners,
+                })
+        else:
+            expected = expected_exact.to_integral_value(rounding=ROUND_DOWN)
+            if additional_amount != expected:
+                mismatches.append({
+                    "draw_id": draw_id, "tier": tier_number,
+                    "ruleset_id": ruleset.ruleset_id,
+                    "reason": "fixed additional unit amount does not match the exact ruleset multiplier",
+                    "base_amount_yuan": str(base_amount),
+                    "multiplier": str(multiplier),
+                    "expected_additional_amount_yuan": str(expected),
+                    "actual_additional_amount_yuan": str(additional_amount),
+                    "base_winner_count": base_winners,
+                    "additional_winner_count": additional_winners,
+                })
     return {
         "additional_pairs_checked": checked,
+        "floating_pairs_within_rounding_tolerance": floating_pairs_within_rounding_tolerance,
         "additional_pairs_unscorable_missing_amount": unscorable,
         "additional_pair_mismatches": len(mismatches),
         "unexpected_additional_row_count": len(unexpected),
@@ -160,7 +179,7 @@ def reconcile_additional_awards(rows: Iterable[dict[str, Any]]) -> dict[str, Any
         "unexpected_additional_rows": unexpected,
         "additional_rows_missing_base": missing_base,
         "unsupported_ruleset_rows": unsupported,
-        "rounding": "expected additional unit amount uses the rounding mode declared by the effective ruleset (floor or half_up)",
+        "rounding": "fixed-tier additional amounts use whole-yuan floor calculation; floating-tier displayed amounts are screened within a ±2 yuan tolerance because published integer amounts may be rounded independently; this is not a full settlement calculation",
         "limitations": [
             "Original row labels and monetary values are not rewritten.",
             "Promotional award rows are not treated as ordinary additional bets.",
