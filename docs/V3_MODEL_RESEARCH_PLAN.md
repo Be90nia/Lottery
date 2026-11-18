@@ -37,8 +37,8 @@ Use lag (r in {1,2,3,4}), where lag 1 means the immediately preceding draw. Anal
 Predeclared statistics:
 1. **Same-number recurrence:** per-number joint inclusion and zone-level repeat counts.
 2. **Lagged cross-number transition:** every ordered pair (a,b), preserving direction; (a→b) and (b→a) are distinct.
-3. **Set overlap:** shared values between the two fixed-size draw sets. Report both the conditional circular-shift expectation and the independent legal-draw expectation n·k²/N.
-4. **Temporal stability:** calendar-block summaries are descriptive only and cannot be used to select a favorable era.
+3. **Set overlap:** shared values between the two fixed-size draw sets at lag r. Report the complete-row permutation expectation and the independent legal-draw expectation (n−r)·k²/N.
+4. **Ordered transitions:** report every ordered pair (a,b) as a descriptive effect-size table; individual pair rows do not receive confirmatory p-values. Calendar-era summaries remain separate exploratory analyses and cannot be used to select a favorable lag or era.
 
 ### Randomization and multiplicity
 
