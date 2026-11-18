@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from decimal import Decimal, InvalidOperation, ROUND_DOWN
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_UP
 from typing import Any, Iterable
 
 from .rules import UnsupportedRulesetError, ruleset_for_draw
@@ -128,7 +128,14 @@ def reconcile_additional_awards(rows: Iterable[dict[str, Any]]) -> dict[str, Any
         if base_amount is None or additional_amount is None:
             unscorable += 1
             continue
-        expected = (base_amount * multiplier).to_integral_value(rounding=ROUND_DOWN)
+        rounding_modes = {"floor": ROUND_DOWN, "half_up": ROUND_HALF_UP}
+        rounding_mode = rounding_modes.get(ruleset.additional_award_rounding)
+        if rounding_mode is None:
+            raise PrizeDataError(
+                f"unsupported additional-award rounding mode for {ruleset.ruleset_id}: "
+                f"{ruleset.additional_award_rounding!r}"
+            )
+        expected = (base_amount * multiplier).to_integral_value(rounding=rounding_mode)
         checked += 1
         if additional_amount != expected:
             mismatches.append({
@@ -153,7 +160,7 @@ def reconcile_additional_awards(rows: Iterable[dict[str, Any]]) -> dict[str, Any
         "unexpected_additional_rows": unexpected,
         "additional_rows_missing_base": missing_base,
         "unsupported_ruleset_rows": unsupported,
-        "rounding": "expected additional unit amount is floor(base unit amount × published multiplier)",
+        "rounding": "expected additional unit amount uses the rounding mode declared by the effective ruleset (floor or half_up)",
         "limitations": [
             "Original row labels and monetary values are not rewritten.",
             "Promotional award rows are not treated as ordinary additional bets.",
