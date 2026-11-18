@@ -93,6 +93,31 @@ Before full-history inference:
 The structural counts above were recomputed from the committed candidate JSONL blob. The source transformation was inspected at the upstream `scripts/clean_dlt.py` revision available on 2026-11-18. Neither source inspection establishes official authenticity of the legacy raw data.
 
 
+### Stratified random audit sample
+
+A second sample was selected independently of the convenience crosswalks to reduce selection bias. From the original candidate blob `bde880c7272f70b4e558ee01b58c63c1e65e632c`, one order-bearing row with a nonzero equipment code was selected per year (2011–2026), excluding the original 16 convenience crosswalks. Selection used sorted draw IDs, xorshift32, and seed `20261118`.
+
+| Year | Selected draw | Official DLT page located in this pass? | Result |
+|---|---:|---|---|
+| 2011 | 11038 | No | No DLT order page located; search results were not a matching DLT announcement |
+| 2012 | 12120 | No | No official DLT announcement URL located |
+| 2013 | 13071 | No | Search result was a 排列5 announcement, not DLT |
+| 2014 | 14128 | No | No official DLT announcement URL located |
+| 2015 | 15138 | No | No official DLT announcement URL located |
+| 2016 | 16029 | No | No official DLT announcement URL located |
+| 2017 | 17153 | Yes | Exact match |
+| 2018 | 18070 | No | No official DLT announcement URL located |
+| 2019 | 19011 | No | No official DLT announcement URL located |
+| 2020 | 20075 | Yes | Exact match |
+| 2021 | 21010 | Yes | Exact match |
+| 2022 | 22034 | Yes | Exact match |
+| 2023 | 23048 | No | Search result was a 7星彩 announcement, not DLT |
+| 2024 | 24093 | Yes | Exact match |
+| 2025 | 25006 | No | No official DLT announcement URL located |
+| 2026 | 26025 | No | No official DLT announcement URL located |
+
+All five official pages located for this random sample matched the candidate exactly on date, selected numbers, draw order, and equipment set. The other eleven are **unverified due to source discovery/availability**, not mismatches. Because official-page availability is incomplete and may be non-random, 5/5 matches among located pages cannot be used as an unbiased estimate of the full-dataset error rate. The random selection recipe and IDs are stored in the machine-readable registry's `source_selection` block.
+
 ### Machine-readable crosswalk registry
 
 The thirteen manually transcribed official-page crosswalks are recorded in `data/metadata_verification/official_order_crosswalks_20261118.json`. Run:
@@ -123,7 +148,7 @@ A targeted search found a useful primary-source cross-check on the official Chon
 
 The official Jiangsu, Guangdong, and Chongqing provincial Sports Lottery Center announcements explicitly publish “本期出球顺序” and “本期使用第N套摇奖球”. The official-site identity is visible in the site footers; the Jiangsu announcement footer states “江苏省体育彩票管理中心版权所有”, while the Chongqing institutional page identifies the Chongqing Sports Lottery Management Center as a public institution under the Chongqing Municipal Sports Bureau.
 
-Sixteen records were cross-checked against the repository's legacy candidate blob. In every case, the sorted numbers, front/back order arrays, and equipment code match the official announcement exactly:
+Twenty-one records were cross-checked against the repository's legacy candidate blob. In every case, the sorted numbers, front/back order arrays, and equipment code match the official announcement exactly:
 
 | Draw | Official date | Official front draw order | Official back draw order | Ball set | Legacy row |
 |---|---|---|---|---:|---|
@@ -133,12 +158,17 @@ Sixteen records were cross-checked against the repository's legacy candidate blo
 | 17062 | 2017-05-31 | 06, 08, 01, 28, 04 | 12, 08 | 2 | Exact match |
 | 17063 | 2017-06-03 | 29, 21, 18, 22, 24 | 05, 11 | 2 | Exact match |
 | 17145 | 2017-12-11 | 04, 18, 19, 17, 07 | 10, 03 | 2 | Exact match |
+| 17153 | 2017-12-30 | 01, 26, 24, 09, 34 | 09, 12 | 1 | Exact match |
 | 18001 | 2018-01-01 | 13, 35, 01, 25, 22 | 03, 04 | 1 | Exact match |
 | 19001 | 2019-01-02 | 28, 23, 26, 06, 18 | 03, 12 | 1 | Exact match |
 | 20001 | 2020-01-01 | 26, 34, 17, 32, 25 | 04, 07 | 1 | Exact match |
+| 20075 | 2020-08-12 | 21, 10, 35, 02, 09 | 07, 01 | 2 | Exact match |
+| 21010 | 2021-01-23 | 01, 34, 22, 05, 16 | 08, 11 | 3 | Exact match |
 | 22001 | 2022-01-01 | 19, 29, 08, 11, 22 | 03, 11 | 3 | Exact match |
+| 22034 | 2022-03-30 | 02, 24, 28, 27, 10 | 07, 06 | 1 | Exact match |
 | 23001 | 2023-01-02 | 19, 27, 18, 24, 34 | 12, 11 | 3 | Exact match |
 | 24001 | 2024-01-01 | 17, 03, 09, 35, 26 | 07, 02 | 3 | Exact match |
+| 24093 | 2024-08-12 | 16, 29, 28, 26, 24 | 08, 12 | 3 | Exact match |
 | 25001 | 2025-01-01 | 16, 17, 27, 08, 05 | 07, 04 | 2 | Exact match |
 | 25100 | 2025-09-01 | 32, 34, 26, 28, 35 | 02, 07 | 1 | Exact match |
 | 25112 | 2025-09-29 | 23, 03, 21, 04, 24 | 09, 12 | 3 | Exact match |
@@ -151,12 +181,17 @@ Official announcements:
 - 17062: https://www.js-lottery.com/cms/post-77775.html
 - 17063: https://www.js-lottery.com/cms/post-77825.html
 - 17145: https://www.js-lottery.com/cms/post-80978.html
+- 17153: https://www.js-lottery.com/cms/post-81240.html
 - 18001: https://www.js-lottery.com/cms/post-81256.html
 - 19001: https://www.js-lottery.com/cms/post-86432.html
 - 20001: https://www.js-lottery.com/cms/post-89613.html
+- 20075: https://www.js-lottery.com/cms/post-91093.html
+- 21010: https://www.js-lottery.com/cms/post-92380.html
 - 22001: https://www.js-lottery.com/cms/post-133442.html
+- 22034: https://www.js-lottery.com/cms/post-134150.html
 - 23001: https://www.js-lottery.com/cms/post-137213.html
 - 24001: https://api.js-lottery.com/cms/post-140462.html
+- 24093: https://api.js-lottery.com/cms/post-142296.html
 - 25001: https://api.js-lottery.com/cms/post-143433.html
 - 25100: https://www.gdlottery.cn/f_html/kjgg_pdf_bak/P085_25100.pdf
 - 25112: https://www.gdlottery.cn/f_html/kjgg_pdf_bak/P085_25112.pdf
@@ -164,7 +199,7 @@ Official announcements:
 
 For example, draw 17045's official result is `01 08 11 21 35 / 09 12`, its published draw order is `21 08 35 01 11 / 09 12`, and it used ball set 2. The candidate row has `front_draw_order=[21,8,35,1,11]`, `back_draw_order=[9,12]`, and `equipment_code_legacy=2`. The same exact correspondence holds for the other four rows.
 
-This is now more than a structural plausibility check: it is sixteen direct row-level crosswalks spanning 2017–2020 and every year from 2022 through 2026, with 2025 checks from both Jiangsu and Guangdong official sites, and covering equipment codes 1, 2, and 3. It supports interpreting the order arrays as the official published draw-order sequence and the equipment code as the numbered draw-ball set for these records. However, this is a purposive/convenience sample assembled from searchable official announcements and adjacent issue links, not a random or representative sample; it cannot estimate the error rate of the remaining rows. It still does not prove that all 2,341 legacy rows were faithfully copied, nor does it define every operational detail of the physical extraction sequence.
+This is now more than a structural plausibility check: it is twenty-one direct row-level crosswalks spanning 2017–2026 (including official Jiangsu, Guangdong, and Chongqing sources), and covering equipment codes 1, 2, and 3. It supports interpreting the order arrays as the official published draw-order sequence and the equipment code as the numbered draw-ball set for these records. However, this is a purposive/convenience sample assembled from searchable official announcements and adjacent issue links, not a random or representative sample; it cannot estimate the error rate of the remaining rows. It still does not prove that all 2,341 legacy rows were faithfully copied, nor does it define every operational detail of the physical extraction sequence.
 
 ### Independent recent examples
 
