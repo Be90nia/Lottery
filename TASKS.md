@@ -16,7 +16,7 @@
 - [x] LOT-011 Add pair/co-occurrence statistics using exact equal-tailed binomial tests and one Holm family across all 661 front/back pairs; includes full pair output, provenance hash/validation, CLI, methodology limits, unit tests, and CI artifact. Linux CI [44227158435](https://github.com/Be90nia/Lottery/actions/runs/44227158435) passed (79 tests plus candidate-dataset analysis).
 - [x] LOT-012 Add Holm multiple-testing correction for defined test families.
 - [ ] LOT-013 Add equipment/ball-set/event metadata with citations.
-- [ ] LOT-014 Add chronological dataset split utility.
+- [ ] LOT-014 Add deterministic date-grouped chronological train/validation/test split utility with input/output hashes, partition boundaries, tests, docs, and CI smoke test in progress. Track in [issue #4](https://github.com/Be90nia/Lottery/issues/4).
 - [x] LOT-015 Add initial leakage-safe expanding rolling-origin benchmark (uniform, expanding frequency, EWMA); independent final holdout and inference remain open.
 - [x] LOT-016 Add deterministic benchmark configuration and JSON report with input hash; artifact archival/CI acceptance remains open.
 
