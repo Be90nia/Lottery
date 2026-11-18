@@ -17,7 +17,25 @@ from typing import Any
 def dec(v: Any):
     if v is None:
         return None
-    return Decimal(str(v))
+    text = str(v).strip().replace(",", "").replace("，", "")
+    if not text:
+        return None
+    try:
+        return Decimal(text)
+    except Exception as exc:
+        raise ValueError(f"invalid monetary value: {v!r}") from exc
+
+
+def count_value(v: Any) -> int:
+    if v is None or str(v).strip() == "":
+        return 0
+    return int(str(v).strip().replace(",", "").replace("，", ""))
+
+
+def stable_condition(v: Any):
+    if isinstance(v, (dict, list)):
+        return json.dumps(v, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return v
 
 
 def official_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -26,13 +44,13 @@ def official_row(row: dict[str, Any]) -> dict[str, Any]:
         "draw_id": row["draw_id"],
         "label": str(p.get("prizeLevel", "")),
         "amount": dec(p.get("stakeAmount")),
-        "winner_count": int(p.get("stakeCount", 0)),
+        "winner_count": count_value(p.get("stakeCount", 0)),
         "total": dec(p.get("totalPrizeamount")),
-        "condition": p.get("lotteryCondition"),
+        "condition": stable_condition(p.get("lotteryCondition")),
         "source_position": row["source_position"],
         "source_identity": {
             k: p.get(k)
-            for k in ("awardType", "prizeLevelNo", "relatedPrizeLevelNo", "sort")
+            for k in ("awardType", "group", "prizeLevelNo", "relatedPrizeLevelNo", "sort")
             if k in p
         },
         "source_sha256": row["source"]["snapshot_sha256"],
@@ -45,9 +63,9 @@ def legacy_row(row: dict[str, Any]) -> dict[str, Any]:
         "draw_id": row["draw_id"],
         "label": row["tier_label_original"],
         "amount": dec(row["amount_yuan_original"]),
-        "winner_count": int(row["winner_count"]),
+        "winner_count": count_value(row["winner_count"]),
         "total": dec(row["total_yuan_original"]),
-        "condition": row.get("condition_original"),
+        "condition": stable_condition(row.get("condition_original")),
         "source_identity": None,
     }
 
@@ -87,6 +105,9 @@ def main() -> int:
         "official_draws": len(by_draw_off),
         "legacy_draws": len(by_draw_leg),
         "overlap_draws": 0,
+        "official_only_rows": 0,
+        "legacy_only_rows": 0,
+        "value_exact_rows": 0,
         "official_only_draws": 0,
         "legacy_only_draws": 0,
         "statuses": Counter(),
@@ -100,15 +121,20 @@ def main() -> int:
         l = by_draw_leg.get(draw_id, [])
         if not o:
             report["legacy_only_draws"] += 1
+            report["legacy_only_rows"] += len(l)
             continue
         if not l:
             report["official_only_draws"] += 1
+            report["official_only_rows"] += len(o)
             continue
         report["overlap_draws"] += 1
 
         oc = Counter(value_key(x) for x in o)
         lc = Counter(value_key(x) for x in l)
         exact_values = sum((oc & lc).values())
+        report["value_exact_rows"] += exact_values
+        report["official_only_rows"] += sum((oc - lc).values())
+        report["legacy_only_rows"] += sum((lc - oc).values())
         unmatched_off = list((oc - lc).elements())
         unmatched_leg = list((lc - oc).elements())
 
@@ -170,7 +196,8 @@ def main() -> int:
     print(json.dumps({
         k: report[k] for k in (
             "official_rows", "legacy_rows", "official_draws", "legacy_draws",
-            "overlap_draws", "official_only_draws", "legacy_only_draws", "statuses"
+            "overlap_draws", "official_only_draws", "legacy_only_draws",
+            "value_exact_rows", "official_only_rows", "legacy_only_rows", "statuses"
         )
     }, ensure_ascii=False, indent=2))
     return 0
