@@ -38,3 +38,21 @@ Independent recent technical documentation for Sporttery's API host reports Tenc
 References:
 - https://github.com/Johnserf-Seed/SportteryAPI/blob/main/README.zh-CN.md
 - https://github.com/Johnserf-Seed/SportteryAPI/blob/main/src/upstream.ts
+
+
+## Independent historical CSV snapshot
+
+On 2026-11-18, a second maintained dataset was retrieved from [cs4745/PickWise](https://github.com/cs4745/PickWise), file `data/dlt.csv`, at source commit `2f6f125e8f5f3c23460ae4ba9d60a73531c46dc9`. The source repository includes an MIT license; its license notice is retained in `data/candidates/PICKWISE_ATTRIBUTION.md`.
+
+The source's accompanying `data/validation.json` reports 2,948 DLT records through issue 26130, 2,948 records checked against 500彩票网, and zero reported conflicts. These are source-reported validation claims, not our independent re-performance of the 500彩票网 check.
+
+Our direct comparison against the imported 2,901-record legacy candidate found:
+- 2,901 overlapping draw IDs;
+- 2,901 exact matches across draw date, front numbers, and back numbers;
+- 0 mismatches;
+- 0 legacy-only IDs;
+- 47 additional IDs in the independent snapshot, from 26084 through 26130.
+
+This is a strong independent consistency check for the selected-number and date fields in the overlapping period. It does not validate legacy prize rows, promotion flags, equipment/ball-set labels, or draw-order metadata. The independent snapshot ends at 26130; it does not contain 26131.
+
+The preserved CSV is a secondary source snapshot, not a replacement for immutable official API response bodies. Re-run `python scripts/reconcile_sources.py` to reproduce the overlap check. Do not merge its 47 additional records into the canonical dataset until the official-source provenance and issue 26131 boundary are resolved.
