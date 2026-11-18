@@ -52,7 +52,7 @@ class VersionedPrizeRulesTests(unittest.TestCase):
         self.assertEqual(RULES_2026.additional_award_multiplier(3), Decimal("0"))
 
     def test_invalid_draw_ids_hits_and_tiers_rejected(self):
-        for value in ("", "26A14", " 26014"):
+        for value in ("", "26A14", " 26014", "2601"):
             with self.subTest(draw_id=value):
                 with self.assertRaises(ValueError):
                     ruleset_for_draw(value)
@@ -60,6 +60,10 @@ class VersionedPrizeRulesTests(unittest.TestCase):
             RULES_2026.tier_for_hits(6, 0)
         with self.assertRaises(ValueError):
             RULES_2026.fixed_prize_yuan(8, "0")
+        with self.assertRaises(ValueError):
+            RULES_2026.fixed_prize_yuan(3, "not-a-number")
+        with self.assertRaises(ValueError):
+            RULES_2026.fixed_prize_yuan(3, "-1")
 
     def test_ruleset_serialization_is_explicit(self):
         serialized = RULES_2026.as_dict()
