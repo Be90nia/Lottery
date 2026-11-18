@@ -109,3 +109,16 @@ the 2014 rules.
   tax, and promotion eligibility are not calculated by this registry.
 - The 2007–2014 rules remain an explicit gap; candidate prize rows in that
   period must not be normalized with the 2014, 2019, or 2026 schedules.
+
+## Why the pre-2014 range is blocked
+
+The checked-in candidate prize file includes a 07001 row labelled
+`三等奖` with a per-bet amount of ¥24,466 and a separate
+`三等奖(追加)` row at ¥14,679. This candidate-only observation is not proof
+of the official 2007 rules, but it is inconsistent with blindly applying the
+2019 fixed ¥10,000 third-tier schedule and 80% additional multiplier. It is a
+concrete reason to keep 07001 and other pre-14052 draws unsupported until
+official historical rules and effective boundaries are recovered.
+
+Source file: `data/candidates/legacy_prizes_part_01.jsonl`; source provenance
+is the legacy-clean transformation and remains unverified.
