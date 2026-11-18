@@ -37,7 +37,7 @@
 - [x] LOT-040 Run the rolling-origin benchmark against the repository dataset in CI; first complete report archived as a GitHub Actions artifact. Initial performance is exploratory only.
 - [x] LOT-041 Add paired moving-block bootstrap confidence intervals for Brier/log-loss differences versus uniform; results recorded in docs/INITIAL_BACKTEST_RESULTS.md. Period stability review remains open.
 - [ ] LOT-042 Define a later untouched holdout and a preregistered model-selection protocol before any parameter tuning.
-- [ ] LOT-043 Repeat paired score comparisons within predeclared calendar eras and assess stability without tuning on those eras.
+- [x] LOT-043 Add paired rolling-origin score comparisons by fixed calendar eras and assess descriptive stability without tuning. Results are exploratory/post-hoc, not confirmatory; see docs/ERA_STABILITY_RESULTS.md.
 
 
 - [ ] LOT-044 Verify `lotteryUnsortDrawresult` and `lotteryEquipmentCount` semantics against authorized immutable official raw snapshots; reconcile row-level order/equipment provenance before positional or equipment-stratified inference. Audit: [DRAW_ORDER_METADATA_AUDIT.md](docs/DRAW_ORDER_METADATA_AUDIT.md).
