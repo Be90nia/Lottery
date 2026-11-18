@@ -422,6 +422,70 @@
       "source_capture_status": "url_transcribed_not_archived"
     },
     {
+      "draw_id": "25100",
+      "draw_date": "2025-09-01",
+      "front_numbers": [
+        26,
+        28,
+        32,
+        34,
+        35
+      ],
+      "back_numbers": [
+        2,
+        7
+      ],
+      "front_draw_order": [
+        32,
+        34,
+        26,
+        28,
+        35
+      ],
+      "back_draw_order": [
+        2,
+        7
+      ],
+      "equipment_set": 1,
+      "source_authority": "provincial sports lottery center official website",
+      "source_label_order": "本期出球顺序",
+      "source_label_equipment": "本期使用第1套摇奖球",
+      "source_url": "https://www.gdlottery.cn/f_html/kjgg_pdf_bak/P085_25100.pdf",
+      "source_capture_status": "url_transcribed_not_archived"
+    },
+    {
+      "draw_id": "25112",
+      "draw_date": "2025-09-29",
+      "front_numbers": [
+        3,
+        4,
+        21,
+        23,
+        24
+      ],
+      "back_numbers": [
+        9,
+        12
+      ],
+      "front_draw_order": [
+        23,
+        3,
+        21,
+        4,
+        24
+      ],
+      "back_draw_order": [
+        9,
+        12
+      ],
+      "equipment_set": 3,
+      "source_authority": "provincial sports lottery center official website",
+      "source_label_order": "本期出球顺序",
+      "source_label_equipment": "本期使用第3套摇奖球",
+      "source_url": "https://www.gdlottery.cn/f_html/kjgg_pdf_bak/P085_25112.pdf",
+      "source_capture_status": "url_transcribed_not_archived"
+    },
+    {
       "draw_id": "26083",
       "draw_date": "2026-07-25",
       "front_numbers": [
