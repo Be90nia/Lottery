@@ -31,6 +31,10 @@ jobs:
         run: |
           python scripts/analyze_pairs.py data/candidates/legacy_draws.jsonl \
             --output pair-cooccurrence.json
+      - name: Run deterministic chronological dataset split
+        run: |
+          python scripts/split_dataset.py data/candidates/legacy_draws.jsonl \
+            --output-dir chronological-split
       - name: Run calendar-era diagnostic smoke test
         run: |
           python scripts/analyze_eras.py data/candidates/legacy_draws.jsonl \
@@ -48,6 +52,7 @@ jobs:
             baseline-candidate.json
             era-diagnostic.json
             pair-cooccurrence.json
+            chronological-split/
             rolling-origin-benchmark.json
           retention-days: 30
 
