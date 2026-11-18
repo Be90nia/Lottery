@@ -47,7 +47,7 @@ class FeatureTests(unittest.TestCase):
     def test_hand_calculated_front_features(self):
         self.assertEqual(
             extract_features((1, 2, 4, 7, 10), 35, 5, include_gap_variance=True),
-            (24, 2, 9, 1, Fraction(35, 16)),
+            (24, 2, 9, 1, Fraction(11, 16)),
         )
 
     def test_hand_calculated_back_features_omit_gap_variance(self):
