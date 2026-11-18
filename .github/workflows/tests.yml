@@ -19,6 +19,8 @@ jobs:
         run: python scripts/validate_dataset.py data/candidates/legacy_draws.jsonl
       - name: Audit imported legacy prize rows
         run: python scripts/validate_legacy_prizes.py
+      - name: Reconcile legacy candidate with independent CSV snapshot
+        run: python scripts/reconcile_sources.py
       - name: Run legal-draw Monte Carlo baseline smoke test
         run: |
           python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl \
