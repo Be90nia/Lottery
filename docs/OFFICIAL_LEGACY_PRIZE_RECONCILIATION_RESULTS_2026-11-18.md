@@ -57,3 +57,33 @@ It also does not authenticate the draw process or prove that every published pri
 - Workflow run: `44256874609`
 - Workflow head commit: `c6e83aa574d1f788b00694390c9d83d1a6f27726`
 - Workflow artifact: `lottery-research-reports` (contains the full JSON reconciliation report)
+
+
+## Important correction: value equality is not independent validation
+
+A subsequent cross-check against contemporaneous Jiangsu Sports Lottery result
+announcements found material conflicts between the archived API prize rows and
+the provincial announcements for issues 17045, 17052, 17062, and 17063. For
+example, the API's issue-17052 second-prize amount is ¥1,551,723, while the
+Jiangsu announcement reports ¥81,082 for the same 93 winners. For issue 17062,
+multiple API prize amounts and winner counts conflict with the provincial
+announcement; issue 17063 also contains repeated API lower-tier values that
+do not match its contemporaneous announcement.
+
+Therefore the exact 33,098-row match proves consistency between the legacy
+candidate and this API representation, not correctness of the payout values
+and not independent corroboration. The legacy cleaner consumes the same
+upstream-shaped `prizeLevelList` fields, while its original raw input is not
+available for independent lineage verification.
+
+The legacy candidate and archived API rows remain quarantined for payout
+truth. At minimum, issues 17045, 17052, 17062, and 17063 must be excluded from
+payout calculations and prize-model targets until source conflicts are
+adjudicated. The full comparison and evidence links are documented in
+[OFFICIAL_API_PROVINCIAL_PRIZE_CONFLICTS_2026-11-18.md](OFFICIAL_API_PROVINCIAL_PRIZE_CONFLICTS_2026-11-18.md).
+
+This correction supersedes the earlier sentence that characterized the
+reconciliation as strong evidence that the legacy displayed values were
+correct. The defensible statement is: **all legacy rows match the archived API
+snapshot exactly, but the API snapshot itself is not a validated ground truth
+for all historical prize rows.**
