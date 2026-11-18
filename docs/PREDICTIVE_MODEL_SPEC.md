@@ -365,3 +365,20 @@ Stage all 3N tickets and their provenance before publication. The batch manifest
 Default request validation is strict and bounded; operational maximum N must be frozen after load testing. Public requests cannot choose internal artifacts, slots, or RNG algorithms. Cryptographically secure master seed material is protected and not returned in public responses. Deterministic replay is promised only for identical artifact bytes, registry snapshot, request, seed material, RNG/sampler versions, and compatible pinned runtime.
 
 The successful response identifies exactly three slot groups with N tickets each, active artifact IDs, population labels, training cutoffs, snapshot/evidence hashes, batch/ledger references, RNG metadata, and duplicate counts. It states that tickets are probabilistic samples, not guaranteed outcomes. No partial 3N result is reported as success.
+
+
+## 19. Prospective forecast-to-outcome feedback ledger
+
+Keep three append-only record classes separate: user prediction batches/tickets, model-level forecast evaluation records, and official outcome observations with score revisions. The statistical unit for probability evaluation is one artifact × target draw × zone, regardless of how many user requests or sampled tickets exist for that target. Ticket hit counts and duplicates are descriptive product metrics only; they are not the primary evidence of model skill.
+
+A forecast evaluation record is frozen before the target cutoff and binds target draw ID/date, issued-at UTC time, cutoff/timezone source, registry snapshot, exact artifact IDs/hashes, population key, training snapshot hash and maximum included draw, evidence manifest where applicable, scoring policy, code/runtime, and immutable distribution reference. The target must be explicitly resolved before issuance. If schedule/cutoff is ambiguous or issuance is late, mark the record ineligible for confirmatory prospective scoring; never backfill after seeing the outcome.
+
+Only validated authoritative draw outcomes may be scored. Preserve raw response bytes/hash, source authority/evidence locator, draw identity/date, parser version, status, conflict and supersedes lineage. Missing, blocked, mismatched, invalid, or conflicting outcomes remain pending/invalid and unscored. An official correction appends a new outcome version and score revision; the prior observation and score remain auditable.
+
+Compute exact front and back realized-subset log probabilities from the frozen artifacts, separately. Compare with uniform log probabilities log(C(35,5)) and log(C(12,2)) on the identical target. Do not use sampled ticket hit rate as a substitute. For set-conditioned models, only score targets satisfying the exact primary-verified regime/index key and minimum prior-history policy; compare pooled and uniform baselines on exactly those same target IDs.
+
+Every expected artifact × target × zone has a visible terminal state, including forecast ineligible, outcome pending/invalid, scored, or score failed. Report expected, eligible, pending, invalid, scored, and failed denominators separately. Do not silently drop failures or assign arbitrary finite penalty scores. A forecast missing at cutoff is a failure/ineligible event, not permission to issue it retrospectively.
+
+Validated outcomes may feed future training snapshots or trigger a challenger build under the frozen refresh policy. They may not edit forecasts/artifacts, mutate Champion pointers, tune thresholds against the same claimed-confirmatory outcomes, or access LOT-042 holdout data. Until a separately versioned sequential monitoring policy is preregistered, score degradation is alert-only; one poor draw cannot cause automatic rollback.
+
+Idempotency keys bind forecast (target + population + artifact + policy), outcome (draw + source body hash + parser/source version), and score (forecast + outcome version + scoring policy/code). Retries return the same logical record; corrections or policy changes append new revisions. Deterministic replay binds all input hashes and pinned code/runtime.
