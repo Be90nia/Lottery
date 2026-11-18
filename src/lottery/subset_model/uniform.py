@@ -28,6 +28,8 @@ class FeatureStats:
     support_count: int
     all_mean_fractions: tuple[str, ...]
     all_variance_fractions: tuple[str, ...]
+    all_means: tuple[float, ...]
+    all_standard_deviations: tuple[float, ...]
     means: tuple[float, ...]
     standard_deviations: tuple[float, ...]
     zero_variance_features: tuple[str, ...]
@@ -36,19 +38,11 @@ class FeatureStats:
         if len(raw) != len(self.candidate_feature_names):
             raise ValueError("raw feature vector has the wrong dimension")
         result: list[float] = []
-        for value, mean, scale in zip(raw, self._all_means, self._all_standard_deviations):
+        for value, mean, scale in zip(raw, self.all_means, self.all_standard_deviations):
             if scale == 0.0:
                 continue
             result.append((float(value) - mean) / scale)
         return tuple(result)
-
-    @property
-    def _all_means(self) -> tuple[float, ...]:
-        return tuple(float(Fraction(value)) for value in self.all_mean_fractions)
-
-    @property
-    def _all_standard_deviations(self) -> tuple[float, ...]:
-        return tuple(sqrt(float(Fraction(value))) for value in self.all_variance_fractions)
 
 
 @dataclass(frozen=True)
@@ -115,6 +109,8 @@ def build_uniform_feature_table(
         support_count=expected,
         all_mean_fractions=tuple(_fraction_text(value) for value in means_exact),
         all_variance_fractions=tuple(_fraction_text(value) for value in variances_exact),
+        all_means=tuple(float(value) for value in means_exact),
+        all_standard_deviations=stds,
         means=tuple(float(value) for value, scale in zip(means_exact, stds) if scale > 0.0),
         standard_deviations=tuple(scale for scale in stds if scale > 0.0),
         zero_variance_features=zero,
