@@ -55,9 +55,18 @@ class ParsePageTests(unittest.TestCase):
         with self.assertRaises(IngestionError):
             _parse_page(json.dumps(row).encode(), 1, "x")
 
-    def test_invalid_draw_order_rejected(self):
-        with self.assertRaises(IngestionError):
-            _parse_page(self.payload(order="03 01 05 02 06 02 01"), 1, "x")
+    def test_malformed_auxiliary_draw_order_is_preserved_without_blocking(self):
+        rows = _parse_page(self.payload(order="03 01 malformed"), 1, "x")
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0].front_draw_order)
+        self.assertIsNone(rows[0].back_draw_order)
+        self.assertEqual(rows[0].source_unsort_drawresult, "03 01 malformed")
+
+    def test_auxiliary_draw_order_mismatch_is_preserved_without_blocking(self):
+        rows = _parse_page(self.payload(order="03 01 05 02 06 02 01"), 1, "x")
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0].front_draw_order)
+        self.assertEqual(rows[0].source_unsort_drawresult, "03 01 05 02 06 02 01")
 
     def test_duplicate_number_rejected(self):
         with self.assertRaises(IngestionError):
