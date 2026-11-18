@@ -37,6 +37,8 @@
 - [架构设计](docs/ARCHITECTURE.md)
 - [数据规范](docs/DATA_SPEC.md)
 - [研究方法](docs/RESEARCH_METHODS.md)
+- [预测模型规格（LOT-051 / LOT-053）](docs/PREDICTIVE_MODEL_SPEC.md)
+- [三套球标识证据与数据就绪状态](docs/BALL_SET_LABEL_EVIDENCE.md)
 - [奖金规则时期](docs/PRIZE_RULE_ERAS.md)
 - [初步随机基线结果](docs/BASELINE_RESULTS.md)
 - [任务清单](TASKS.md)
