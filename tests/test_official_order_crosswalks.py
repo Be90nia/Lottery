@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.verify_official_order_crosswalks import verify
+from scripts.verify_official_order_crosswalks import selected_random_sample_ids, verify
 
 
 class OfficialOrderCrosswalkTests(unittest.TestCase):
@@ -62,6 +62,28 @@ class OfficialOrderCrosswalkTests(unittest.TestCase):
             {"schema": "test/v1", "records": [self.record(), self.record()]},
         )
         self.assertTrue(any("duplicate crosswalk draw_id" in item for item in result["errors"]))
+
+    def test_stratified_random_sample_selection_is_reproducible(self):
+        candidates = []
+        for draw_id in ("11001", "11002", "11003", "12001", "12002", "12003"):
+            candidates.append({
+                "draw_id": draw_id,
+                "draw_date": "2011-01-01" if draw_id.startswith("11") else "2012-01-01",
+                "front_draw_order": [1, 2, 3, 4, 5],
+                "back_draw_order": [1, 2],
+                "equipment_code_legacy": 1,
+            })
+        registry = {
+            "records": [{"draw_id": "11001", "sample_group": "purposive_convenience"}],
+            "source_selection": {
+                "random_sample_seed": 20261118,
+                "selected_ids": ["11003", "12002"],
+            },
+        }
+        self.assertEqual(
+            selected_random_sample_ids(candidates, registry),
+            ["11003", "12002"],
+        )
 
     def test_non_permutation_official_order_fails(self):
         record = self.record()
