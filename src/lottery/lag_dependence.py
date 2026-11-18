@@ -75,10 +75,8 @@ def zone_diagnostics(rows: list[dict[str, Any]], zone: tuple[str, str, int, int]
     null_max = [0.0] * shift_count
     observed_max = {lag: 0.0 for lag in LAGS}
     top_by_lag: dict[int, list[dict[str, Any]]] = {lag: [] for lag in LAGS}
-    diagonal_counts: dict[int, list[int]] = {lag: [] for lag in LAGS}
     diagonal_means: list[float] = []
     diagonal_shift_counts = [0] * shift_count
-    diagonal_shift_means: list[float] = []
 
     for a in range(pool_size):
         for b in range(pool_size):
@@ -123,6 +121,16 @@ def zone_diagnostics(rows: list[dict[str, Any]], zone: tuple[str, str, int, int]
     overlap_mean = sum(overlap_values) / shift_count
     overlap_variance = sum((value - overlap_mean) ** 2 for value in overlap_values) / shift_count
     overlap_sd = math.sqrt(overlap_variance)
+    if overlap_sd > 0:
+        for index, value in enumerate(overlap_values):
+            null_max[index] = max(
+                null_max[index], abs(value - overlap_mean) / overlap_sd
+            )
+        for lag in LAGS:
+            observed_max[lag] = max(
+                observed_max[lag],
+                abs(overlap_values[lag - 1] - overlap_mean) / overlap_sd,
+            )
     overlap_results = []
     for lag in LAGS:
         observed_overlap = overlap_values[lag - 1]
@@ -163,7 +171,7 @@ def zone_diagnostics(rows: list[dict[str, Any]], zone: tuple[str, str, int, int]
         omnibus.append({
             "zone": zone_name,
             "lag": lag,
-            "statistic": "maximum_absolute_standardized_ordered_transition",
+            "statistic": "maximum_absolute_standardized_transition_or_set_overlap",
             "observed_max_statistic": observed_stat,
             "exact_circular_shift_p": p_value,
             "p_value": p_value,
