@@ -16,7 +16,7 @@ import sys
 from typing import Any
 
 from .validate import validate_records
-from .ledger_lock import ledger_lock
+from .ledger_lock import LedgerLockError, ledger_lock
 from .backtest import (
     DEFAULT_ALPHA,
     FRONT_SIZE,
@@ -210,7 +210,7 @@ def main() -> int:
             result = append_forecast(args.ledger, event)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, LedgerLockError) as exc:
         print(f"FORECAST_LEDGER_FAILED: {exc}", file=sys.stderr)
         return 1
 
