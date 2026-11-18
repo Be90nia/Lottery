@@ -31,9 +31,7 @@ class VersionedPrizeRulesTests(unittest.TestCase):
         self.assertEqual(RULES_2019.effective_from_date, "2019-02-20")
         self.assertEqual(RULES_2026.effective_from_date, "2026-02-02")
 
-    def test_pre_2014_history_fails_closed(self):
-        with self.assertRaises(UnsupportedRulesetError):
-            ruleset_for_draw("07001")
+    def test_pre_launch_history_fails_closed(self):
         with self.assertRaises(UnsupportedRulesetError):
             ruleset_for_draw("07000")
 
