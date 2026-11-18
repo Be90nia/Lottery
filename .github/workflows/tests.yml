@@ -29,11 +29,17 @@ jobs:
         run: |
           python scripts/analyze_eras.py data/candidates/legacy_draws.jsonl \
             --simulations 99 --seed 20261118 --output era-diagnostic.json
-      - name: Upload baseline reports
+      - name: Run leakage-safe rolling-origin benchmark
+        run: |
+          python scripts/backtest_models.py data/candidates/legacy_draws.jsonl \
+            --min-train 300 --alpha 100 --half-life 100 \
+            --output rolling-origin-benchmark.json
+      - name: Upload research reports
         uses: actions/upload-artifact@v4
         with:
-          name: legacy-candidate-baseline
+          name: lottery-research-reports
           path: |
             baseline-candidate.json
             era-diagnostic.json
+            rolling-origin-benchmark.json
           retention-days: 30
