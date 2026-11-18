@@ -1,6 +1,6 @@
 import unittest
 
-from lottery.analyze_lag_dependence import analyze, holm_adjust, rotate_time
+from lottery.lag_dependence import analyze, holm_adjust, rotate_time
 
 
 def draw(draw_id, front, back):
