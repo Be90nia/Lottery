@@ -113,6 +113,7 @@ def zone_diagnostics(rows: list[dict[str, Any]], zone: tuple[str, str, int, int]
                 }
                 top_by_lag[lag].append(feature)
 
+    all_pair_effects = {lag: list(top_by_lag[lag]) for lag in LAGS}
     for lag in LAGS:
         top_by_lag[lag].sort(
             key=lambda item: item["absolute_standardized_effect"], reverse=True
@@ -179,6 +180,9 @@ def zone_diagnostics(rows: list[dict[str, Any]], zone: tuple[str, str, int, int]
         "set_overlap": overlap_results,
         "top_ordered_transitions_by_lag": [
             {"lag": lag, "features": top_by_lag[lag]} for lag in LAGS
+        ],
+        "all_ordered_pair_effects_by_lag": [
+            {"lag": lag, "features": all_pair_effects[lag]} for lag in LAGS
         ],
         "omnibus_tests": omnibus,
     }
