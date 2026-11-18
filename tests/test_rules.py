@@ -6,13 +6,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from lottery.rules import (
-    RULES_2009, RULES_2013, RULES_2014, RULES_2019, RULES_2026, UnsupportedRulesetError,
+    RULES_2007, RULES_2009, RULES_2013, RULES_2014, RULES_2019, RULES_2026, UnsupportedRulesetError,
     ruleset_for_draw,
 )
 
 
 class VersionedPrizeRulesTests(unittest.TestCase):
     def test_all_evidenced_effective_draw_boundaries(self):
+        self.assertIs(ruleset_for_draw("07001"), RULES_2007)
+        self.assertIs(ruleset_for_draw("09120"), RULES_2007)
         self.assertIs(ruleset_for_draw("09121"), RULES_2009)
         self.assertIs(ruleset_for_draw("13144"), RULES_2009)
         self.assertIs(ruleset_for_draw("13145"), RULES_2013)
@@ -22,6 +24,7 @@ class VersionedPrizeRulesTests(unittest.TestCase):
         self.assertIs(ruleset_for_draw("19019"), RULES_2019)
         self.assertIs(ruleset_for_draw("26013"), RULES_2019)
         self.assertIs(ruleset_for_draw("26014"), RULES_2026)
+        self.assertEqual(RULES_2007.effective_from_date, "2007-05-30")
         self.assertEqual(RULES_2009.effective_from_date, "2009-10-14")
         self.assertEqual(RULES_2013.effective_from_date, "2013-12-09")
         self.assertEqual(RULES_2014.effective_from_date, "2014-05-05")
@@ -32,7 +35,25 @@ class VersionedPrizeRulesTests(unittest.TestCase):
         with self.assertRaises(UnsupportedRulesetError):
             ruleset_for_draw("07001")
         with self.assertRaises(UnsupportedRulesetError):
-            ruleset_for_draw("09120")
+            ruleset_for_draw("07000")
+
+    def test_2007_launch_rules_and_additional_scope(self):
+        expected = {
+            (5, 2): 1, (5, 1): 2, (5, 0): 3, (4, 2): 4,
+            (4, 1): 5, (4, 0): 6, (3, 2): 6, (3, 1): 7,
+            (2, 2): 7, (3, 0): 8, (1, 2): 8, (2, 1): 8, (0, 2): 8,
+        }
+        for hits, tier in expected.items():
+            with self.subTest(hits=hits):
+                self.assertEqual(RULES_2007.tier_for_hits(*hits), tier)
+        self.assertEqual(RULES_2007.fixed_prize_yuan(4, "0"), Decimal("3000"))
+        self.assertEqual(RULES_2007.fixed_prize_yuan(5, "0"), Decimal("500"))
+        self.assertEqual(RULES_2007.fixed_prize_yuan(6, "0"), Decimal("200"))
+        self.assertEqual(RULES_2007.fixed_prize_yuan(7, "0"), Decimal("10"))
+        self.assertEqual(RULES_2007.fixed_prize_yuan(8, "0"), Decimal("5"))
+        self.assertEqual(RULES_2007.additional_award_multiplier(1), Decimal("0.6"))
+        self.assertEqual(RULES_2007.additional_award_multiplier(3), Decimal("0.6"))
+        self.assertEqual(RULES_2007.additional_award_multiplier(4), Decimal("0"))
 
     def test_2009_and_2013_eight_tier_patterns_and_additional_rules(self):
         expected = {
