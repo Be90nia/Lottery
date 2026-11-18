@@ -191,3 +191,14 @@ same fourth-/fifth-additional duplication (¥3,000 × 57 and ¥500 × 1,726,
 matching the basic rows), while its main-game additional table lists only
 first through third prize. The confirmed early-era sequence is therefore
 07005–07011. Issues 07001–07004 remain unconfirmed leads.
+
+
+The first four 2007 issues (07001–07004) have now also been cross-checked
+against contemporaneous Sohu/Sina sports result reports. Those reports'
+additional-bet tables list only first through third prize, while the archived
+API's fourth-/fifth-additional rows duplicate the basic rows. These are
+contemporaneous media sources rather than located provincial-administration
+pages, so their evidence tier is explicitly weaker than the 07005–07011
+Jiangsu Sports Lottery announcement checks. The minimum quarantine sequence
+for this early-era pattern is now 07001–07011; see the detailed evidence-tier
+breakdown in `EARLY_2007_ADDITIONAL_PRIZE_AUDIT_2026-11-18.md`.
