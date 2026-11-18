@@ -56,7 +56,7 @@ class PrizeRuleset:
         if not jackpot.is_finite() or jackpot < 0:
             raise ValueError("jackpot_yuan must be finite and nonnegative")
         if self.jackpot_threshold_yuan is not None and jackpot >= self.jackpot_threshold_yuan:
-            return tier.fixed_at_or_above_threshold_yuan
+            return tier.fixed_prize_at_or_above_threshold_yuan
         return tier.fixed_prize_below_threshold_yuan
 
     def additional_award_multiplier(self, tier_number: int) -> Decimal | None:
