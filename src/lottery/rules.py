@@ -1,4 +1,4 @@
-"""Versioned Super Lotto prize rules; floating awards are intentionally not calculated."""
+"""Versioned Super Lotto prize rules; unsupported historical eras fail closed."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,14 +6,18 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 
+class UnsupportedRulesetError(ValueError):
+    """Raised when no sufficiently evidenced ruleset covers a draw."""
+
+
 @dataclass(frozen=True)
 class PrizeTier:
     tier: int
     match_patterns: tuple[tuple[int, int], ...]
-    fixed_below_threshold_yuan: Decimal | None
-    fixed_at_or_above_threshold_yuan: Decimal | None
+    fixed_prize_below_threshold_yuan: Decimal | None
+    fixed_prize_at_or_above_threshold_yuan: Decimal | None
     floating: bool = False
-    additional_multiplier: Decimal = Decimal("0")
+    additional_multiplier: Decimal | None = Decimal("0")
 
 
 @dataclass(frozen=True)
@@ -26,6 +30,7 @@ class PrizeRuleset:
     jackpot_threshold_yuan: Decimal | None
     floating_per_ticket_cap_yuan: Decimal | None
     floating_total_cap_per_tier_yuan: Decimal | None
+    floating_award_notes: str
     source_urls: tuple[str, ...]
 
     def tier_for_hits(self, front_hits: int, back_hits: int) -> int | None:
@@ -52,9 +57,9 @@ class PrizeRuleset:
             raise ValueError("jackpot_yuan must be finite and nonnegative")
         if self.jackpot_threshold_yuan is not None and jackpot >= self.jackpot_threshold_yuan:
             return tier.fixed_at_or_above_threshold_yuan
-        return tier.fixed_below_threshold_yuan
+        return tier.fixed_prize_below_threshold_yuan
 
-    def additional_award_multiplier(self, tier_number: int) -> Decimal:
+    def additional_award_multiplier(self, tier_number: int) -> Decimal | None:
         tier = next((item for item in self.tiers if item.tier == tier_number), None)
         if tier is None:
             raise ValueError(f"unknown prize tier {tier_number} for {self.ruleset_id}")
@@ -77,20 +82,24 @@ class PrizeRuleset:
                 str(self.floating_total_cap_per_tier_yuan)
                 if self.floating_total_cap_per_tier_yuan is not None else None
             ),
+            "floating_award_notes": self.floating_award_notes,
             "tiers": [
                 {
                     "tier": tier.tier,
                     "match_patterns": [list(pattern) for pattern in tier.match_patterns],
-                    "fixed_below_threshold_yuan": (
-                        str(tier.fixed_below_threshold_yuan)
-                        if tier.fixed_below_threshold_yuan is not None else None
+                    "fixed_prize_below_threshold_yuan": (
+                        str(tier.fixed_prize_below_threshold_yuan)
+                        if tier.fixed_prize_below_threshold_yuan is not None else None
                     ),
-                    "fixed_at_or_above_threshold_yuan": (
-                        str(tier.fixed_at_or_above_threshold_yuan)
-                        if tier.fixed_at_or_above_threshold_yuan is not None else None
+                    "fixed_prize_at_or_above_threshold_yuan": (
+                        str(tier.fixed_prize_at_or_above_threshold_yuan)
+                        if tier.fixed_prize_at_or_above_threshold_yuan is not None else None
                     ),
                     "floating": tier.floating,
-                    "additional_multiplier": str(tier.additional_multiplier),
+                    "additional_multiplier": (
+                        str(tier.additional_multiplier)
+                        if tier.additional_multiplier is not None else None
+                    ),
                 }
                 for tier in self.tiers
             ],
@@ -98,19 +107,52 @@ class PrizeRuleset:
         }
 
 
-_LEGACY_SOURCE = "https://m.sporttery.cn/bzzx/20210207/3002858.html?gid=5"
-_NEW_RULES_PDF = "https://static.sporttery.cn/res_1_0/cmsv2/upload/docfile/202601/1511220935li.pdf"
-_NEW_RULE_ANNOUNCEMENT = "https://www.sporttery.cn/digitallottery/cjdlt/20260205/10052315.html"
+_RULES_2014_SOURCE = "https://www.mof.gov.cn/tzgg/201404/t20140421_1069584.htm"
+_RULES_2014_EFFECTIVE_NOTICE = "https://yntc8.cn/news/2014042229140.html"
+_RULES_2019_SOURCE = "https://www.nmtc.com.cn/gyzl/17631.html"
+_RULES_2019_EFFECTIVE_SOURCE = "https://society.yunnan.cn/system/2019/02/28/030214030.shtml"
+_RULES_2026_PDF = "https://static.sporttery.cn/res_1_0/cmsv2/upload/docfile/202601/1511220935li.pdf"
+_RULES_2026_ANNOUNCEMENT = "https://www.sporttery.cn/digitallottery/cjdlt/20260205/10052315.html"
 
-LEGACY_RULES = PrizeRuleset(
-    ruleset_id="dlt_pre_26014",
-    effective_from_draw_id=None,
-    effective_through_draw_id="26013",
-    effective_from_date=None,
+RULES_2014 = PrizeRuleset(
+    ruleset_id="dlt_2014_from_14052",
+    effective_from_draw_id="14052",
+    effective_through_draw_id="19018",
+    effective_from_date="2014-05-05",
     jackpot_threshold_yuan=None,
     floating_per_ticket_cap_yuan=Decimal("5000000"),
     floating_total_cap_per_tier_yuan=None,
-    source_urls=(_LEGACY_SOURCE,),
+    floating_award_notes=(
+        "Tiers 1-3 are floating. The 2014 rules describe tier-1 pool allocation "
+        "bands below ¥100m, ¥100m-¥300m, and at/above ¥300m; tiers 2 and 3 "
+        "receive 18% and 7% of the amount remaining after fixed awards. "
+        "This module does not calculate those floating awards."
+    ),
+    source_urls=(_RULES_2014_SOURCE, _RULES_2014_EFFECTIVE_NOTICE),
+    tiers=(
+        PrizeTier(1, ((5, 2),), None, None, True, Decimal("0.6")),
+        PrizeTier(2, ((5, 1),), None, None, True, Decimal("0.6")),
+        PrizeTier(3, ((5, 0), (4, 2)), None, None, True, Decimal("0.6")),
+        PrizeTier(4, ((4, 1), (3, 2)), Decimal("200"), Decimal("200"), False, Decimal("0.5")),
+        PrizeTier(5, ((4, 0), (3, 1), (2, 2)), Decimal("10"), Decimal("10"), False, Decimal("0.5")),
+        PrizeTier(6, ((3, 0), (1, 2), (2, 1), (0, 2)), Decimal("5"), Decimal("5")),
+    ),
+)
+
+RULES_2019 = PrizeRuleset(
+    ruleset_id="dlt_2019_from_19019",
+    effective_from_draw_id="19019",
+    effective_through_draw_id="26013",
+    effective_from_date="2019-02-20",
+    jackpot_threshold_yuan=None,
+    floating_per_ticket_cap_yuan=Decimal("5000000"),
+    floating_total_cap_per_tier_yuan=None,
+    floating_award_notes=(
+        "Tiers 1-2 are floating. The 2019 rules allocate 78%/22% of the amount "
+        "remaining after fixed awards to tiers 1/2, subject to tier-1 jackpot "
+        "bands and per-ticket caps. This module does not calculate floating awards."
+    ),
+    source_urls=(_RULES_2019_SOURCE, _RULES_2019_EFFECTIVE_SOURCE),
     tiers=(
         PrizeTier(1, ((5, 2),), None, None, True, Decimal("0.8")),
         PrizeTier(2, ((5, 1),), None, None, True, Decimal("0.8")),
@@ -132,7 +174,12 @@ RULES_2026 = PrizeRuleset(
     jackpot_threshold_yuan=Decimal("800000000"),
     floating_per_ticket_cap_yuan=Decimal("5000000"),
     floating_total_cap_per_tier_yuan=Decimal("100000000"),
-    source_urls=(_NEW_RULES_PDF, _NEW_RULE_ANNOUNCEMENT),
+    floating_award_notes=(
+        "Tiers 1-2 are floating. The 2026 rules add a ¥100m single-draw total "
+        "cap per floating tier and use a tier-1 pool schedule. This module does "
+        "not calculate floating awards."
+    ),
+    source_urls=(_RULES_2026_PDF, _RULES_2026_ANNOUNCEMENT),
     tiers=(
         PrizeTier(1, ((5, 2),), None, None, True, Decimal("0.8")),
         PrizeTier(2, ((5, 1),), None, None, True, Decimal("0.8")),
@@ -148,6 +195,14 @@ RULES_2026 = PrizeRuleset(
 def ruleset_for_draw(draw_id: str) -> PrizeRuleset:
     if not isinstance(draw_id, str) or len(draw_id) != 5 or not draw_id.isdigit():
         raise ValueError("draw_id must be a five-digit numeric string")
-    if int(draw_id) >= int(RULES_2026.effective_from_draw_id or "26014"):
+    numeric_id = int(draw_id)
+    if numeric_id >= 26014:
         return RULES_2026
-    return LEGACY_RULES
+    if numeric_id >= 19019:
+        return RULES_2019
+    if numeric_id >= 14052:
+        return RULES_2014
+    raise UnsupportedRulesetError(
+        f"draw {draw_id} predates the evidenced 2014 rules boundary; "
+        "2007-2014 historical rulesets remain unverified and must not be guessed"
+    )
