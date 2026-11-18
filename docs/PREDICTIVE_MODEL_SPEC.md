@@ -350,3 +350,18 @@ Monitoring uses only preregistered diagnostics: exact-set NLL against champion a
 
 Every user-facing forecast identifies the active artifact ID, population/zone, training cutoff, data snapshot hash, and lifecycle state. Challenger/shadow/retired/suspended artifacts are never served. If no compatible champion exists, the slot is unavailable.
 
+
+
+## 18. Three-slot prediction service and batch provenance
+
+The user-facing prediction service consumes only frozen active Champion artifacts resolved from one consistent registry snapshot. It never fits, recalibrates, promotes, or selects the newest artifact in response to a request. Challenger, shadow, retired, and suspended artifacts are ineligible for serving.
+
+For a request of N groups, preflight all three approved slot entries before sampling. Each slot generates exactly N tickets; each ticket contains a legal five-number front subset and legal two-number back subset sampled from that slot's exact artifact distributions. Use the exact sampler matching the artifact family. Ticket sampling is with replacement across tickets by default: duplicates are valid outcomes, are retained, and are reported. Do not silently deduplicate, reroll for diversity, use independent Bernoulli inclusion, or approximate the exact distribution with marginal ranking.
+
+The three model slots are distinct fitted historical populations, not merely three random seeds. Their labels do not establish physical ball-set causality. Set-conditioned artifacts must retain their regime-aware verified-evidence constraints. If any slot is absent, suspended, incompatible, invalid, or fails preflight, publish no complete 3N batch and do not borrow from another slot or pooled model.
+
+Stage all 3N tickets and their provenance before publication. The batch manifest binds request/idempotency key, N, registry snapshot ID, three artifact IDs and hashes, population keys, training cutoffs, inventory/evidence hashes, code/runtime, RNG algorithm/version and stream identifiers, seed commitment/protected reference, ticket IDs, duplicate report, and terminal status. Same idempotency key plus identical canonical request returns the stored batch; changed parameters under the same key are a conflict. A partial ledger write or sampler failure cannot be exposed as a successful batch.
+
+Default request validation is strict and bounded; operational maximum N must be frozen after load testing. Public requests cannot choose internal artifacts, slots, or RNG algorithms. Cryptographically secure master seed material is protected and not returned in public responses. Deterministic replay is promised only for identical artifact bytes, registry snapshot, request, seed material, RNG/sampler versions, and compatible pinned runtime.
+
+The successful response identifies exactly three slot groups with N tickets each, active artifact IDs, population labels, training cutoffs, snapshot/evidence hashes, batch/ledger references, RNG metadata, and duplicate counts. It states that tickets are probabilistic samples, not guaranteed outcomes. No partial 3N result is reported as success.
