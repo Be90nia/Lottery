@@ -45,3 +45,17 @@ jobs:
             era-diagnostic.json
             rolling-origin-benchmark.json
           retention-days: 30
+
+  windows-ledger-locks:
+    runs-on: windows-latest
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test forecast and outcome ledger process locking
+        run: |
+          python -m unittest discover -s tests -p "test_forecast.py" -v
+          python -m unittest discover -s tests -p "test_outcomes.py" -v
