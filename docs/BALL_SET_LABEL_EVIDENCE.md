@@ -200,3 +200,11 @@ Evidence class values:
 - C1: third-party media, aggregator, cache, or mirror.
 
 Observation status values should distinguish at least primary_verified, official_retrospective_only, secondary_only, missing_label, source_unavailable, draw_mismatch, parse_error, and conflict. Only A1/A2 observations with matched draw ID/date, explicit evidence locator, preserved raw bytes, and no unresolved conflict may enter the derived verified-label view. Never infer a label from a source class, neighbouring draw, or source_equipment_count.
+## 1.6 Official archive search: nearby pages are not ball-set evidence
+
+Further searches found official Jiangsu Sports Lottery pages covering the surrounding 2011 draws, but the pages inspected do not contain an explicit ball-set label for 11105 or 11119:
+
+- 2011-10-12 official Jiangsu article covering 11119 results/prize pool: https://www.js-lottery.com/xwzx/zdgz/cms/post-37653.html. It does not state the ball-set index.
+- 2011-10-10 official Jiangsu article about the upcoming 11119 draw and prior 11118: https://www.js-lottery.com/wfzq/dlt/xwzx/cms/post-37627.html. It does not state the 11119 ball-set index.
+
+These are A2 official contextual sources for the draw/result context, but they are not A1/A2 ball-set-label observations. The C1 third-party reports for 11105 and 11119 therefore remain unverified. The search result is a negative finding about the pages inspected, not proof that the original national announcement never existed.
