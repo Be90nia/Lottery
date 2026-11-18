@@ -1,9 +1,9 @@
-from .exponential import ExponentialFamily, FitResult, logsumexp
 """Exact unordered-subset probability model primitives.
 
 The package is intentionally isolated from the legacy LOT-042 marginal forecast
 pipeline. It contains no user-facing prediction endpoint.
 """
+from .exponential import ExponentialFamily, FitResult, logsumexp
 from .features import BASE_FEATURE_NAMES, GAP_VARIANCE_FEATURE, extract_features, feature_names
 from .support import (
     BACK_POPULATION,
