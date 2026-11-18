@@ -18,6 +18,7 @@ FRONT_SIZE, FRONT_PICK = 35, 5
 BACK_SIZE, BACK_PICK = 12, 2
 DEFAULT_ALPHA = 100.0
 DEFAULT_MIN_TRAIN = 300
+CALENDAR_ERAS = ((2007, 2011), (2012, 2016), (2017, 2021), (2022, 2026))
 
 
 def _validate_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -149,9 +150,22 @@ def rolling_origin_backtest(rows: Iterable[dict[str, Any]], *,
         for model in ("expanding", "ewma")
     }
     evaluated = 0
+    era_deltas: dict[str, dict[str, dict[str, dict[str, list[float]]]]] = {}
+    era_bounds = {f"{start}-{end}": (start, end) for start, end in CALENDAR_ERAS}
+    era_draw_ids: dict[str, list[str]] = {key: [] for key in era_bounds}
     for target_index in range(min_train, len(records)):
         train, target = records[:target_index], records[target_index]
         evaluated += 1
+        target_year = int(str(target["draw_date"])[:4])
+        era_key = next((key for key, (start, end) in era_bounds.items()
+                        if start <= target_year <= end), None)
+        if era_key is not None:
+            era_draw_ids[era_key].append(str(target["draw_id"]))
+            era_deltas.setdefault(era_key, {
+                model: {zone: {"brier": [], "log_loss": []}
+                        for zone in ("front", "back")}
+                for model in ("expanding", "ewma")
+            })
         for model in models:
             for zone, field, size, pick in (
                 ("front", "front_numbers", FRONT_SIZE, FRONT_PICK),
@@ -169,6 +183,9 @@ def rolling_origin_backtest(rows: Iterable[dict[str, Any]], *,
                     uniform_brier, uniform_log_loss, _ = _scores(uniform_probs, target[field])
                     paired_deltas[model][zone]["brier"].append(brier - uniform_brier)
                     paired_deltas[model][zone]["log_loss"].append(log_loss - uniform_log_loss)
+                    if era_key is not None:
+                        era_deltas[era_key][model][zone]["brier"].append(brier - uniform_brier)
+                        era_deltas[era_key][model][zone]["log_loss"].append(log_loss - uniform_log_loss)
 
     summary: dict[str, Any] = {}
     for model in models:
@@ -192,6 +209,29 @@ def rolling_origin_backtest(rows: Iterable[dict[str, Any]], *,
                 for metric, values in paired_deltas[model][zone].items()
             }
 
+    era_report: dict[str, Any] = {}
+    for era_key, draw_ids in era_draw_ids.items():
+        if not draw_ids:
+            continue
+        era_report[era_key] = {
+            "evaluation_draws": len(draw_ids),
+            "first_evaluation_draw": draw_ids[0],
+            "last_evaluation_draw": draw_ids[-1],
+            "paired_score_delta_vs_uniform": {
+                model: {
+                    zone: {
+                        metric: _moving_block_bootstrap_ci(
+                            era_deltas[era_key][model][zone][metric],
+                            replicates=1000, block_length=50, seed=20261118
+                        )
+                        for metric in ("brier", "log_loss")
+                    }
+                    for zone in ("front", "back")
+                }
+                for model in ("expanding", "ewma")
+            },
+        }
+
     return {
         "method": "expanding rolling-origin; target uses only strictly earlier draws",
         "draw_count": len(records),
@@ -203,6 +243,12 @@ def rolling_origin_backtest(rows: Iterable[dict[str, Any]], *,
                           "ewma_half_life_draws": half_life},
         "metrics": summary,
         "paired_score_delta_vs_uniform": paired_vs_uniform,
+        "calendar_era_stability": {
+            "era_definition": "fixed five-calendar-year bins: 2007-2011, 2012-2016, 2017-2021, 2022-2026",
+            "status": "exploratory; bins are descriptive and were not preregistered before prior full-period inspection",
+            "multiple_comparison_note": "per-era intervals are descriptive and are not multiplicity-adjusted; do not select a winning era/model from these intervals",
+            "eras": era_report,
+        },
         "bootstrap_method": "paired moving-block bootstrap; 1000 replicates; 50-draw blocks; fixed seed",
         "interpretation": (
             "Lower Brier/log loss is better; top-k hits are descriptive. "
