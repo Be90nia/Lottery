@@ -218,15 +218,36 @@ def ingest_snapshot_directory(
         rows = _parse_page(raw, len(snapshot_reports) + 1, f"sha256:{digest}")
         for row in rows:
             _add_draw(all_rows, row)
+        source_url = sidecar.get("url") if isinstance(sidecar, dict) else None
+        parsed_url = urllib.parse.urlsplit(source_url) if isinstance(source_url, str) else None
+        query = urllib.parse.parse_qs(parsed_url.query) if parsed_url is not None else {}
+        retrieved_at = sidecar.get("retrieved_at") if isinstance(sidecar, dict) else None
+        timestamp_valid = False
+        if isinstance(retrieved_at, str):
+            try:
+                timestamp = datetime.fromisoformat(retrieved_at.replace("Z", "+00:00"))
+                timestamp_valid = timestamp.tzinfo is not None and timestamp.utcoffset() is not None
+            except ValueError:
+                timestamp_valid = False
         required_provenance = (
             isinstance(sidecar, dict)
-            and isinstance(sidecar.get("url"), str) and bool(sidecar.get("url"))
-            and isinstance(sidecar.get("retrieved_at"), str) and bool(sidecar.get("retrieved_at"))
+            and sidecar.get("source") == "Sporttery public historical draw API"
+            and parsed_url is not None
+            and parsed_url.scheme == "https"
+            and parsed_url.hostname == "webapi.sporttery.cn"
+            and parsed_url.path == "/gateway/lottery/getHistoryPageListV1.qry"
+            and query.get("gameNo") == ["85"]
+            and timestamp_valid
             and sidecar.get("http_status") == 200
             and sidecar.get("sha256") == digest
+            and sidecar.get("raw_file") == path.name
         )
         if not required_provenance:
             provenance_complete = False
+            if require_manifests:
+                raise IngestionError(
+                    f"{sidecar_path}: manifest lacks complete official-source provenance"
+                )
         snapshot_reports.append({
             "raw_file": path.name,
             "sha256": digest,
