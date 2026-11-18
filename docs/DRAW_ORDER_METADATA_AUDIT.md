@@ -76,3 +76,12 @@ Before inferential analysis:
 ## Reproducibility
 
 The structural counts above were recomputed from the committed candidate JSONL blob. The source transformation was inspected at the upstream `scripts/clean_dlt.py` revision available on 2026-11-18. Neither source inspection establishes official authenticity of the legacy raw data.
+
+
+## Ingestion hardening follow-up (2026-11-18)
+
+The live-source parser now retains the upstream `lotteryUnsortDrawresult` value and `lotteryEquipmentCount` value in separately named source fields in the parsed JSONL output. These fields are preserved as source metadata and are not normalized into verified equipment/ball-set identities. The exact response bytes and SHA-256 snapshots remain the authoritative evidence.
+
+The parser rejects a non-string, non-null `lotteryUnsortDrawresult` rather than coercing it silently. Duplicate draw IDs repeated across pages must now agree not only on draw date, selected numbers, and parsed order, but also on the retained source order string and equipment metadata. Conflicting source metadata therefore fails ingestion instead of being silently discarded.
+
+Unit tests cover source metadata retention, malformed order-field types, and conflicting equipment metadata on duplicate records. These tests validate parser behavior only; they do not replace a successful authorized live-source capture or row-level historical reconciliation.
