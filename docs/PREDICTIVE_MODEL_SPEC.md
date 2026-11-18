@@ -429,3 +429,16 @@ Sign artifact digests/manifests with protected signing identities unavailable to
 Keep signing keys, source credentials, cloud tokens and master RNG seeds out of logs and ordinary artifacts. Use short-lived narrowly scoped credentials; grant OIDC only to jobs requiring it. Separate source-read, object-write, registry-CAS, signing, backup-restore and serving identities. Record key IDs and preserve historical verification material; define rotation, revocation and compromise-window handling.
 
 Require protected branches, reviewed workflow/lockfile/signing/registry changes, CODEOWNERS and required checks. On compromise, suspend affected workflows/identities, revoke keys, quarantine affected artifacts, preserve evidence, rebuild from reviewed source on a clean runner, reverify provenance and rerun all required validation before authorized restoration. No automatic collection, promotion or public serving until LOT-066 acceptance gates pass.
+
+
+## 23. End-to-end release readiness
+
+System readiness is derived from immutable, machine-verifiable receipts for one exact release manifest, not from issue closure or a manually asserted green flag. States are `NOT_READY`, `READY_FOR_OFFLINE_VALIDATION`, `READY_FOR_SHADOW`, and `READY_FOR_PRODUCTION`. Any material change to source, workflow, dependency lock, runtime, data/evidence snapshot, model artifact, registry generation, signer or policy invalidates affected receipts.
+
+The release manifest binds protected source ref, workflow/action pins, runtime and dependency lock, SBOM/security reports, canonical data and evidence hashes, model artifacts and populations, experiment/evaluation manifests, Champion generation, sampler/RNG versions, storage receipts, backup/restore drill, readiness policy, gate outcomes and approvals. Every reference is immutable and verifiable; no `latest` references.
+
+Required gate groups: source/build integrity; canonical data/evidence; numerical engine; experimental validity; set-conditioned population validity; Champion lifecycle/serving; feedback/monitoring; durable storage/recovery; security/operations. Each gate is PASS, FAIL, BLOCKED or UNKNOWN with evidence refs. UNKNOWN is never PASS.
+
+Integration fault injection covers source blocking/malformed evidence, duplicate/mismatched draws, missing/conflicting set labels, snapshot corruption, numerical non-convergence/NaN/invalid probabilities, incomplete denominators, incompatible/missing Champion slots, mixed registry generations, duplicate/replay/idempotency conflicts, crashes around object/receipt/CAS publication, stale workers, dangling/corrupt objects, revoked/wrong signers, dependency compromise, secret exposure, backup restore failures and outcome corrections. Every test records injected fault, expected/observed state, recovery and proof that no partial/invalid user-visible output escaped.
+
+Three-slot service remains all-or-none. Fewer than three eligible Champion artifacts means unavailable; never substitute or pool. LOT-042 remains isolated. Production readiness requires every applicable gate, successful independent restore and rollback drills, security/provenance verification, protected approval bound to the exact release-manifest digest. Issue closure alone never enables collection, promotion or serving.
