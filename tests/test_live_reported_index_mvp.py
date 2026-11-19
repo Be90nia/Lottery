@@ -311,9 +311,25 @@ class LiveReportedIndexMVPTests(unittest.TestCase):
         live_rows[-1]["draw_date"] = "2026-11-20"
         live_raw = jsonl(live_rows)
         self.live.write_bytes(live_raw)
+
+        candidate_rows = [json.loads(line) for line in self.candidate.read_text().splitlines()]
+        candidate_rows[-1]["draw_id"] = "26133"
+        candidate_rows[-1]["draw_date"] = "2026-11-20"
+        candidate_raw = jsonl(candidate_rows)
+        self.candidate.write_bytes(candidate_raw)
+        candidate_manifest = json.loads(self.candidate_manifest.read_text())
+        candidate_manifest["output_sha256"] = sha(candidate_raw)
+        from lottery.validate import validate_records
+        candidate_manifest["validation"] = validate_records(candidate_rows)
+        candidate_manifest["appended_draw_ids"] = ["26133"]
+        candidate_manifest_raw = (json.dumps(candidate_manifest, sort_keys=True) + "\\n").encode()
+        self.candidate_manifest.write_bytes(candidate_manifest_raw)
+
         live_manifest = json.loads(self.live_manifest.read_text())
         live_manifest.pop("manifest_sha256")
         live_manifest["output_sha256"] = sha(live_raw)
+        live_manifest["candidate_dataset_sha256"] = sha(candidate_raw)
+        live_manifest["candidate_dataset_manifest_sha256"] = sha(candidate_manifest_raw)
         live_manifest["last_draw"] = "26133"
         live_manifest["appended_draw_ids"] = ["26133"]
         live_manifest["manifest_sha256"] = sha(canonical(live_manifest))
