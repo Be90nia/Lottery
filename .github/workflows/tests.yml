@@ -5,14 +5,31 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  workflow-security-policy:
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Enforce workflow security policy
+        run: python scripts/check_workflow_security.py
+
   unit-tests:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: src
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      # actions/setup-python v5.6.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Validate all workflow YAML syntax
@@ -47,8 +64,8 @@ jobs:
           python scripts/backtest_models.py data/candidates/legacy_draws.jsonl \
             --min-train 300 --alpha 100 --half-life 100 \
             --output rolling-origin-benchmark.json
-      - name: Upload research reports
-        uses: actions/upload-artifact@v4
+      # actions/upload-artifact v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: lottery-research-reports
           path: |
@@ -65,8 +82,12 @@ jobs:
     env:
       PYTHONPATH: src
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      # actions/setup-python v5.6.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
       - name: Test forecast and outcome ledger process locking
@@ -74,3 +95,6 @@ jobs:
           python -m unittest discover -s tests -p "test_forecast.py" -v
           python -m unittest discover -s tests -p "test_outcomes.py" -v
           python -m unittest discover -s tests -p "test_ledger_lock.py" -v
+          python -m unittest discover -s tests -p "test_mvp.py" -v
+          python -m unittest discover -s tests -p "test_publication.py" -v
+          python -m unittest discover -s tests -p "test_ingest.py" -v
