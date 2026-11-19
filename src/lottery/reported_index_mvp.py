@@ -83,12 +83,16 @@ def build_reported_index_mvp(
         total_tickets += batch["total_tickets"]
         index_batches[index] = {
             "reported_set_index": int(index),
+            "seed": seed + int(index) * 1_000_003,
             "training_draw_count": len(groups[index]),
             "training_first_draw_id": groups[index][0]["draw_id"],
             "training_last_draw_id": groups[index][-1]["draw_id"],
             "training_dataset_fingerprint": batch["training_dataset_fingerprint"],
             "generation_run_id": batch["generation_run_id"],
             "strategy_metadata": batch["strategy_metadata"],
+            "model_configuration": batch["model_configuration"],
+            "rng": batch["rng"],
+            "sampler_version": batch["sampler_version"],
             "strategies": batch["strategies"],
             "limitations": batch["limitations"],
         }
@@ -98,6 +102,8 @@ def build_reported_index_mvp(
         "purpose": "exploratory_reported_index_conditioned_ticket_candidates",
         "code_commit": code_commit,
         "generated_seed": seed,
+        "alpha": alpha,
+        "ewma_half_life_draws": half_life,
         "tickets_per_strategy_per_index": tickets_per_strategy,
         "total_tickets": total_tickets,
         "index_count": 3,
