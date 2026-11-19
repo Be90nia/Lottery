@@ -220,7 +220,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
                 with self.assertRaisesRegex(IngestionError, "potentially truncated"):
                     fetch_history(output, raw_dir, page_size=1, max_pages=1, delay_seconds=0)
             self.assertFalse(output.exists())
-            self.assertEqual(len(list(raw_dir.glob("*.json"))), 1)
+            self.assertEqual(len([path for path in raw_dir.glob("*.json") if not path.name.endswith(".manifest.json")]), 1)
 
     def test_empty_first_page_fails_closed_without_publishing(self):
         with tempfile.TemporaryDirectory() as temp:
