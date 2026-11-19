@@ -377,7 +377,7 @@ def _archive_observation(
 
 def collect_ball_set_evidence(
     registry_path: Path, archive_dir: Path, ledger_path: Path, *,
-    receipt_path: Path, draw_inventory_path: Path, delay_seconds: float = 0.5,
+    receipt_path: Path, draw_inventory_path: Path, delay_seconds: float = 1.0,
     max_forward_pages: int = 2000,
 ) -> dict[str, Any]:
     if delay_seconds < 0 or type(max_forward_pages) is not int or max_forward_pages < 1:
@@ -539,7 +539,7 @@ def main() -> int:
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--draw-inventory", type=Path, required=True)
-    parser.add_argument("--delay", type=float, default=0.5)
+    parser.add_argument("--delay", type=float, default=1.0)
     parser.add_argument("--max-forward-pages", type=int, default=2000)
     args = parser.parse_args()
     try:
