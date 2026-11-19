@@ -14,6 +14,7 @@ on:
       - "src/lottery/ball_set_coverage.py"
       - "src/lottery/reported_set_index.py"
       - "src/lottery/reported_index_pilot.py"
+      - "src/lottery/reported_index_mvp.py"
       - "src/lottery/ingest.py"
       - "src/lottery/validate.py"
       - "src/lottery/backtest.py"
@@ -23,10 +24,12 @@ on:
       - "tests/test_ball_set_coverage.py"
       - "tests/test_reported_set_index.py"
       - "tests/test_reported_index_pilot.py"
+      - "tests/test_reported_index_mvp.py"
       - "scripts/collect_ball_set_evidence.py"
       - "scripts/build_ball_set_coverage.py"
       - "scripts/build_reported_set_index_view.py"
       - "scripts/run_reported_set_index_pilot.py"
+      - "scripts/run_reported_set_index_mvp.py"
       - "docs/REPORTED_SET_INDEX_CONDITIONAL_MODEL_PREREGISTRATION.md"
       - "docs/BALL_SET_EVIDENCE_ARCHIVE.md"
       - "README.md"
@@ -40,6 +43,7 @@ on:
       - "src/lottery/ball_set_coverage.py"
       - "src/lottery/reported_set_index.py"
       - "src/lottery/reported_index_pilot.py"
+      - "src/lottery/reported_index_mvp.py"
       - "src/lottery/ingest.py"
       - "src/lottery/validate.py"
       - "src/lottery/backtest.py"
@@ -49,10 +53,12 @@ on:
       - "tests/test_ball_set_coverage.py"
       - "tests/test_reported_set_index.py"
       - "tests/test_reported_index_pilot.py"
+      - "tests/test_reported_index_mvp.py"
       - "scripts/collect_ball_set_evidence.py"
       - "scripts/build_ball_set_coverage.py"
       - "scripts/build_reported_set_index_view.py"
       - "scripts/run_reported_set_index_pilot.py"
+      - "scripts/run_reported_set_index_mvp.py"
       - "docs/REPORTED_SET_INDEX_CONDITIONAL_MODEL_PREREGISTRATION.md"
       - "docs/BALL_SET_EVIDENCE_ARCHIVE.md"
       - "README.md"
@@ -196,6 +202,25 @@ jobs:
             --code-commit "$GITHUB_SHA" \
             --output-dir evidence-archive/coverage/reported-set-index-pilot
 
+      - name: Generate all reported-index candidate lanes
+        id: candidates
+        if: steps.pilot.outcome == 'success'
+        continue-on-error: true
+        run: |
+          REPORT_SHA="$(python -c 'import json; print(json.load(open("evidence-archive/coverage/coverage.json", encoding="utf-8"))["report_sha256"])')"
+          VIEW_STEM="reported-set-index-${REPORT_SHA:0:16}"
+          VIEW_MANIFEST="evidence-archive/coverage/reported-set-index/${VIEW_STEM}.manifest.json"
+          VIEW_MANIFEST_SHA="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["manifest_sha256"])' "$VIEW_MANIFEST")"
+          PILOT_PATH="evidence-archive/coverage/reported-set-index-pilot/reported-set-index-pilot-${VIEW_MANIFEST_SHA:0:12}-${GITHUB_SHA:0:12}.json"
+          python scripts/run_reported_set_index_mvp.py \
+            --view "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.jsonl" \
+            --view-manifest "$VIEW_MANIFEST" \
+            --pilot-report "$PILOT_PATH" \
+            --tickets-per-strategy 5 \
+            --seed 20261119 \
+            --code-commit "$GITHUB_SHA" \
+            --output-dir evidence-archive/coverage/reported-index-mvp
+
       - name: Upload cumulative evidence archive
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -206,7 +231,7 @@ jobs:
           retention-days: 90
 
       - name: Fail visibly when evidence needs intervention
-        if: steps.collect.outcome == 'failure' || steps.coverage.outcome == 'failure' || steps.reported_view.outcome == 'failure' || steps.pilot.outcome == 'failure'
+        if: steps.collect.outcome == 'failure' || steps.coverage.outcome == 'failure' || steps.reported_view.outcome == 'failure' || steps.pilot.outcome == 'failure' || steps.candidates.outcome == 'failure'
         run: |
           echo "Ball-set evidence collection or coverage verification failed. The previous and newly captured evidence artifact was uploaded."
           exit 1
