@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import random
+from datetime import date
 from typing import Callable, Any, Sequence
 
 from lottery.subset_probability import validate_subset
@@ -131,16 +132,27 @@ def verify_frozen_snapshot(raw: bytes, *, expected_sha256: str,
         raise ValueError("snapshot row count mismatch")
     seen: set[str] = set()
     previous: tuple[str, str] | None = None
+    previous_draw_id: str | None = None
+    previous_draw_date: str | None = None
     for index, row in enumerate(records):
         if not isinstance(row, dict):
             raise ValueError(f"row {index + 1} is not an object")
         draw_id, draw_date = row.get("draw_id"), row.get("draw_date")
         if not isinstance(draw_id, str) or not draw_id or not isinstance(draw_date, str):
             raise ValueError(f"row {index + 1} has invalid draw identity")
+        try:
+            date.fromisoformat(draw_date)
+        except ValueError as exc:
+            raise ValueError(f"row {index + 1} has an invalid ISO draw date") from exc
         key = (draw_date, draw_id)
         if previous is not None and key <= previous:
             raise ValueError("snapshot must be strictly chronological without duplicate keys")
+        if previous_draw_id is not None and draw_id <= previous_draw_id:
+            raise ValueError("draw IDs must be strictly increasing in source order")
+        if previous_draw_date is not None and draw_date <= previous_draw_date:
+            raise ValueError("draw dates must be strictly increasing in source order")
         previous = key
+        previous_draw_id, previous_draw_date = draw_id, draw_date
         if draw_id in seen:
             raise ValueError("duplicate draw ID")
         seen.add(draw_id)
@@ -176,6 +188,8 @@ def evaluate_rolling_origin(
     if "uniform" in model_factories:
         raise ValueError("uniform is a reserved analytic baseline name")
     expected_targets = tuple(target_ids)
+    if not expected_targets:
+        raise ValueError("target denominator must not be empty")
     actual_targets = tuple(row["draw_id"] for row in rows[min_train:])
     if expected_targets != actual_targets:
         raise ValueError("target IDs do not exactly match records after minimum training history")
