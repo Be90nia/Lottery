@@ -252,6 +252,15 @@ def _read_ledger(ledger_path: Path) -> list[dict[str, Any]]:
                 raise BallSetEvidenceError(f"observation ledger source URLs are invalid at line {line_no}")
             _allowed_url(source["requested_url"])
             _allowed_url(source["final_url"])
+            if source.get("source_authority_class") != source.get("authority_class"):
+                raise BallSetEvidenceError(f"observation source authority metadata conflicts at line {line_no}")
+            redirects = source.get("redirect_chain")
+            if not isinstance(redirects, list):
+                raise BallSetEvidenceError(f"observation redirect chain is invalid at line {line_no}")
+            for hop in redirects:
+                if not isinstance(hop, dict) or not isinstance(hop.get("url"), str):
+                    raise BallSetEvidenceError(f"observation redirect hop is invalid at line {line_no}")
+                _allowed_url(hop["url"])
             if (not isinstance(source.get("body_sha256"), str)
                     or not re.fullmatch(r"[0-9a-f]{64}", source["body_sha256"])
                     or not source.get("raw_object_ref") or not source.get("manifest_object_ref")):
