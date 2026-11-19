@@ -1,6 +1,13 @@
 name: exact-subset-research
 
 on:
+  # One-shot launch path for the explicitly requested frozen research run.
+  # Restrict to this exact PR branch and workflow-file changes only.
+  push:
+    branches:
+      - feat/lot-055-preregistered-holm-inference
+    paths:
+      - .github/workflows/subset-research.yml
   workflow_dispatch:
     inputs:
       resume_checkpoints:
