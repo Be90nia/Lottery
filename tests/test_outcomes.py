@@ -47,7 +47,7 @@ class OutcomeLedgerTests(unittest.TestCase):
             "target_draw_id": "2604",
             "published_at": "2026-02-02T20:30:00+08:00",
             "captured_at": "2026-02-02T20:31:00+08:00",
-            "source_url": "https://webapi.sporttery.cn/gateway/lottery/result",
+            "source_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85",
             "source_sha256": hashlib.sha256(b"raw official response").hexdigest(),
             "http_status": 200,
             "front_numbers": [2, 8, 12, 19, 31],
@@ -89,6 +89,22 @@ class OutcomeLedgerTests(unittest.TestCase):
     def test_rejects_non_official_source(self):
         kwargs = dict(self.kwargs, source_url="https://sporttery-cn.example/result")
         with self.assertRaisesRegex(OutcomeLedgerError, "official sporttery.cn"):
+            create_outcome_event(self.forecasts, **kwargs)
+
+    def test_rejects_lookalike_official_subdomain(self):
+        kwargs = dict(
+            self.kwargs,
+            source_url="https://attacker.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85",
+        )
+        with self.assertRaisesRegex(OutcomeLedgerError, "exact HTTPS Sporttery history endpoint"):
+            create_outcome_event(self.forecasts, **kwargs)
+
+    def test_rejects_wrong_path_on_official_host(self):
+        kwargs = dict(
+            self.kwargs,
+            source_url="https://webapi.sporttery.cn/gateway/lottery/result?gameNo=85",
+        )
+        with self.assertRaisesRegex(OutcomeLedgerError, "exact HTTPS Sporttery history endpoint"):
             create_outcome_event(self.forecasts, **kwargs)
 
     def test_rejects_non_https_or_non_200(self):
