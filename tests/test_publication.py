@@ -49,7 +49,7 @@ class AppendOnlyPublicationTests(unittest.TestCase):
             raw_rows.append({
                 "lotteryDrawNum": row["draw_id"],
                 "lotteryDrawTime": row["draw_date"],
-                "lotteryDrawResult": " ".join(str(number) for number in numbers),
+                "lotteryDrawResult": " ".join(f"{number:02d}" for number in numbers),
                 "lotteryUnsortDrawresult": None,
                 "lotteryEquipmentCount": row.get("source_equipment_count"),
             })
