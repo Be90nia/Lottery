@@ -403,7 +403,13 @@ def main() -> int:
         report = build_ball_set_coverage(
             args.draw_inventory, args.ledger, args.archive_dir, code_commit=args.code_commit
         )
-        protected = {args.draw_inventory.resolve(), args.ledger.resolve()}
+        protected = {args.draw_inventory.resolve(), args.ledger.resolve(), (args.archive_dir / "receipt.json").resolve()}
+        raw_root = (args.archive_dir / "raw").resolve()
+        if any(path.resolve().is_relative_to(raw_root) for path in (
+            args.output_json, args.output_csv, args.output_markdown
+        )):
+            raise BallSetCoverageError("coverage outputs cannot be written into the raw evidence object directory")
+        protected.update(path.resolve() for path in raw_root.rglob("*") if path.is_file()) if raw_root.exists() else None
         write_ball_set_coverage_report(
             report, output_json=args.output_json, output_csv=args.output_csv,
             output_markdown=args.output_markdown, protected_paths=protected,
