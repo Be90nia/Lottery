@@ -274,7 +274,7 @@ class BallSetArchiveTests(unittest.TestCase):
         record["reported_set_index"] = True
         body = {key: value for key, value in record.items() if key != "event_hash"}
         record["event_hash"] = _canonical_hash(body)
-        self.ledger.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        self.ledger.write_text(json.dumps(record) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(BallSetEvidenceError, "invalid fields"):
             _read_ledger(self.ledger)
 
