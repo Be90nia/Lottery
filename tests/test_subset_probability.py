@@ -111,6 +111,20 @@ class ConditionalPoissonTests(unittest.TestCase):
         second = sample_subsets([0.0] * 8, 3, 20, seed=71)
         self.assertEqual(first, second)
 
+    def test_weighted_marginal_calibration_recovers_generated_marginals(self):
+        from lottery.subset_probability import calibrate_weighted_subset
+        source_weights = [-0.8, -0.2, 0.1, 0.4, 0.5]
+        target = conditional_poisson_marginals(source_weights, 2)
+        result = calibrate_weighted_subset(target, 2)
+        self.assertTrue(result.forecast_ready, result)
+        self.assertLessEqual(result.max_abs_residual, 1e-8)
+        self.assertAlmostEqual(sum(result.log_weights), 0.0, places=10)
+
+    def test_weighted_marginal_calibration_fails_closed_on_boundary(self):
+        from lottery.subset_probability import calibrate_weighted_subset
+        with self.assertRaises(ValueError):
+            calibrate_weighted_subset([1.0, 0.5, 0.5], 2)
+
     def test_invalid_weights_rejected(self):
         with self.assertRaises(ValueError):
             conditional_poisson_log_normalizer([0.0, float("inf")], 1)
