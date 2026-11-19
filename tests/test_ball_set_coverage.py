@@ -82,7 +82,7 @@ class BallSetCoverageTests(unittest.TestCase):
         self.assertEqual(report["per_set"]["3"]["denominator_status"], "unknown_regime_boundary")
         self.assertEqual(report["summary"]["eligible_slot_targets"], 0)
     def test_missing_official_footer_never_enters_verified_view(self):
-        raw = page(3).replace(b"<footer>\xe6\xb1\x9f\xe8\x8b\x8f\xe7\x9c\x81\xe4\xbd\x93\xe8\x82\xb2\xe5\xbd\xa9\xe7\xa5\xa8\xe7\xae\xa1\xe7\x90\x86\xe4\xb8\xad\xe5\xbf\x83\xe7\x89\x88\xe6\x9d\x83\xe6\x89\x80\xe6\x9c\x89</footer>", b"")
+        raw = page(3).replace("<footer>江苏省体育彩票管理中心版权所有</footer>".encode("utf-8"), b"")
         self.collect(raw)
         report = self.report()
         self.assertEqual(report["per_draw"][0]["status"], "source_authority_unverified")
