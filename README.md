@@ -142,6 +142,8 @@ python scripts/outcome_ledger.py record --forecasts data/holdout/forecast-ledger
   --source-url 'https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1' \
   --snapshot data/raw/sporttery/official-response.json --http-status 200 \
   --front 1,2,3,4,5 --back 1,2
+python scripts/outcome_ledger.py verify data/holdout/outcome-ledger.jsonl \
+  --forecasts data/holdout/forecast-ledger.jsonl
 python scripts/outcome_ledger.py score --forecasts data/holdout/forecast-ledger.jsonl \
   --outcomes data/holdout/outcome-ledger.jsonl
 ```
