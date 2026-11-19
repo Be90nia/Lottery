@@ -7,7 +7,7 @@ from unittest.mock import patch
 from lottery.ball_set_coverage import (
     BallSetCoverageError, build_ball_set_coverage, write_ball_set_coverage_report,
 )
-from lottery.ball_set_evidence import collect_ball_set_evidence
+from lottery.ball_set_evidence import collect_ball_set_evidence, _canonical_hash
 
 BASE = "https://www.js-lottery.com/cms/post-148224.html"
 
@@ -198,6 +198,17 @@ class BallSetCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(BallSetCoverageError, "event hash mismatch"):
             self.report()
 
+
+    def test_rehashed_ledger_label_must_match_archived_raw_page(self):
+        self.collect(page(3))
+        record = json.loads(self.ledger.read_text(encoding="utf-8").splitlines()[0])
+        record["reported_set_index"] = 2
+        body = {key: value for key, value in record.items() if key != "event_hash"}
+        record["event_hash"] = _canonical_hash(body)
+        self.ledger.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        report = self.report()
+        self.assertEqual(report["per_draw"][0]["status"], "parse_error")
+        self.assertEqual(report["summary"]["primary_verified_draws"], 0)
 
 if __name__ == "__main__":
     unittest.main()

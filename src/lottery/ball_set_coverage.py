@@ -105,7 +105,11 @@ def _verify_observation(
     if parsed.draw_id != inventory_row["draw_id"] or parsed.draw_date != inventory_row["draw_date"]:
         return "draw_mismatch", None, source.get("final_url")
     parser = observation.get("parser")
-    if not isinstance(parser, dict) or parser.get("matched_text") != parsed.matched_text:
+    if (not isinstance(parser, dict)
+            or parser.get("name") != "dlt-official-ball-set-announcement"
+            or parser.get("version") != PARSER_VERSION
+            or parser.get("matched_text") != parsed.matched_text
+            or observation.get("reported_set_index") != parsed.reported_set_index):
         return "parse_error", None, source.get("final_url")
     locator = parser.get("evidence_locator")
     if parsed.matched_text is not None:

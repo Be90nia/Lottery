@@ -67,7 +67,7 @@ def validate_records(records: list[dict[str, Any]]) -> dict[str, Any]:
         raw_order = row.get("source_unsort_drawresult")
         if raw_order is not None and not isinstance(raw_order, str):
             errors.append(f"row {index} ({draw_id}): source_unsort_drawresult must be a string or null")
-        elif isinstance(raw_order, str) and raw_order.strip():
+        elif isinstance(raw_order, str) and raw_order.strip() and raw_order.strip().lower() != "current":
             try:
                 raw_order_numbers = [int(part) for part in raw_order.split()]
             except ValueError:
