@@ -322,7 +322,7 @@ class LiveReportedIndexMVPTests(unittest.TestCase):
         from lottery.validate import validate_records
         candidate_manifest["validation"] = validate_records(candidate_rows)
         candidate_manifest["appended_draw_ids"] = ["26133"]
-        candidate_manifest_raw = (json.dumps(candidate_manifest, sort_keys=True) + "\\n").encode()
+        candidate_manifest_raw = (json.dumps(candidate_manifest, sort_keys=True) + "\n").encode()
         self.candidate_manifest.write_bytes(candidate_manifest_raw)
 
         live_manifest = json.loads(self.live_manifest.read_text())
