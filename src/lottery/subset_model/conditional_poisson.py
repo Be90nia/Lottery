@@ -45,8 +45,18 @@ def _validate_log_weights(log_weights: Sequence[float], k: int) -> tuple[tuple[f
         raise ValueError("log_weights must contain only finite values")
     if type(k) is not int or not 1 <= k <= len(values):
         raise ValueError("k must be an integer in 1..len(log_weights)")
-    center = fsum(values) / len(values)
-    return tuple(value - center for value in values), center
+    # Shift before summing so a large common offset does not overflow.
+    # A spread that cannot be represented after centering is rejected rather
+    # than allowed to poison the DP with infinities.
+    offset = max(values)
+    try:
+        center = offset + fsum(value - offset for value in values) / len(values)
+    except OverflowError as exc:
+        raise ValueError("log_weights cannot be centered in float64") from exc
+    centered = tuple(value - center for value in values)
+    if not isfinite(center) or any(not isfinite(value) for value in centered):
+        raise ValueError("centered log_weights must remain finite in float64")
+    return centered, center
 
 
 def _forward_dp(log_weights: tuple[float, ...], k: int) -> list[list[float]]:
@@ -141,7 +151,13 @@ class ConditionalPoisson:
             marginal = exp(log_marginal)
             if not isfinite(marginal) or not 0.0 <= marginal <= 1.0:
                 raise ArithmeticError("computed inclusion marginal is invalid")
+            if 0 < self.k < self.m and not 0.0 < marginal < 1.0:
+                raise ArithmeticError(
+                    "finite non-degenerate inclusion marginal is outside the representable open interval"
+                )
             result.append(marginal)
+        if abs(fsum(result) - self.k) > 1e-10:
+            raise ArithmeticError("inclusion marginals do not sum to the fixed subset size")
         return tuple(result)
 
     def probability_sum(self) -> float:
