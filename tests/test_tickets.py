@@ -7,7 +7,9 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from lottery.tickets import generate_ticket_candidates
+from lottery.tickets import (
+    _calibrated_sampler, _sample_ticket_subset, generate_ticket_candidates,
+)
 
 
 def draw(index, front=None, back=None):
@@ -44,6 +46,33 @@ class TicketCandidateTests(unittest.TestCase):
                 self.assertEqual(len(set(ticket["back_numbers"])), 2)
                 self.assertTrue(all(1 <= n <= 12 for n in ticket["back_numbers"]))
 
+    def test_conditional_poisson_sampler_matches_requested_marginals(self):
+        target = [0.1, 0.2, 0.3, 0.6, 0.8]
+        sampler, receipt = _calibrated_sampler(target, 2)
+        achieved = sampler.inclusion_marginals()
+        self.assertLessEqual(receipt["maximum_absolute_residual"], 1e-8)
+        self.assertEqual(receipt["terminal_status"], "converged")
+        for actual, expected in zip(achieved, target):
+            self.assertAlmostEqual(actual, expected, delta=1e-8)
+        rng = __import__("random").Random(17)
+        for _ in range(100):
+            subset = _sample_ticket_subset(sampler, rng)
+            self.assertEqual(len(subset), 2)
+            self.assertEqual(subset, sorted(set(subset)))
+            self.assertTrue(all(1 <= value <= 5 for value in subset))
+
+    def test_generation_receipt_records_marginal_calibration(self):
+        result = generate_ticket_candidates(self.rows, tickets_per_strategy=2)
+        self.assertEqual(result["schema_version"], 2)
+        for metadata in result["strategy_metadata"].values():
+            self.assertEqual(
+                metadata["sampling_method"],
+                "exact conditional-Poisson rejective sampling; with replacement across tickets",
+            )
+            for zone in ("front_marginal_calibration", "back_marginal_calibration"):
+                self.assertEqual(metadata[zone]["terminal_status"], "converged")
+                self.assertLessEqual(metadata[zone]["maximum_absolute_residual"], 1e-8)
+
     def test_seed_is_reproducible(self):
         first = generate_ticket_candidates(self.rows, tickets_per_strategy=3, seed=91)
         second = generate_ticket_candidates(self.rows, tickets_per_strategy=3, seed=91)
@@ -54,7 +83,10 @@ class TicketCandidateTests(unittest.TestCase):
         def repeated_sample(_weights, count, _rng):
             return [1, 2, 3, 4, 5] if count == 5 else [1, 2]
 
-        with patch("lottery.tickets._weighted_sample_without_replacement", side_effect=repeated_sample):
+        def repeated_sample(sampler, _rng):
+            return [1, 2, 3, 4, 5] if sampler.k == 5 else [1, 2]
+
+        with patch("lottery.tickets._sample_ticket_subset", side_effect=repeated_sample):
             result = generate_ticket_candidates(self.rows, tickets_per_strategy=3)
         for strategy, tickets in result["strategies"].items():
             self.assertEqual(len(tickets), 3)
