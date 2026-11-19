@@ -55,17 +55,41 @@ jobs:
           if raw_dir == root or not raw_dir.is_relative_to(root) or not raw_dir.is_dir():
               raise SystemExit("fetch receipt raw_dir is outside the isolated run root")
           print(raw_dir)
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"raw_dir={raw_dir}\\n")
           PY
           )"
           python scripts/fetch_history.py \
             --snapshots-dir "$RAW_DIR" \
             --require-manifests \
             --output sync-run/processed/candidate.jsonl
+      - name: Verify append-only extension against pinned baseline
+        id: append_only
+        if: steps.validate_candidate.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+          RAW_DIR: ${{ steps.validate_candidate.outputs.raw_dir }}
+        run: |
+          set +e
+          python scripts/reconcile_draws.py \
+            --current data/candidates/pinned-draws-20261118.jsonl \
+            --candidate sync-run/processed/candidate.jsonl \
+            --candidate-manifest sync-run/processed/candidate.jsonl.manifest.json \
+            --snapshots-dir "$RAW_DIR" \
+            --output sync-run/processed/append-only-candidate.jsonl \
+            --receipt sync-run/processed/append-only-receipt.json \
+            > sync-run/processed/append-only-output.json \
+            2> sync-run/processed/append-only-error.txt
+          rc=$?
+          printf '%s\\n' "$rc" > sync-run/processed/append-only-exit-code.txt
+          exit "$rc"
       - name: Write machine-readable sync receipt
         if: always()
         env:
           FETCH_OUTCOME: ${{ steps.fetch.outcome }}
           VALIDATION_OUTCOME: ${{ steps.validate_candidate.outcome }}
+          APPEND_ONLY_OUTCOME: ${{ steps.append_only.outcome }}
           GIT_SHA: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
@@ -86,13 +110,26 @@ jobs:
           manifest = read_json(manifest_path)
           candidate_path = root / "processed/candidate.jsonl"
           candidate_sha = hashlib.sha256(candidate_path.read_bytes()).hexdigest() if candidate_path.exists() else None
-          ready = os.environ["FETCH_OUTCOME"] == "success" and os.environ["VALIDATION_OUTCOME"] == "success" and code == 0 and manifest is not None
+          append_exit_path = root / "processed/append-only-exit-code.txt"
+          append_code = int(append_exit_path.read_text().strip()) if append_exit_path.exists() else None
+          append_receipt_path = root / "processed/append-only-receipt.json"
+          append_receipt = read_json(append_receipt_path)
+          append_candidate_path = root / "processed/append-only-candidate.jsonl"
+          append_candidate_sha = hashlib.sha256(append_candidate_path.read_bytes()).hexdigest() if append_candidate_path.exists() else None
+          ready = (os.environ["FETCH_OUTCOME"] == "success"
+                   and os.environ["VALIDATION_OUTCOME"] == "success"
+                   and os.environ["APPEND_ONLY_OUTCOME"] == "success"
+                   and code == 0 and append_code == 0 and manifest is not None and append_receipt is not None)
           receipt = {
               "schema_version": 2,
-              "status": "candidate_archived_untrusted" if ready else "source_unavailable_or_validation_failed",
+              "status": "append_candidate_ready_untrusted" if ready else "source_unavailable_validation_failed_or_append_gate_blocked",
               "fetch_step_outcome": os.environ["FETCH_OUTCOME"],
               "snapshot_validation_outcome": os.environ["VALIDATION_OUTCOME"],
+              "append_only_outcome": os.environ["APPEND_ONLY_OUTCOME"],
               "fetch_exit_code": code,
+              "append_only_exit_code": append_code,
+              "append_only_receipt": append_receipt,
+              "append_only_candidate_sha256": append_candidate_sha,
               "created_at": datetime.now(timezone.utc).isoformat(),
               "workflow_event": os.environ["EVENT_NAME"],
               "code_commit": os.environ["GIT_SHA"],
@@ -122,7 +159,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Fail visibly when the source fetch or validation failed
-        if: steps.fetch.outcome == 'failure' || steps.validate_candidate.outcome == 'failure'
+        if: steps.fetch.outcome == 'failure' || steps.validate_candidate.outcome == 'failure' || steps.append_only.outcome == 'failure'
         run: |
-          echo "Official source fetch or strict snapshot validation failed. Evidence was uploaded; canonical data was not changed."
+          echo "Official source fetch, strict validation, or append-only gate failed. Evidence was uploaded; canonical data was not changed."
           exit 1
