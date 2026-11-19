@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -63,6 +65,23 @@ def _fetch_page(page_no: int, page_size: int, timeout: int = 20, retries: int = 
             if attempt + 1 < retries:
                 time.sleep(1.5 * (attempt + 1))
     raise IngestionError(f"page {page_no}: request failed after {retries} attempts: {last_error}")
+
+
+def _atomic_write_new(path: Path, content: bytes) -> None:
+    """Atomically create a new file without replacing previous evidence."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.link(temporary, path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    temporary.unlink(missing_ok=True)
 
 
 def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir: Path, url: str, run_id: str) -> str:
@@ -309,13 +328,9 @@ def ingest_snapshot_directory(
     from .validate import validate_records
     validation = validate_records([asdict(row) for row in ordered])
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    temporary.write_text(
-        "".join(json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered),
-        encoding="utf-8",
-    )
-    temporary.replace(output)
+    output_manifest_path = output.with_suffix(output.suffix + ".manifest.json")
+    if output.exists() or output_manifest_path.exists():
+        raise IngestionError("output or output manifest already exists; refusing to overwrite prior evidence")
 
     manifest = {
         "source": "offline import of immutable JSON response snapshots",
@@ -334,10 +349,15 @@ def ingest_snapshot_directory(
         "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
         "trust_status": "candidate_unverified" if not provenance_complete else "manifest_complete_not_officially_authenticated",
     }
-    manifest_path = output.with_suffix(output.suffix + ".manifest.json")
-    manifest_tmp = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
-    manifest_tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    manifest_tmp.replace(manifest_path)
+    output_bytes = "".join(
+        json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered
+    ).encode("utf-8")
+    manifest["output_sha256"] = hashlib.sha256(output_bytes).hexdigest()
+    _atomic_write_new(output, output_bytes)
+    _atomic_write_new(
+        output_manifest_path,
+        (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+    )
     return manifest
 
 def fetch_history(
@@ -353,6 +373,8 @@ def fetch_history(
         raise ValueError("max_pages must be at least 1")
     if delay_seconds < 0:
         raise ValueError("delay_seconds must not be negative")
+    if output.exists():
+        raise IngestionError("output already exists; refusing to overwrite prior evidence")
     run_id = uuid.uuid4().hex
     run_raw_dir = raw_dir / run_id
     all_rows: dict[str, Draw] = {}
@@ -388,10 +410,10 @@ def fetch_history(
         if delay_seconds:
             time.sleep(delay_seconds)
     ordered = sorted(all_rows.values(), key=lambda row: (row.draw_date, row.draw_id))
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    temporary.write_text("".join(json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered), encoding="utf-8")
-    temporary.replace(output)
+    output_bytes = "".join(
+        json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered
+    ).encode("utf-8")
+    _atomic_write_new(output, output_bytes)
     return {
         "records": len(ordered),
         "first_draw": ordered[0].draw_id if ordered else None,
