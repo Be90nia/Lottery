@@ -80,6 +80,21 @@ Monte Carlo frequency baseline details are documented in [research methods](docs
 
 The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into the legacy candidate.
 
+### Model regression receipts (LOT-073)
+
+Build and verify a deterministic paired evaluation receipt from chronological per-target scores. The gate compares a candidate against both the champion and uniform baseline using front/back Brier and log-loss with paired moving-block bootstrap intervals. It requires at least 200 ordered targets and 1,000 replicates. Even a pass is human-review-only; it cannot promote or serve a model.
+
+```bash
+python scripts/evaluation_receipt.py build scores.json \
+  --candidate-model-id candidate-v2 --champion-model-id champion-v1 \
+  --dataset-sha256 <64-character-dataset-sha256> \
+  --code-commit <40-character-code-commit> \
+  --protocol-version frozen-v1 --output receipts/candidate-v2.json
+python scripts/evaluation_receipt.py verify receipts/candidate-v2.json
+```
+
+The CLI writes receipts atomically and refuses to overwrite an existing receipt. See [the model regression receipt protocol](docs/MODEL_REGRESSION_RECEIPTS.md).
+
 ### Prospective forecast logging
 
 Before an eligible future draw, the fixed marginal models can be recorded with
