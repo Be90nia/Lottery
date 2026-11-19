@@ -70,20 +70,51 @@ def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir:
     retrieved_at = datetime.now(timezone.utc).isoformat()
     raw_dir.mkdir(parents=True, exist_ok=True)
     body_path = raw_dir / f"page-{page_no:05d}-{digest[:12]}.json"
-    body_path.write_bytes(raw)
+    if body_path.exists():
+        if hashlib.sha256(body_path.read_bytes()).hexdigest() != digest:
+            raise IngestionError(f"content-addressed snapshot collision or corruption: {body_path}")
+    else:
+        try:
+            with body_path.open("xb") as handle:
+                handle.write(raw)
+                handle.flush()
+        except FileExistsError:
+            if hashlib.sha256(body_path.read_bytes()).hexdigest() != digest:
+                raise IngestionError(f"content-addressed snapshot collision or corruption: {body_path}")
+
     manifest_path = raw_dir / f"page-{page_no:05d}-{digest[:12]}.manifest.json"
-    manifest_path.write_text(json.dumps({
-        "source": "Sporttery public historical draw API",
-        "url": url,
-        "retrieved_at": retrieved_at,
-        "http_status": status,
-        "content_type": content_type,
-        "sha256": digest,
-        "parser_version": PARSER_VERSION,
-        "run_id": run_id,
-        "page_no": page_no,
-        "raw_file": body_path.name,
-    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if manifest_path.exists():
+        try:
+            existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise IngestionError(f"existing snapshot manifest is corrupt: {manifest_path}") from exc
+        if (not isinstance(existing, dict) or existing.get("sha256") != digest
+                or existing.get("raw_file") != body_path.name
+                or existing.get("url") != url or existing.get("http_status") != status):
+            raise IngestionError(f"existing immutable snapshot manifest conflicts: {manifest_path}")
+    else:
+        manifest = {
+            "source": "Sporttery public historical draw API",
+            "url": url,
+            "retrieved_at": retrieved_at,
+            "http_status": status,
+            "content_type": content_type,
+            "sha256": digest,
+            "parser_version": PARSER_VERSION,
+            "run_id": run_id,
+            "page_no": page_no,
+            "raw_file": body_path.name,
+        }
+        try:
+            with manifest_path.open("x", encoding="utf-8") as handle:
+                handle.write(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
+                handle.flush()
+        except FileExistsError:
+            existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if (not isinstance(existing, dict) or existing.get("sha256") != digest
+                    or existing.get("raw_file") != body_path.name
+                    or existing.get("url") != url or existing.get("http_status") != status):
+                raise IngestionError(f"existing immutable snapshot manifest conflicts: {manifest_path}")
     return digest
 
 
