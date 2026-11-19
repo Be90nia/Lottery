@@ -304,6 +304,7 @@ def fetch_history(
     run_id = uuid.uuid4().hex
     all_rows: dict[str, Draw] = {}
     page_manifests: list[dict[str, Any]] = []
+    pagination_end_reason: str | None = None
     for page_no in range(1, (max_pages or 10**9) + 1):
         params = urllib.parse.urlencode({
             "gameNo": "85", "provinceId": "0", "pageSize": str(page_size),
@@ -317,13 +318,20 @@ def fetch_history(
         rows = _parse_page(raw, page_no, digest)
         page_manifests.append({"page_no": page_no, "sha256": digest, "records": len(rows), "run_id": run_id})
         if not rows:
+            if page_no == 1:
+                raise IngestionError("page 1: source returned no draws; refusing to publish an empty dataset")
+            pagination_end_reason = "empty_page"
             break
         for row in rows:
             _add_draw(all_rows, row)
         if len(rows) < page_size:
+            pagination_end_reason = "short_page"
             break
         if max_pages is not None and page_no >= max_pages:
-            break
+            raise IngestionError(
+                f"pagination limit reached at page {page_no} while page was full; "
+                "refusing to publish a potentially truncated dataset"
+            )
         if delay_seconds:
             time.sleep(delay_seconds)
     ordered = sorted(all_rows.values(), key=lambda row: (row.draw_date, row.draw_id))
@@ -339,4 +347,7 @@ def fetch_history(
         "pages": page_manifests,
         "parser_version": PARSER_VERSION,
         "run_id": run_id,
+        "pagination_end_reason": pagination_end_reason,
+        "source_completeness_verified": False,
+        "trust_status": "manifest_complete_not_officially_authenticated",
     }
