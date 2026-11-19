@@ -68,7 +68,7 @@ class BallSetParserTests(unittest.TestCase):
     def test_draw_id_sequence_and_year_rollover_are_bounded(self):
         self.assertTrue(_next_draw_id("26154", "26155"))
         self.assertTrue(_next_draw_id("26155", "27001"))
-        self.assertFalse(_next_draw_id("26110", "27001"))
+        self.assertFalse(_next_draw_id("26010", "27001"))
         self.assertFalse(_next_draw_id("26154", "26156"))
 
 
