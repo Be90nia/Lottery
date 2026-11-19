@@ -133,6 +133,18 @@ class ParsePageTests(unittest.TestCase):
                     raw_dir, root / "redirected.jsonl", require_manifests=True
                 )
 
+            sidecar["redirect_chain"] = []
+            sidecar["url"] = sidecar["url"].replace(
+                "https://webapi.sporttery.cn/",
+                "https://webapi.sporttery.cn:444/",
+            )
+            sidecar["final_url"] = sidecar["url"]
+            sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+            with self.assertRaisesRegex(IngestionError, "lacks complete official-source provenance"):
+                ingest_snapshot_directory(
+                    raw_dir, root / "nonstandard-port.jsonl", require_manifests=True
+                )
+
     def test_strict_offline_import_rejects_noncontiguous_page_inventory(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
