@@ -82,7 +82,7 @@ def _decode_html(raw: bytes, content_type: str) -> str:
     match = re.search(r"charset\s*=\s*['\"]?([A-Za-z0-9._-]+)", content_type, re.I)
     if not match:
         meta = raw[:4096].decode("ascii", errors="ignore")
-        match = re.search(r"charset\\s*=\\s*['\\\"]?([A-Za-z0-9._-]+)", meta, re.I)
+        match = re.search(r"charset\s*=\s*['"]?([A-Za-z0-9._-]+)", meta, re.I)
     encoding = match.group(1) if match else "utf-8"
     try:
         return raw.decode(encoding, errors="strict")
