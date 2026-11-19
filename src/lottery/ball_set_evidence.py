@@ -227,24 +227,10 @@ def _next_draw_id(previous: str, candidate: str) -> bool:
     return candidate_year == previous_year + 1 and candidate_seq == 1
 
 
-def _archive_observation(
-    fetched: dict[str, Any], parsed: ParsedAnnouncement, *, expected_draw_id: str | None,
-    expected_draw_date: str | None, authority_name: str, archive_dir: Path,
-    ledger_path: Path,
-) -> dict[str, Any]:
+def _archive_raw_response(fetched: dict[str, Any], archive_dir: Path, authority_name: str) -> dict[str, Any]:
     body: bytes = fetched["body"]
     digest = hashlib.sha256(body).hexdigest()
-    source_url = fetched["final_url"]
-    if expected_draw_id is not None and parsed.draw_id != expected_draw_id:
-        status = "draw_mismatch"
-    elif expected_draw_date is not None and parsed.draw_date != expected_draw_date:
-        status = "draw_mismatch"
-    elif not parsed.authority_footer_present:
-        status = "source_authority_unverified"
-    else:
-        status = parsed.observation_status
-
-    raw_dir = archive_dir / "raw" / parsed.draw_id
+    raw_dir = archive_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     raw_path = raw_dir / f"{digest}.html"
     if not raw_path.exists():
@@ -264,10 +250,30 @@ def _archive_observation(
     manifest_path = raw_dir / f"{digest}.manifest.json"
     if not manifest_path.exists():
         manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return manifest
 
+
+def _archive_observation(
+    fetched: dict[str, Any], parsed: ParsedAnnouncement, manifest: dict[str, Any], *,
+    expected_draw_id: str | None, expected_draw_date: str | None,
+    ledger_path: Path,
+) -> dict[str, Any]:
+    digest = manifest["body_sha256"]
+    source_url = fetched["final_url"]
+    if expected_draw_id is not None and parsed.draw_id != expected_draw_id:
+        status = "draw_mismatch"
+    elif expected_draw_date is not None and parsed.draw_date != expected_draw_date:
+        status = "draw_mismatch"
+    elif not parsed.authority_footer_present:
+        status = "source_authority_unverified"
+    else:
+        status = parsed.observation_status
+
+    ledger_before = _read_ledger(ledger_path)
     previous = [
-        item for item in _read_ledger(ledger_path)
-        if item.get("draw_id") == parsed.draw_id and item.get("source", {}).get("final_url") == source_url
+        item for item in ledger_before
+        if item.get("draw_id") == parsed.draw_id
+        and item.get("source", {}).get("final_url") == source_url
     ]
     previous.sort(key=lambda item: item.get("source", {}).get("retrieved_at_utc", ""))
     supersedes = previous[-1] if previous else None
@@ -279,27 +285,25 @@ def _archive_observation(
         status = "source_revision_requires_review"
     elif status == "primary_verified":
         other_labels = {
-            item.get("reported_set_index") for item in _read_ledger(ledger_path)
+            item.get("reported_set_index") for item in ledger_before
             if item.get("draw_id") == parsed.draw_id
             and item.get("observation_status") == "primary_verified"
-            and item.get("source", {}).get("source_authority_class") in ("A1", "A2")
+            and item.get("source", {}).get("authority_class") in ("A1", "A2")
         }
         if other_labels and parsed.reported_set_index not in other_labels:
             status = "conflict"
 
     identity = {"draw_id": parsed.draw_id, "source_url": source_url, "body_sha256": digest}
     observation_id = _canonical_hash(identity)
-    conflict_group = _canonical_hash({"draw_id": parsed.draw_id}) if status in ("conflict", "source_revision_requires_review") else None
+    conflict_group = _canonical_hash({"draw_id": parsed.draw_id}) if status in (
+        "conflict", "source_revision_requires_review"
+    ) else None
     observation = {
         "schema_version": OBSERVATION_SCHEMA,
         "observation_id": observation_id,
         "draw_id": parsed.draw_id,
         "draw_date": parsed.draw_date,
-        "source": {
-            **manifest,
-            "authority_class": "A2",
-            "raw_object_ref": manifest["raw_object_ref"],
-        },
+        "source": {**manifest, "authority_class": "A2"},
         "parser": {
             "name": "dlt-official-ball-set-announcement",
             "version": PARSER_VERSION,
@@ -346,68 +350,107 @@ def collect_ball_set_evidence(
         raise BallSetEvidenceError("source registry authority_name is required")
     seed_url = registry.get("seed_url")
     _allowed_url(seed_url)
+
     observations = _read_ledger(ledger_path)
     known = [item for item in observations if item.get("source", {}).get("authority_class") == "A2"]
     if known:
         latest = max(known, key=lambda item: (item["draw_id"], item["source"].get("retrieved_at_utc", "")))
+        previous_id = latest["draw_id"]
         current_url = latest["source"]["requested_url"]
-        current_id = latest["draw_id"]
+        expected_date = latest["draw_date"]
     else:
+        previous_id = registry.get("seed_draw_id")
         current_url = seed_url
-        current_id = registry.get("seed_draw_id")
-    if not isinstance(current_id, str) or not re.fullmatch(r"\d{5}", current_id):
+        expected_date = registry.get("seed_draw_date")
+    if not isinstance(previous_id, str) or not re.fullmatch(r"\d{5}", previous_id):
         raise BallSetEvidenceError("source registry or ledger lacks a valid latest draw ID")
 
-    fetched_pages = []
-    observation_results = []
-    visited = set()
+    fetched_pages: list[dict[str, Any]] = []
+    observation_results: list[dict[str, Any]] = []
+    visited: set[str] = set()
     status = "no_new_page"
-    next_expected = None
+    next_expected: str | None = None
+    errors: list[str] = []
+    fatal_statuses = {"draw_mismatch", "conflict", "source_authority_unverified", "source_revision_requires_review"}
     for page_index in range(max_forward_pages):
         if current_url in visited:
-            raise BallSetEvidenceError("source announcement chain contains a URL cycle")
+            errors.append("source announcement chain contains a URL cycle")
+            status = "parse_error"
+            break
         visited.add(current_url)
-        fetched = fetch_announcement(current_url)
+        try:
+            fetched = fetch_announcement(current_url)
+        except BallSetEvidenceError as exc:
+            errors.append(str(exc))
+            status = "source_unavailable"
+            break
         if fetched["http_status"] == 404 and page_index > 0:
             status = "not_yet_published"
             break
         if fetched["http_status"] != 200:
-            raise BallSetEvidenceError(f"official page returned HTTP {fetched['http_status']}")
-        parsed = parse_announcement(fetched["body"], fetched["final_url"], fetched["content_type"])
-        if parsed.draw_id != current_id and page_index == 0:
-            raise BallSetEvidenceError(
-                f"latest page identity mismatch: ledger/registry says {current_id}, page says {parsed.draw_id}"
-            )
-        if page_index > 0 and not _next_draw_id(current_id, parsed.draw_id):
-            raise BallSetEvidenceError(f"draw chain gap or non-monotonic ID: {current_id} -> {parsed.draw_id}")
+            errors.append(f"official page returned HTTP {fetched['http_status']}")
+            status = "source_unavailable"
+            break
+
+        # Preserve exact bytes and metadata before any decoding or parsing.
+        manifest = _archive_raw_response(fetched, archive_dir, authority_name)
+        try:
+            parsed = parse_announcement(fetched["body"], fetched["final_url"], fetched["content_type"])
+        except BallSetEvidenceError as exc:
+            errors.append(str(exc))
+            status = "parse_error"
+            fetched_pages.append({"url": fetched["final_url"], "body_sha256": manifest["body_sha256"],
+                                  "status": "parse_error"})
+            break
+
+        if parsed.draw_id != previous_id and page_index == 0:
+            expected_id = previous_id
+        elif page_index > 0 and not _next_draw_id(previous_id, parsed.draw_id):
+            errors.append(f"draw chain gap or non-monotonic ID: {previous_id} -> {parsed.draw_id}")
+            status = "draw_mismatch"
+            break
+        else:
+            expected_id = previous_id if page_index == 0 else parsed.draw_id
         if page_index > 0 and parsed.draw_date <= fetched_pages[-1]["draw_date"]:
-            raise BallSetEvidenceError("official draw dates are not strictly increasing")
+            errors.append("official draw dates are not strictly increasing")
+            status = "draw_mismatch"
+            break
+
         result = _archive_observation(
-            fetched, parsed,
-            expected_draw_id=current_id if page_index == 0 else None,
-            expected_draw_date=registry.get("seed_draw_date") if page_index == 0 and not known else None,
-            authority_name=authority_name, archive_dir=archive_dir, ledger_path=ledger_path,
+            fetched, parsed, manifest,
+            expected_draw_id=expected_id,
+            expected_draw_date=expected_date if page_index == 0 else None,
+            ledger_path=ledger_path,
         )
         observation_results.append(result)
         fetched_pages.append({
             "draw_id": parsed.draw_id, "draw_date": parsed.draw_date,
-            "url": fetched["final_url"], "status": result["status"],
+            "url": fetched["final_url"], "body_sha256": manifest["body_sha256"],
+            "status": result["status"],
         })
-        current_id = parsed.draw_id
-        next_links = [item for item in parsed.newer_links if item[0] > current_id]
+        if result["status"] in fatal_statuses:
+            status = "review_required"
+            errors.append(f"observation {parsed.draw_id} requires review: {result['status']}")
+            break
+
+        previous_id = parsed.draw_id
+        expected_date = parsed.draw_date
+        next_links = [item for item in parsed.newer_links if item[0] > previous_id]
         if not next_links:
-            status = "captured" if any(item["status"] not in ("duplicate_noop",) for item in observation_results) else "no_new_page"
+            status = "captured" if any(item["status"] != "duplicate_noop" for item in observation_results) else "no_new_page"
             break
         next_id, next_url = min(next_links, key=lambda item: item[0])
-        if not _next_draw_id(current_id, next_id):
-            raise BallSetEvidenceError(f"official announcement navigation skipped a draw: {current_id} -> {next_id}")
+        if not _next_draw_id(previous_id, next_id):
+            errors.append(f"official announcement navigation skipped a draw: {previous_id} -> {next_id}")
+            status = "draw_mismatch"
+            break
         next_expected = next_id
-        current_id, current_url = next_id, next_url
-        status = "captured"
+        current_url = next_url
         if delay_seconds:
             time.sleep(delay_seconds)
     else:
-        raise BallSetEvidenceError("max_forward_pages reached while newer announcement links remain")
+        errors.append("max_forward_pages reached while newer announcement links remain")
+        status = "page_limit_reached"
 
     receipt = {
         "schema_version": 1, "status": status,
@@ -415,8 +458,9 @@ def collect_ball_set_evidence(
         "source_authority_class": "A2", "source_authority_name": authority_name,
         "collector_version": COLLECTOR_VERSION, "parser_version": PARSER_VERSION,
         "pages_observed": fetched_pages, "observation_results": observation_results,
-        "latest_draw_id": current_id, "next_expected_draw_id": next_expected,
+        "latest_draw_id": previous_id, "next_expected_draw_id": next_expected,
         "archive_observation_count": len(_read_ledger(ledger_path)),
+        "errors": errors,
         "source_completeness_verified": False,
         "equipment_regime_adjudicated": False,
         "physical_identity_adjudicated": False,
@@ -445,7 +489,7 @@ def main() -> int:
             max_forward_pages=args.max_forward_pages,
         )
         print(json.dumps(receipt, ensure_ascii=False, indent=2))
-        return 0
+        return 1 if receipt["status"] in ("source_unavailable", "parse_error", "draw_mismatch", "review_required", "page_limit_reached") else 0
     except (OSError, ValueError, BallSetEvidenceError) as exc:
         print(f"BALL_SET_EVIDENCE_FAILED: {exc}", file=__import__("sys").stderr)
         return 1
