@@ -1,3 +1,4 @@
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -8,6 +9,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from run_subset_rolling_origin import run
 
 
+@unittest.skipUnless(os.environ.get("RUN_FULL_SUBSET_RESEARCH") == "1",
+                     "full 2,649-target research belongs to the dedicated workflow")
 class OfficialSnapshotRollingOriginTests(unittest.TestCase):
     """Run the full frozen 2,649-target denominator, retaining fit failures."""
     def test_all_2649_frozen_targets_have_terminal_records(self):
