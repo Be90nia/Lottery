@@ -62,13 +62,13 @@ python scripts/fetch_history.py --snapshots-dir data/raw/user-supplied --require
 python scripts/validate_dataset.py
 python scripts/validate_legacy_prizes.py
 python scripts/reconcile_sources.py
-python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl --simulations 999 --seed 20261118
+python scripts/analyze_baseline.py data/candidates/pinned-draws-20261118.jsonl --simulations 999 --seed 20261118
 python -m unittest discover -s tests -v
 ```
 
-The collector writes immutable raw page snapshots and SHA-256 manifests under `data/raw/sporttery/`, then writes normalized JSON Lines to `data/processed/draws.jsonl`. `--max-pages` is a diagnostic safety cap: if the final allowed page is full, the run fails closed rather than publishing a potentially truncated dataset. An observed short/empty terminal page is not independent proof of upstream completeness. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
+Each fetch writes immutable raw page snapshots and SHA-256 manifests under a unique `data/raw/sporttery/<run_id>/` directory and returns that exact directory as `raw_dir` in its JSON summary. Import only that directory with `--snapshots-dir`; never combine pages from different fetch runs. HTTP redirects are rejected before following them, and both raw snapshots and output datasets are write-once. `--max-pages` is a diagnostic safety cap: if the final allowed page is full, the run fails closed rather than publishing a potentially truncated dataset. An observed short/empty terminal page is not independent proof of upstream completeness. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
 
-The live endpoint has not yet passed this repository's end-to-end verification. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset. If an authorized party supplies raw JSON response snapshots, they can be imported offline with `--snapshots-dir`; use `--require-manifests` to require matching per-file SHA-256 sidecars with the exact Sporttery API endpoint, timezone-aware retrieval timestamp, HTTP 200, and matching raw filename. This checks consistency of supplied metadata, not cryptographic source authenticity or uncertain field semantics.
+The live endpoint has not yet passed this repository's end-to-end verification. Strict import checks the exact HTTPS host/path/query, final URL, empty redirect chain, contiguous page inventory, and single-run identity. When page 1 supplies positive integer `value.total` and `value.totalPage`, it also reconciles the ceiling relation, per-page record counts, and deduplicated draw inventory into a raw-page-backed pagination attestation; missing totals leave completeness unverified, and inconsistent totals fail closed. This does not provide cryptographic source authenticity. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset. If an authorized party supplies raw JSON response snapshots, they can be imported offline with `--snapshots-dir`; use `--require-manifests` to require matching per-file SHA-256 sidecars with the exact Sporttery API endpoint, timezone-aware retrieval timestamp, HTTP 200, and matching raw filename. This checks consistency of supplied metadata, not cryptographic source authenticity or uncertain field semantics.
 
 ## Legacy historical candidate data
 
@@ -78,7 +78,7 @@ An existing 2,901-draw dataset from the earlier `dlt-analysis` project has been 
 Monte Carlo frequency baseline details are documented in [research methods](docs/RESEARCH_METHODS.md). The baseline uses legal draws without replacement within each number zone and reports global frequency diagnostics; it does not produce a predictive number ranking.
 
 
-The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into the legacy candidate.
+The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into either draw candidate.
 
 ### Prospective forecast logging
 
@@ -104,12 +104,12 @@ eligibility, archival, and analysis rules. The prospective test has not started.
 Generate legal candidate combinations from a draw-history JSONL file:
 
 ```bash
-python scripts/run_mvp.py --dataset data/candidates/legacy_draws.jsonl \
+python scripts/run_mvp.py --dataset data/candidates/pinned-draws-20261118.jsonl \
   --tickets-per-strategy 5 --seed 20261119 \
   --code-commit "$(git rev-parse HEAD)" --output mvp-output.json
 ```
 
-The one-command runner requires a full code commit SHA (or the Actions-provided `GITHUB_SHA`), binds it into the deterministic generation identity and ticket IDs, and atomically publishes a machine-readable receipt alongside the batch. It refuses to overwrite an existing output file; choose a new path for each batch. The receipt makes explicit that source authentication, automatic sync, model training, and promotion were not performed by this command. The lower-level `scripts/generate_tickets.py` command remains available for direct candidate generation.
+The default pinned candidate contains 2,949 draws through 2026-11-16 (draw 26131), SHA-256 `9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa`; its trust status is `manifest_complete_not_officially_authenticated`, not official authentication. The older 2,901-row legacy candidate remains available for reproducing historical benchmark results. The runner verifies an adjacent dataset manifest when present and carries its hash and trust status into the receipt. The one-command runner requires a full code commit SHA (or the Actions-provided `GITHUB_SHA`), binds it into the deterministic generation identity and ticket IDs, and atomically publishes a machine-readable receipt alongside the batch. It refuses to overwrite an existing output file; choose a new path for each batch. The receipt makes explicit that source authentication, automatic sync, model training, and promotion were not performed by this command. The lower-level `scripts/generate_tickets.py` command remains available for direct candidate generation.
 
 The command emits a schema-v2 batch and receipt, including the conditional-Poisson sampler version and the maximum marginal-calibration residual, and generates N tickets in each of three explicitly separate strategy
 lanes: legal uniform sampling, expanding-frequency weights, and EWMA weights.
@@ -180,7 +180,7 @@ Run all 595 front-zone and 66 back-zone pair tests under the legal uniform-draw
 null, with one Holm correction family across all 661 hypotheses:
 
 ```bash
-python scripts/analyze_pairs.py data/candidates/legacy_draws.jsonl \
+python scripts/analyze_pairs.py data/candidates/pinned-draws-20261118.jsonl \
   --output pair-cooccurrence.json
 ```
 
@@ -191,8 +191,8 @@ manipulation; the binomial null assumes independence across draws.
 ### Chronological train/validation/test splits
 
 ```bash
-python scripts/split_dataset.py data/candidates/legacy_draws.jsonl \
-  --output-dir data/splits/legacy-70-15-15
+python scripts/split_dataset.py data/candidates/pinned-draws-20261118.jsonl \
+  --output-dir data/splits/pinned-70-15-15
 ```
 
 This deterministic utility keeps every draw date intact and records input/output
