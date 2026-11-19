@@ -30,6 +30,29 @@ history. The append-only gate therefore requires all of the following:
 - The CLI requires `--snapshots-dir`; a manifest boolean alone is never
   sufficient.
 
+The attestation object has this exact shape (values below are illustrative;
+the JSON Pointer paths must resolve in the actual page-1 response):
+
+```json
+{
+  "schema": "sporttery-pagination-attestation-v1",
+  "source_total_records": 2949,
+  "source_total_pages": 30,
+  "page_size": 100,
+  "metadata_page_no": 1,
+  "total_records_pointer": "/value/total",
+  "total_pages_pointer": "/value/totalPage",
+  "pages": [
+    {
+      "page_no": 1,
+      "raw_file": "page-00001-<sha-prefix>.json",
+      "sha256": "<64 lowercase hex characters>",
+      "records": 100
+    }
+  ]
+}
+```
+
 The offline importer intentionally continues to emit
 `source_completeness_verified: false` and does not manufacture this
 attestation. Do not flip the boolean manually. Until the upstream pagination
