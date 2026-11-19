@@ -83,5 +83,11 @@ class CheckpointIntegrityTests(unittest.TestCase):
             self.validate(changed)
 
 
+    def test_negative_gradient_norm_is_rejected(self):
+        changed = dict(self.record, candidate_gradient_infinity_norm=-1e-8)
+        changed["record_sha256"] = _checkpoint_record_hash(changed)
+        with self.assertRaisesRegex(ValueError, "gradient diagnostic"):
+            self.validate(changed)
+
 if __name__ == "__main__":
     unittest.main()
