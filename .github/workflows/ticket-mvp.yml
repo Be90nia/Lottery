@@ -5,9 +5,11 @@ on:
     paths:
       - "src/lottery/tickets.py"
       - "src/lottery/mvp.py"
+      - "src/lottery/validate.py"
       - "scripts/generate_tickets.py"
       - "scripts/run_mvp.py"
       - "tests/test_mvp.py"
+      - "tests/test_validate.py"
       - "docs/TICKET_MVP_BATCH_CONTRACT.md"
       - "data/candidates/pinned-draws-20261118.jsonl"
       - "data/candidates/pinned-draws-20261118.jsonl.manifest.json"
