@@ -27,3 +27,5 @@ Cross-lane and within-lane duplicate tickets are preserved; no hidden deduplicat
 ## One-command MVP runner
 
 Use `python scripts/run_mvp.py --dataset PATH --tickets-per-strategy N --seed S --output mvp-output.json` to execute validation and candidate generation as one atomic output operation. The JSON document contains the batch and a receipt binding the exact input file SHA-256, deterministic generation run ID, batch SHA-256, code commit when available, timestamp, and published count. The receipt explicitly records that automatic source sync, model training, and model promotion were not performed. Invalid input or generation failure leaves no published output file.
+
+The no-code-commit test explicitly clears inherited CI environment variables so it exercises the local invocation contract rather than GitHub Actions' automatic `GITHUB_SHA`.
