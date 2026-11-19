@@ -32,6 +32,17 @@ BOOTSTRAP_BLOCK = 50
 BOOTSTRAP_SEED = 20261118
 
 
+def _confirmatory_gate(
+    descriptive_ci_pass: bool, *, solver_policy_approved: bool,
+    multiplicity_policy_approved: bool,
+) -> bool:
+    return bool(
+        descriptive_ci_pass
+        and solver_policy_approved
+        and multiplicity_policy_approved
+    )
+
+
 def _percentile(values: list[float], probability: float) -> float:
     ordered = sorted(values)
     position = (len(ordered) - 1) * probability
@@ -296,7 +307,11 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
             and zone["paired_candidate_minus_baseline"][ref]["ci_95_upper"] < 0.0
             for ref in ("uniform", "expanding", "ewma"))
         for zone in (front, back))
-    passed = solver_policy_approved and multiplicity_policy_approved and descriptive_ci_pass
+    passed = _confirmatory_gate(
+        descriptive_ci_pass,
+        solver_policy_approved=solver_policy_approved,
+        multiplicity_policy_approved=multiplicity_policy_approved,
+    )
     result = {
         "run_type": "LOT-055-equipment-blind-exact-subset-rolling-origin",
         "snapshot_sha256": digest, "snapshot_rows": len(rows),
