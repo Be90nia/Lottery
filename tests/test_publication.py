@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from lottery.publication import PublicationError, reconcile_append_only
+from lottery.ingest import _snapshot
 
 
 def draw(draw_id, date, source="sha256:" + "a" * 64, front=None):
@@ -28,6 +29,7 @@ class AppendOnlyPublicationTests(unittest.TestCase):
         self.manifest = self.root / "candidate.manifest.json"
         self.output = self.root / "next.jsonl"
         self.receipt = self.root / "receipt.json"
+        self.snapshots_dir = self.root / "snapshots"
         self.old = [draw("26001", "2026-01-01"), draw("26002", "2026-01-02")]
         self.new = [*self.old, draw("26003", "2026-01-03", source="sha256:" + "b" * 64)]
         self.write_rows(self.current, self.old)
@@ -41,24 +43,53 @@ class AppendOnlyPublicationTests(unittest.TestCase):
 
     def write_candidate(self, rows):
         self.write_rows(self.candidate, rows)
-        raw = self.candidate.read_bytes()
+        raw_rows = []
+        for row in rows:
+            numbers = row["front_numbers"] + row["back_numbers"]
+            raw_rows.append({
+                "lotteryDrawNum": row["draw_id"],
+                "lotteryDrawTime": row["draw_date"],
+                "lotteryDrawResult": " ".join(str(number) for number in numbers),
+                "lotteryUnsortDrawresult": None,
+                "lotteryEquipmentCount": row.get("source_equipment_count"),
+            })
+        raw = json.dumps({"success": True, "value": {"list": raw_rows}}).encode("utf-8")
+        url = ("https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry"
+               "?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1")
+        run_id = "c" * 32
+        digest = _snapshot(raw, 1, 200, "application/json", self.snapshots_dir, url, run_id)
+        raw_name = next(path.name for path in self.snapshots_dir.glob("*.json")
+                        if not path.name.endswith(".manifest.json")
+                        and path.name.endswith(digest[:12] + ".json"))
+        sidecar_name = next(path.name for path in self.snapshots_dir.glob("*.manifest.json")
+                            if digest[:12] in path.name)
         from lottery.validate import validate_jsonl
         summary = validate_jsonl(self.candidate)
         manifest = {
-            "output_sha256": hashlib.sha256(raw).hexdigest(),
+            "output_sha256": hashlib.sha256(self.candidate.read_bytes()).hexdigest(),
             "validation": summary,
             "provenance_complete": True,
             "trust_status": "manifest_complete_not_officially_authenticated",
             "snapshot_count": 1,
-            "snapshots": [{"sha256": "c" * 64, "raw_file": "page-00001.json", "page_no": 1, "records": len(rows), "provenance_complete": True}],
+            "run_id": run_id,
+            "snapshots": [{
+                "sha256": digest, "raw_file": raw_name, "sidecar_manifest": sidecar_name,
+                "page_no": 1, "records": len(rows), "bytes": len(raw),
+                "run_id": run_id, "provenance_complete": True,
+            }],
             "source_completeness_verified": True,
-            "completeness_evidence": {"method": "official_pagination_metadata", "reported_total_records": len(rows), "reported_total_pages": 1, "page_size": 100},
+            "completeness_evidence": {
+                "method": "official_pagination_metadata",
+                "reported_total_records": len(rows),
+                "reported_total_pages": 1,
+                "page_size": 100,
+            },
         }
         self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
-
     def run_gate(self):
         return reconcile_append_only(
-            self.current, self.candidate, self.manifest, self.output, self.receipt
+            self.current, self.candidate, self.manifest, self.output, self.receipt,
+            self.snapshots_dir
         )
 
     def test_append_preserves_existing_rows_and_adds_only_new_draws(self):
