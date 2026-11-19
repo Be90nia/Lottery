@@ -111,6 +111,8 @@ class ParsePageTests(unittest.TestCase):
             output = root / "processed" / "draws.jsonl"
             report = ingest_snapshot_directory(raw_dir, output, require_manifests=True)
             self.assertTrue(report["provenance_complete"])
+            self.assertFalse(report["source_completeness_verified"])
+            self.assertEqual(report["source_completeness_status"], "unverified")
             self.assertEqual(report["validation"]["records"], 1)
             self.assertEqual(report["trust_status"], "manifest_complete_not_officially_authenticated")
             row = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
