@@ -11,7 +11,13 @@ from pathlib import Path
 
 WORKFLOW_DIR = Path(".github/workflows")
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-ALLOWED_PERMISSION = re.compile(r"^(\s*)contents:\s*read\s*(?:#.*)?$")
+ALLOWED_PERMISSION = re.compile(r"^(\s*)(actions|contents):\s*read\s*(?:#.*)?$")
+
+# The evidence archive needs actions:read only to restore its prior artifact;
+# all workflows retain contents:read as the maximum repository permission.
+WORKFLOW_PERMISSION_ALLOWLIST = {
+    "ball-set-evidence.yml": {"actions: read", "contents: read"},
+}
 
 
 def main() -> int:
@@ -46,9 +52,14 @@ def main() -> int:
                     if child_indent <= indent:
                         break
                     found = True
-                    if child_indent != indent + 2 or not ALLOWED_PERMISSION.fullmatch(child):
+                    allowed = WORKFLOW_PERMISSION_ALLOWLIST.get(
+                        path.name, {"contents: read"}
+                    )
+                    match = ALLOWED_PERMISSION.fullmatch(child)
+                    if (child_indent != indent + 2 or match is None
+                            or f"{match.group(2)}: read" not in allowed):
                         errors.append(
-                            f"{path}:{child_number}: permission exceeds contents: read allowlist: {child.strip()}"
+                            f"{path}:{child_number}: permission exceeds workflow allowlist {sorted(allowed)}: {child.strip()}"
                         )
                 if not found:
                     errors.append(f"{path}:{number}: empty permissions block")
