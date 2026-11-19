@@ -88,7 +88,7 @@ class OutcomeLedgerTests(unittest.TestCase):
 
     def test_rejects_non_official_source(self):
         kwargs = dict(self.kwargs, source_url="https://sporttery-cn.example/result")
-        with self.assertRaisesRegex(OutcomeLedgerError, "official sporttery.cn"):
+        with self.assertRaisesRegex(OutcomeLedgerError, "exact HTTPS Sporttery history endpoint"):
             create_outcome_event(self.forecasts, **kwargs)
 
     def test_rejects_lookalike_official_subdomain(self):
@@ -275,7 +275,7 @@ class OutcomeSnapshotBindingTests(unittest.TestCase):
 
     def test_snapshot_source_url_must_identify_dlt_endpoint(self):
         kwargs = dict(self.kwargs, source_url="https://webapi.sporttery.cn/other?gameNo=85")
-        with self.assertRaisesRegex(OutcomeLedgerError, "official Sporttery history endpoint"):
+        with self.assertRaisesRegex(OutcomeLedgerError, "exact HTTPS Sporttery history endpoint"):
             create_outcome_event_from_snapshot(self.forecasts, **kwargs)
 
     def test_snapshot_source_url_must_bind_game_number(self):
