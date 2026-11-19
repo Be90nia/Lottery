@@ -118,6 +118,10 @@ def parse_announcement(raw: bytes, source_url: str, content_type: str = "text/ht
         status, set_index, matched, start, end = "conflict", None, None, None, None
     elif not labels:
         status, set_index, matched, start, end = "missing_label", None, None, None, None
+    elif distinct[0] not in (1, 2, 3):
+        match = labels[0]
+        status, set_index = "unsupported_label", None
+        matched, start, end = match.group(0), match.start(), match.end()
     else:
         match = labels[0]
         status, set_index = "primary_verified", int(match.group(1))
