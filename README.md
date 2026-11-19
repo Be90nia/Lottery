@@ -42,6 +42,7 @@
 - [MVP 首轮样本外评估](docs/TICKET_MVP_RESULTS.md)
 - [三策略批量生成与凭据契约](docs/TICKET_MVP_BATCH_CONTRACT.md)
 - [自动开奖同步 MVP](docs/AUTO_DRAW_SYNC_MVP.md)
+- [追加式开奖数据发布门禁](docs/APPEND_ONLY_DRAW_PUBLICATION.md)
 - [开奖结果快照绑定](docs/OUTCOME_SNAPSHOT_BINDING.md)
 - [任务清单](TASKS.md)
 - [测试计划](TEST_PLAN.md)
