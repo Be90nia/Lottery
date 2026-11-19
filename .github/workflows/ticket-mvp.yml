@@ -45,8 +45,8 @@ jobs:
           assert receipt["published_ticket_count"] == 15
           assert receipt["data_trust_status"] == "manifest_complete_not_officially_authenticated"
           assert len(receipt["dataset_manifest_sha256"]) == 64
-          assert report["dataset"]["trust_status"] == "manifest_complete_not_officially_authenticated"
-          assert len(report["dataset"]["manifest_sha256"]) == 64
+          assert report["batch"]["dataset"]["trust_status"] == "manifest_complete_not_officially_authenticated"
+          assert len(report["batch"]["dataset"]["manifest_sha256"]) == 64
           assert receipt["automatic_sync_status"] == "not_attempted"
           assert receipt["model_training_status"] == "not_performed"
           assert receipt["model_promotion_status"] == "not_performed" 
