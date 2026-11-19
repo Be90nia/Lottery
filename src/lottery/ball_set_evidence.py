@@ -233,7 +233,7 @@ def _next_draw_id(previous: str, candidate: str) -> bool:
     candidate_year, candidate_seq = int(candidate[:2]), int(candidate[2:])
     if candidate_year == previous_year:
         return candidate_seq == previous_seq + 1
-    return candidate_year == previous_year + 1 and candidate_seq == 1
+    return candidate_year == previous_year + 1 and candidate_seq == 1 and previous_seq >= 100
 
 
 def _archive_raw_response(fetched: dict[str, Any], archive_dir: Path, authority_name: str) -> dict[str, Any]:
