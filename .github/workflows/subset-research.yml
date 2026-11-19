@@ -30,12 +30,15 @@ jobs:
         run: |
           python scripts/run_subset_rolling_origin.py \
             --snapshot data/processed/draws-20261118.jsonl \
-            --output subset-model-rolling-origin.json
+            --output subset-model-rolling-origin.json \
+            --checkpoint-dir subset-model-checkpoints
       - name: Upload full research result (including failure diagnostics)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: exact-subset-rolling-origin
-          path: subset-model-rolling-origin.json
+          path: |
+            subset-model-rolling-origin.json
+            subset-model-checkpoints/
           if-no-files-found: warn
           retention-days: 90
