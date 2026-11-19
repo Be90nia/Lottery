@@ -80,6 +80,27 @@ class ForecastLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(ForecastLedgerError, "SHA-256"):
             create_forecast_event(self.rows, **kwargs)
 
+    def test_alpha_and_half_life_require_finite_positive_non_boolean_numbers(self):
+        for kwargs in (
+            {"alpha": float("nan")},
+            {"alpha": True},
+            {"alpha": 0.0},
+            {"half_life": float("inf")},
+            {"half_life": False},
+            {"half_life": -1.0},
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(ForecastLedgerError, "finite positive"):
+                    create_forecast_event(self.rows, **dict(self.kwargs, **kwargs))
+
+    def test_target_draw_id_must_be_a_nonempty_string(self):
+        for value in (None, 123, ""):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ForecastLedgerError, "non-empty string"):
+                    create_forecast_event(
+                        self.rows, **dict(self.kwargs, target_draw_id=value)
+                    )
+
     def test_append_and_verify_hash_chain(self):
         with tempfile.TemporaryDirectory() as temp:
             ledger = Path(temp) / "forecast.jsonl"
