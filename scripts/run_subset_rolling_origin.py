@@ -58,15 +58,48 @@ def _moving_block_bootstrap(values: list[float], seed: int) -> dict:
             sample.extend(values[start:start + BOOTSTRAP_BLOCK])
         means.append(sum(sample[:n]) / n)
     observed = sum(values) / n
+    # Impose the one-sided null mean(delta)=0 before resampling. Resampling
+    # uncentered bootstrap means and treating their lower tail as a p-value
+    # would not be a valid null test.
+    null_centered = [value - observed for value in values]
+    null_rng = random.Random(seed ^ 0x5A17C0DE)
+    null_means = []
+    for _ in range(BOOTSTRAP_REPLICATES):
+        sample = []
+        while len(sample) < n:
+            start = null_rng.randrange(0, n - BOOTSTRAP_BLOCK + 1)
+            sample.extend(null_centered[start:start + BOOTSTRAP_BLOCK])
+        null_means.append(sum(sample[:n]) / n)
+    lower_tail = sum(value <= observed for value in null_means)
+    one_sided_p = (lower_tail + 1) / (BOOTSTRAP_REPLICATES + 1)
     return {
         "observed_mean_delta_candidate_minus_reference": observed,
         "ci_95_lower": _percentile(means, 0.025),
         "ci_95_upper": _percentile(means, 0.975),
+        "one_sided_null_centered_p_value": one_sided_p,
         "replicates": BOOTSTRAP_REPLICATES,
         "block_length_draws": BOOTSTRAP_BLOCK,
         "seed": seed,
-        "method": "paired non-circular moving-block bootstrap on chronological score differences",
+        "method": "paired non-circular moving-block bootstrap; null-centered one-sided mean test",
+        "null_centering": "subtract observed paired mean before block resampling",
     }
+
+
+def _holm_adjust(p_values: dict[str, float | None], family_size: int = 6) -> dict[str, float | None]:
+    """Holm step-down adjusted p-values for the frozen six-comparison family."""
+    if len(p_values) != family_size or any(
+        type(value) not in (int, float) or not math.isfinite(value) or not 0.0 <= value <= 1.0
+        for value in p_values.values()
+    ):
+        return {key: None for key in p_values}
+    ordered = sorted(p_values.items(), key=lambda item: item[1])
+    adjusted: dict[str, float] = {}
+    running_max = 0.0
+    for rank, (key, value) in enumerate(ordered):
+        candidate = min(1.0, (family_size - rank) * value)
+        running_max = max(running_max, candidate)
+        adjusted[key] = running_max
+    return adjusted
 
 
 def _load_and_validate(path: Path) -> tuple[list[dict], str]:
@@ -299,6 +332,8 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         zone["complete_coverage"] and all(
             zone["paired_candidate_minus_baseline"][ref] is not None
             and zone["paired_candidate_minus_baseline"][ref]["ci_95_upper"] < 0.0
+            and zone["paired_candidate_minus_baseline"][ref]["holm_adjusted_p_value"] is not None
+            and zone["paired_candidate_minus_baseline"][ref]["holm_adjusted_p_value"] < 0.05
             for ref in ("uniform", "expanding", "ewma"))
         for zone in (front, back))
     result = {
@@ -317,7 +352,16 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "confirmatory_status": "blocked_solver_policy_review",
         "confirmatory_block_reason": "The implemented solver has not been approved against the frozen L-BFGS-B protocol.",
         "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "block_length": BOOTSTRAP_BLOCK,
-                      "seed": BOOTSTRAP_SEED, "method": "paired non-circular moving-block percentile CI"},
+                      "seed": BOOTSTRAP_SEED,
+                      "method": "paired non-circular moving-block percentile CI plus null-centered one-sided test"},
+        "multiple_testing": {
+            "method": "Holm step-down",
+            "family_size": 6,
+            "alpha": 0.05,
+            "family": ["front:uniform", "front:expanding", "front:ewma",
+                       "back:uniform", "back:expanding", "back:ewma"],
+            "adjusted_p_values": holm_adjusted,
+        },
         "front": front, "back": back,
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
