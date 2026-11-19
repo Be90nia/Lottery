@@ -189,7 +189,7 @@ class ExponentialFamily:
         *,
         regularization_lambda: float = 1.0,
         max_iterations: int = 5000,
-        gradient_tolerance: float = 1e-8,
+        gradient_tolerance: float = 1e-7,
         history_size: int = 10,
     ) -> FitResult:
         """Fit mean-NLL + L2 with the frozen SciPy L-BFGS-B solver.
