@@ -45,9 +45,18 @@ jobs:
           assert receipt["published_ticket_count"] == 15
           assert receipt["data_trust_status"] == "manifest_complete_not_officially_authenticated"
           assert len(receipt["dataset_manifest_sha256"]) == 64
-          assert report["batch"]["dataset"]["trust_status"] == "manifest_complete_not_officially_authenticated"
-          assert len(report["batch"]["dataset"]["manifest_sha256"]) == 64
+          assert report["dataset"]["trust_status"] == "manifest_complete_not_officially_authenticated"
+          assert len(report["dataset"]["manifest_sha256"]) == 64
+          assert report["dataset"]["validation"]["records"] == 2949
+          assert report["dataset"]["validation"]["last_draw"] == "26131"
+          assert report["strategy_semantics"]["physical_ball_set_models"] == "not_implemented"
+          assert report["strategy_semantics"]["predictive_efficacy_claim"] == "none"
+          assert receipt["strategy_scope"] == "historical_marginal_sampling_heuristics_not_physical_ball_sets"
+          assert receipt["predictive_efficacy_claim"] == "none"
           assert receipt["automatic_sync_status"] == "not_attempted"
+          assert len(receipt["code_commit"]) == 40
+          assert len(receipt["batch_sha256"]) == 64
+          assert receipt["dataset_sha256"] == "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
           assert receipt["model_training_status"] == "not_performed"
           assert receipt["model_promotion_status"] == "not_performed" 
           lanes = report["strategies"]
