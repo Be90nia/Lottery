@@ -29,3 +29,6 @@ Both files are validated. The candidate must contain every existing draw, and al
 No-new-draw runs emit a `no_new_draws` receipt and do not write the output. Appends write a new file atomically without overwriting the input. Review the receipt and explicitly promote the output in a separate controlled operation.
 
 Corrections require a preserved raw snapshot, an incident, and a separately reviewed correction event. This tool does not update forecast/outcome ledgers, train/promote models, or access LOT-042. Trust remains `manifest_complete_not_officially_authenticated`.
+
+
+The gate treats a draw on the same calendar date as the latest current draw as a chronology conflict; additions must have a strictly later draw date. Receipts and output manifests are write-once evidence paths and must be unique for each run.
