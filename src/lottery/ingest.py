@@ -339,6 +339,7 @@ def fetch_history(
     if delay_seconds < 0:
         raise ValueError("delay_seconds must not be negative")
     run_id = uuid.uuid4().hex
+    run_raw_dir = raw_dir / run_id
     all_rows: dict[str, Draw] = {}
     page_manifests: list[dict[str, Any]] = []
     pagination_end_reason: str | None = None
@@ -351,7 +352,7 @@ def fetch_history(
         raw, status, content_type = _fetch_page(page_no, page_size)
         if status != 200:
             raise IngestionError(f"page {page_no}: unexpected HTTP status {status}")
-        digest = _snapshot(raw, page_no, status, content_type, raw_dir, url, run_id)
+        digest = _snapshot(raw, page_no, status, content_type, run_raw_dir, url, run_id)
         rows = _parse_page(raw, page_no, digest)
         page_manifests.append({"page_no": page_no, "sha256": digest, "records": len(rows), "run_id": run_id})
         if not rows:
@@ -381,6 +382,7 @@ def fetch_history(
         "first_draw": ordered[0].draw_id if ordered else None,
         "last_draw": ordered[-1].draw_id if ordered else None,
         "output": str(output),
+        "raw_dir": str(run_raw_dir),
         "pages": page_manifests,
         "parser_version": PARSER_VERSION,
         "run_id": run_id,
