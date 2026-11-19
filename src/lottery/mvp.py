@@ -13,7 +13,7 @@ import tempfile
 from typing import Any
 
 from .tickets import generate_ticket_candidates
-from .validate import validate_jsonl
+from .validate import validate_records
 
 
 def run_mvp(
@@ -34,9 +34,12 @@ def run_mvp(
     commit = code_commit or os.environ.get("GITHUB_SHA")
     if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("code_commit must be supplied or available as a full GITHUB_SHA")
-    validation = validate_jsonl(dataset_path)
+    # Read once, then validate and generate from the same immutable byte snapshot.
+    # This prevents a concurrent file replacement between validation and parsing
+    # from producing a receipt for bytes that were never actually validated.
     raw = dataset_path.read_bytes()
     rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
+    validation = validate_records(rows)
     batch = generate_ticket_candidates(
         rows,
         tickets_per_strategy=tickets_per_strategy,
