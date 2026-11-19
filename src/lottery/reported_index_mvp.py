@@ -56,6 +56,7 @@ def build_reported_index_mvp(
             or pilot.get("automatic_promotion") is not False
             or pilot.get("holdout_accessed") is not False
             or pilot.get("holdout_feedback_used") is not False
+            or pilot.get("target_counts") != {"1": 160, "2": 147, "3": 160}
             or pilot.get("inference", {}).get("comparison_count") != 12):
         raise ReportedIndexMVPError("pilot receipt does not match the frozen research-only boundary")
 
@@ -119,6 +120,7 @@ def build_reported_index_mvp(
         "physical_ball_set_id": None,
         "physical_model_eligibility": "blocked_regime_unresolved",
         "pilot_decision": pilot["decision"],
+        "significant_index_specific_improvements": pilot.get("significant_index_specific_improvements", []),
         "predictive_efficacy_claim": "none",
         "holdout_accessed": False,
         "holdout_feedback_used": False,
