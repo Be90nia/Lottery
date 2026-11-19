@@ -11,6 +11,8 @@ from lottery.forecast import (
     append_forecast,
     create_forecast_event,
     verify_ledger,
+    GENESIS_HASH,
+    _event_hash,
 )
 
 
@@ -97,6 +99,31 @@ class ForecastLedgerTests(unittest.TestCase):
             second = create_forecast_event(self.rows, **second_kwargs)
             self.assertEqual(append_forecast(ledger, second)["sequence"], 2)
             self.assertEqual(verify_ledger(ledger)["events"], 2)
+
+    def test_append_rejects_semantically_invalid_forecast_before_mutation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            event = create_forecast_event(self.rows, **self.kwargs)
+            invalid = json.loads(json.dumps(event))
+            invalid["models"]["uniform"]["front_inclusion_probabilities"][0] += 0.1
+            with self.assertRaisesRegex(ForecastLedgerError, "invalid uniform front"):
+                append_forecast(ledger, invalid)
+            self.assertFalse(ledger.exists())
+
+    def test_verifier_rejects_invalid_payload_even_with_recomputed_hash(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            event = create_forecast_event(self.rows, **self.kwargs)
+            body = {
+                "sequence": 1,
+                "previous_event_hash": GENESIS_HASH,
+                **event,
+            }
+            body["models"]["uniform"]["front_inclusion_probabilities"][0] += 0.1
+            record = {**body, "event_hash": _event_hash(body)}
+            ledger.write_text(json.dumps(record, sort_keys=True) + "\\n", encoding="utf-8")
+            with self.assertRaisesRegex(ForecastLedgerError, "invalid uniform front"):
+                verify_ledger(ledger)
 
     def test_duplicate_target_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
