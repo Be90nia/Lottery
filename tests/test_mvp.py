@@ -49,7 +49,7 @@ class MvpOrchestratorTests(unittest.TestCase):
     def test_output_cannot_overwrite_input_dataset(self):
         with tempfile.TemporaryDirectory() as temp:
             dataset = Path(temp) / "draws.jsonl"
-            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            dataset.write_text("".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "must not overwrite"):
                 run_mvp(dataset, dataset)
             self.assertTrue(dataset.exists())
