@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from lottery.tickets import generate_ticket_candidates
@@ -34,14 +35,6 @@ class TicketCandidateTests(unittest.TestCase):
             self.assertEqual(result["strategy_metadata"][strategy]["ticket_count"], 4)
             self.assertEqual(result["strategy_metadata"][strategy]["training_cutoff_draw_id"], self.rows[-1]["draw_id"])
             self.assertEqual(len(tickets), 4)
-            combinations = {
-                (tuple(ticket["front_numbers"]), tuple(ticket["back_numbers"]))
-                for ticket in tickets
-            }
-            self.assertEqual(len(combinations), 4)
-            self.assertGreaterEqual(
-                result["strategy_metadata"][strategy]["duplicate_sampling_retries"], 0
-            )
             for ticket in tickets:
                 self.assertEqual(len(ticket["ticket_id"]), 24)
                 self.assertEqual(len(ticket["front_numbers"]), 5)
@@ -56,6 +49,20 @@ class TicketCandidateTests(unittest.TestCase):
         second = generate_ticket_candidates(self.rows, tickets_per_strategy=3, seed=91)
         self.assertEqual(first["strategies"], second["strategies"])
         self.assertEqual(first["generation_run_id"], second["generation_run_id"])
+
+    def test_duplicate_tickets_are_preserved_under_with_replacement_sampling(self):
+        def repeated_sample(_weights, count, _rng):
+            return [1, 2, 3, 4, 5] if count == 5 else [1, 2]
+
+        with patch("lottery.tickets._weighted_sample_without_replacement", side_effect=repeated_sample):
+            result = generate_ticket_candidates(self.rows, tickets_per_strategy=3)
+        for tickets in result["strategies"].values():
+            self.assertEqual(len(tickets), 3)
+            self.assertEqual(
+                len({(tuple(t["front_numbers"]), tuple(t["back_numbers"])) for t in tickets}),
+                1,
+            )
+            self.assertEqual(len({t["ticket_id"] for t in tickets}), 3)
 
     def test_invalid_configuration_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "positive integer"):
