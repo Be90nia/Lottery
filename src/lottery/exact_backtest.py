@@ -42,9 +42,9 @@ def holm_adjust(p_values: dict[str, float], *, expected_family_size: int | None 
     return adjusted
 
 
-def moving_block_bootstrap_ci(values: Sequence[float], *, replicates: int = 1000,
-                              block_length: int = 50, seed: int) -> dict[str, float | int]:
-    """Non-circular paired moving-block percentile interval; no short-fixture fallback."""
+def moving_block_bootstrap_inference(values: Sequence[float], *, replicates: int = 1000,
+                                    block_length: int = 50, seed: int) -> dict[str, float | int]:
+    """Paired non-circular block-bootstrap CI and one-sided null-centered p-value."""
     observations = tuple(float(value) for value in values)
     if not observations or any(not math.isfinite(value) for value in observations):
         raise ValueError("bootstrap values must be a non-empty finite sequence")
@@ -54,34 +54,51 @@ def moving_block_bootstrap_ci(values: Sequence[float], *, replicates: int = 1000
         raise ValueError("block length must be in 1..number of paired targets")
     if type(seed) is not int:
         raise ValueError("seed must be an integer")
+    observed_mean = math.fsum(observations) / len(observations)
+    centered = tuple(value - observed_mean for value in observations)
     rng = random.Random(seed)
     starts = tuple(range(0, len(observations) - block_length + 1))
-    means = []
+    raw_means: list[float] = []
+    null_means: list[float] = []
     for _ in range(replicates):
-        sample: list[float] = []
-        while len(sample) < len(observations):
+        indices: list[int] = []
+        while len(indices) < len(observations):
             start = rng.choice(starts)
-            sample.extend(observations[start:start + block_length])
-        means.append(math.fsum(sample[:len(observations)]) / len(observations))
-    means.sort()
+            indices.extend(range(start, start + block_length))
+        selected = indices[:len(observations)]
+        raw_means.append(math.fsum(observations[index] for index in selected) / len(observations))
+        null_means.append(math.fsum(centered[index] for index in selected) / len(observations))
+    raw_means.sort()
 
     def percentile(probability: float) -> float:
-        position = (len(means) - 1) * probability
+        position = (len(raw_means) - 1) * probability
         lower = int(math.floor(position))
         upper = int(math.ceil(position))
         if lower == upper:
-            return means[lower]
+            return raw_means[lower]
         fraction = position - lower
-        return means[lower] * (1.0 - fraction) + means[upper] * fraction
+        return raw_means[lower] * (1.0 - fraction) + raw_means[upper] * fraction
 
+    p_value = (1 + sum(value <= observed_mean for value in null_means)) / (replicates + 1)
     return {
-        "mean_delta": math.fsum(observations) / len(observations),
+        "mean_delta": observed_mean,
         "ci95_lower": percentile(0.025),
         "ci95_upper": percentile(0.975),
+        "p_value_one_sided_improvement": p_value,
         "replicates": replicates,
         "block_length": block_length,
         "seed": seed,
     }
+
+
+def moving_block_bootstrap_ci(values: Sequence[float], *, replicates: int = 1000,
+                              block_length: int = 50, seed: int) -> dict[str, float | int]:
+    """Compatibility wrapper returning the paired block-bootstrap interval."""
+    result = moving_block_bootstrap_inference(
+        values, replicates=replicates, block_length=block_length, seed=seed
+    )
+    return {key: value for key, value in result.items()
+            if key != "p_value_one_sided_improvement"}
 
 
 def uniform_exact_nll(population_size: int, selection_size: int) -> float:
@@ -178,6 +195,7 @@ def evaluate_rolling_origin(
     bootstrap_seed: int | None = None,
     bootstrap_replicates: int = 1000,
     bootstrap_block_length: int = 50,
+    confirmatory_model_id: str | None = None,
 ) -> dict[str, Any]:
     """Evaluate registered model factories with one terminal row per model/zone/target."""
     rows = tuple(records)
@@ -261,12 +279,51 @@ def evaluate_rolling_origin(
                 "coverage": len(values) / len(expected_targets) if expected_targets else 0.0,
                 "paired_nll_delta_vs_uniform": math.fsum(values) / len(values) if values else None,
                 "bootstrap": (
-                    moving_block_bootstrap_ci(
+                    moving_block_bootstrap_inference(
                         values, replicates=bootstrap_replicates,
                         block_length=bootstrap_block_length, seed=bootstrap_seed
                     ) if bootstrap_seed is not None and values else None
                 ),
             }
+    confirmatory_inference: dict[str, Any] = {"status": "NOT_ASSESSED"}
+    if confirmatory_model_id is not None:
+        if confirmatory_model_id not in summary:
+            raise ValueError("confirmatory model ID is not registered")
+        p_values: dict[str, float] = {}
+        for zone in ZONES:
+            inference = summary[confirmatory_model_id][zone]["bootstrap"]
+            if inference is not None:
+                p_values[zone] = float(inference["p_value_one_sided_improvement"])
+        if len(p_values) == 2:
+            adjusted = holm_adjust(p_values, expected_family_size=2)
+            zone_results = {}
+            for zone, adjusted_p in adjusted.items():
+                inference = summary[confirmatory_model_id][zone]["bootstrap"]
+                full_coverage = summary[confirmatory_model_id][zone]["coverage"] == 1.0
+                interval_pass = inference["ci95_upper"] < 0.0
+                zone_results[zone] = {
+                    "raw_p_value": p_values[zone],
+                    "holm_adjusted_p_value": adjusted_p,
+                    "interval_wholly_below_zero": interval_pass,
+                    "full_coverage": full_coverage,
+                    "inferential_pass": bool(interval_pass and adjusted_p < 0.05 and full_coverage),
+                }
+            confirmatory_inference = {
+                "status": "INFERENTIAL_GATE_PASS" if all(
+                    value["inferential_pass"] for value in zone_results.values()
+                ) else "INFERENTIAL_GATE_FAIL",
+                "family_size": 2,
+                "family_alpha": 0.05,
+                "hypotheses": zone_results,
+                "method": "one-sided null-centered paired moving-block bootstrap; Holm step-down",
+            }
+        else:
+            confirmatory_inference = {
+                "status": "BLOCKED",
+                "reason": "both zone p-values require full scored target coverage",
+                "available_zone_p_values": p_values,
+            }
+
     return {
         "snapshot_sha256": snapshot_sha256,
         "target_count": len(expected_targets),
@@ -275,5 +332,7 @@ def evaluate_rolling_origin(
         "terminal_record_count": len(records_out),
         "records": records_out,
         "summary": summary,
+        "confirmatory_inference": confirmatory_inference,
+        "overall_promotion_status": "BLOCKED_NONREGRESSION_AND_CALIBRATION_GATES_NOT_IMPLEMENTED",
         "interpretation": "Historical exact-set scoring only; not prospective evidence or proof of predictive advantage.",
     }
