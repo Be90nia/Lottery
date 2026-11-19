@@ -77,6 +77,8 @@ def write_manifest(candidate, manifest_path, snapshots_dir, page_size=100):
         sidecar = {
             "source": "Sporttery public historical draw API",
             "url": source_url,
+            "final_url": source_url,
+            "redirect_chain": [],
             "http_status": 200,
             "content_type": "application/json",
             "sha256": digest,
