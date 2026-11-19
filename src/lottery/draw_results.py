@@ -123,7 +123,8 @@ def append_draw_result(
             "body_sha256": manifest["body_sha256"], "parser_version": DRAW_RESULT_PARSER_VERSION,
         }
         result_id = _canonical_hash(identity)
-        if supersedes and supersedes["source"]["body_sha256"] == manifest["body_sha256"]:
+        if (supersedes and supersedes["source"]["body_sha256"] == manifest["body_sha256"]
+                and supersedes.get("parser", {}).get("version") == DRAW_RESULT_PARSER_VERSION):
             return {"status": "duplicate_noop", "result_observation_id": supersedes["result_observation_id"]}
         if supersedes:
             same_result = (
@@ -256,6 +257,8 @@ def verify_draw_result_record(
     record: dict[str, Any], inventory_row: dict[str, Any] | None, archive_dir: Path,
 ) -> dict[str, Any]:
     source = record["source"]
+    if record.get("parser", {}).get("version") != DRAW_RESULT_PARSER_VERSION:
+        return {"status": "invalid_draw_result", "front_numbers": None, "back_numbers": None}
     if record["draw_result_status"] in (
         "draw_result_mismatch", "draw_mismatch", "source_revision_requires_review",
         "conflict", "missing_draw_result", "invalid_draw_result", "source_authority_unverified",
