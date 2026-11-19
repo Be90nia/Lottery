@@ -130,6 +130,9 @@ class ReportedIndexMVPTests(unittest.TestCase):
             "training_dataset_fingerprint": sha(canonical(rows)),
             "generation_run_id": sha(f"{seed}:{len(rows)}".encode()),
             "strategy_metadata": {"uniform": {}, "expanding": {}, "ewma": {}},
+            "model_configuration": {"alpha": alpha, "ewma_half_life_draws": half_life},
+            "rng": {"algorithm": "Python random.Random (MT19937)", "seed": seed},
+            "sampler_version": "conditional-poisson-rejective-v1",
             "strategies": {"uniform": [], "expanding": [], "ewma": []},
             "limitations": ["research-only"],
         }
