@@ -1,5 +1,7 @@
 import hashlib
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -53,6 +55,22 @@ class MvpOrchestratorTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "must not overwrite"):
                 run_mvp(dataset, dataset)
             self.assertTrue(dataset.exists())
+
+    def test_cli_executes_end_to_end_pipeline(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "draws.jsonl"
+            output = root / "mvp.json"
+            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            completed = subprocess.run(
+                [sys.executable, "scripts/run_mvp.py", "--dataset", str(dataset),
+                 "--tickets-per-strategy", "2", "--seed", "73", "--output", str(output)],
+                check=False, capture_output=True, text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            document = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(document["receipt"]["published_ticket_count"], 6)
+            self.assertEqual(document["batch"]["total_tickets"], 6)
 
     def test_invalid_dataset_never_publishes_output(self):
         with tempfile.TemporaryDirectory() as temp:
