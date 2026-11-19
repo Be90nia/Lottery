@@ -53,3 +53,6 @@ Negative means the candidate model is better; positive means worse.
 - The marginal Bernoulli score is not a calibrated joint probability for a complete 5+2 ticket.
 - Do not access or tune against the isolated prospective 500-draw holdout.
 - Before model promotion: authenticate the dataset; freeze model and evaluation protocol; complete the dedicated #41 comparison and checkpoint/resume work; require robust improvement over uniform on both zones or a preregistered, explicitly scoped claim; and retain the full score ledger and uncertainty report.
+
+
+The current one-command MVP smoke run uses the pinned 2,949-row candidate snapshot ending at draw 26131 (2026-11-16), SHA-256 `9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa`. Its manifest trust status remains `manifest_complete_not_officially_authenticated`; this is a fresher candidate input, not an official-authentication claim. The older 2,901-row legacy candidate remains available for the historical benchmark reproduction.
