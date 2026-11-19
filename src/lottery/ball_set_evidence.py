@@ -234,7 +234,16 @@ def _archive_raw_response(fetched: dict[str, Any], archive_dir: Path, authority_
     raw_dir.mkdir(parents=True, exist_ok=True)
     raw_path = raw_dir / f"{digest}.html"
     if not raw_path.exists():
-        raw_path.write_bytes(body)
+        try:
+            with raw_path.open("xb") as handle:
+                handle.write(body)
+                handle.flush()
+                import os
+                os.fsync(handle.fileno())
+        except FileExistsError:
+            pass
+    if hashlib.sha256(raw_path.read_bytes()).hexdigest() != digest:
+        raise BallSetEvidenceError(f"content-addressed raw object was modified: {raw_path}")
     manifest = {
         "schema_version": 1, "source_authority_class": "A2",
         "source_authority_name": authority_name,
