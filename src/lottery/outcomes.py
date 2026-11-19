@@ -213,6 +213,8 @@ def create_outcome_event(
         raise OutcomeLedgerError(f"no pre-draw forecast exists for target {target_draw_id}")
     publication = _aware(published_at, "published_at")
     capture = _aware(captured_at, "captured_at")
+    if recorded_at is not None and not isinstance(recorded_at, datetime):
+        raise OutcomeLedgerError("recorded_at must be a timezone-aware datetime")
     recorded = recorded_at or datetime.now(timezone.utc)
     if recorded.tzinfo is None or recorded.utcoffset() is None:
         raise OutcomeLedgerError("recorded_at must include a timezone")
@@ -223,12 +225,16 @@ def create_outcome_event(
         raise OutcomeLedgerError("capture timestamp precedes publication timestamp")
     if recorded < capture:
         raise OutcomeLedgerError("recorded_at precedes capture timestamp")
+    if not isinstance(source_url, str):
+        raise OutcomeLedgerError("source URL must be a string")
     parsed = urlparse(source_url)
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or not (host == "sporttery.cn" or host.endswith(".sporttery.cn")):
-        raise OutcomeLedgerError("source URL must use HTTPS on an official sporttery.cn host")
-    if http_status != 200:
-        raise OutcomeLedgerError("source HTTP status must be 200")
+    query = parse_qs(parsed.query)
+    if (parsed.scheme != "https" or parsed.hostname != "webapi.sporttery.cn"
+            or parsed.path != "/gateway/lottery/getHistoryPageListV1.qry"
+            or query.get("gameNo") != ["85"]):
+        raise OutcomeLedgerError("source URL must be the official Sporttery history endpoint for gameNo=85")
+    if type(http_status) is not int or http_status != 200:
+        raise OutcomeLedgerError("source HTTP status must be integer 200")
     if not isinstance(source_sha256, str) or len(source_sha256) != 64 or any(
         c not in "0123456789abcdef" for c in source_sha256
     ):
