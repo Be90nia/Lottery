@@ -158,6 +158,7 @@ class _RedirectTracker(HTTPRedirectHandler):
         self.chain: list[dict[str, Any]] = []
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _allowed_url(newurl)
         self.chain.append({"status": code, "url": newurl})
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
