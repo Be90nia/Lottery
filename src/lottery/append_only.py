@@ -146,6 +146,7 @@ def _verify_source_completeness_attestation(
         raise AppendOnlyError("candidate snapshot SHA inventory does not match pagination attestation")
 
     source_rows: list[dict[str, Any]] = []
+    source_ids_by_draw: dict[str, str] = {}
     seen_draw_ids: set[str] = set()
     run_ids: set[str] = set()
     verified_pages: list[dict[str, Any]] = []
@@ -255,6 +256,7 @@ def _verify_source_completeness_attestation(
             if parsed_row.draw_id in seen_draw_ids:
                 raise AppendOnlyError(f"duplicate draw ID across source pages: {parsed_row.draw_id}")
             seen_draw_ids.add(parsed_row.draw_id)
+            source_ids_by_draw[parsed_row.draw_id] = f"sha256:{digest}"
             source_rows.append(row_dict)
         verified_pages.append({"page_no": expected_page_no, "sha256": digest, "records": records})
 
@@ -262,6 +264,8 @@ def _verify_source_completeness_attestation(
         raise AppendOnlyError("all source pages must belong to one immutable fetch run")
     if len(source_rows) != total_records or len(candidate) != total_records:
         raise AppendOnlyError("source total records do not match parsed pages and candidate rows")
+    if any(row.get("source_id") != source_ids_by_draw.get(row["draw_id"]) for row in candidate):
+        raise AppendOnlyError("candidate source_id does not reference the raw page that contains each draw")
     if metadata_payload is None:
         raise AppendOnlyError("source page 1 metadata is missing")
     if (type(_json_pointer(metadata_payload, attestation["total_records_pointer"])) is not int
