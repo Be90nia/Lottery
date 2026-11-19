@@ -45,6 +45,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         append_forecast(self.forecasts, forecast)
         self.kwargs = {
             "target_draw_id": "2604",
+            "draw_date": "2026-02-02",
             "published_at": "2026-02-02T20:30:00+08:00",
             "captured_at": "2026-02-02T20:31:00+08:00",
             "source_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85",
@@ -75,6 +76,22 @@ class OutcomeLedgerTests(unittest.TestCase):
             report["scores"][0]["models"]["uniform"]["back"]["brier_per_number"],
             5 / 36, places=12,
         )
+
+    def test_rejects_outcome_draw_date_mismatch(self):
+        kwargs = dict(self.kwargs, draw_date="2026-02-03")
+        with self.assertRaisesRegex(OutcomeLedgerError, "does not match forecast target draw date"):
+            create_outcome_event(self.forecasts, **kwargs)
+
+    def test_score_rejects_correctly_hashed_outcome_with_wrong_draw_date(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        append_outcome(self.outcomes, event)
+        record = json.loads(self.outcomes.read_text(encoding="utf-8"))
+        body = {key: value for key, value in record.items() if key != "event_hash"}
+        body["draw_date"] = "2026-02-03"
+        record = {**body, "event_hash": _event_hash(body)}
+        self.outcomes.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(OutcomeLedgerError, "draw date does not match"):
+            score_ledgers(self.forecasts, self.outcomes)
 
     def test_rejects_publication_before_draw(self):
         kwargs = dict(self.kwargs, published_at="2026-02-02T19:59:00+08:00")
@@ -267,6 +284,13 @@ class OutcomeSnapshotBindingTests(unittest.TestCase):
         self.assertEqual(event["front_numbers"], [2, 8, 12, 19, 31])
         self.assertEqual(event["back_numbers"], [3, 9])
         self.assertEqual(event["source_snapshot_sha256"], hashlib.sha256(self.snapshot.read_bytes()).hexdigest())
+
+    def test_snapshot_draw_date_must_match_forecast_target(self):
+        payload = json.loads(self.snapshot.read_text(encoding="utf-8"))
+        payload["value"]["list"][0]["lotteryDrawTime"] = "2026-02-03"
+        self.snapshot.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(OutcomeLedgerError, "does not match forecast target draw date"):
+            create_outcome_event_from_snapshot(self.forecasts, **self.kwargs)
 
     def test_snapshot_must_contain_exactly_one_matching_draw(self):
         kwargs = dict(self.kwargs, target_draw_id="not-in-snapshot")
