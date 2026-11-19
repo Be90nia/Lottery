@@ -128,11 +128,30 @@ class BallSetCoverageTests(unittest.TestCase):
                                            output_markdown=out_md, protected_paths=protected)
 
     def test_out_of_inventory_observation_is_reported_separately(self):
-        # The official page is real evidence but is not yet present in the current draw inventory.
-        self.collect(page(1, "26132", "2026年11月18日"))
+        second = "https://www.js-lottery.com/cms/post-148233.html"
+        third = "https://www.js-lottery.com/cms/post-148247.html"
+        pages = {
+            BASE: fetched(BASE, page(3).replace(
+                b"</body>", b'<a href="/cms/post-148233.html">中国体育彩票超级大乐透第26129期开奖公告</a></body>'
+            )),
+            second: fetched(second, page(2, "26129", "2026年11月11日").replace(
+                b"</body>", b'<a href="/cms/post-148247.html">中国体育彩票超级大乐透第26130期开奖公告</a></body>'
+            )),
+            third: fetched(third, page(1, "26130", "2026年11月14日")),
+        }
+        with patch("lottery.ball_set_evidence.fetch_announcement", side_effect=lambda url: pages[url]):
+            collect_ball_set_evidence(
+                self.registry, self.archive, self.ledger,
+                receipt_path=self.receipt, draw_inventory_path=self.inventory,
+                delay_seconds=0, max_forward_pages=5,
+            )
         report = self.report()
         self.assertEqual(report["out_of_inventory_observation_count"], 1)
-        self.assertEqual(report["per_draw"][0]["status"], "unobserved")
+        self.assertEqual(report["out_of_inventory_observations"][0]["draw_id"], "26130")
+        self.assertEqual(report["out_of_inventory_observations"][0]["reported_set_index"], 1)
+        self.assertEqual(report["out_of_inventory_observations"][0]["exclusion_reason"], "inventory_crosswalk_pending")
+        self.assertEqual(report["per_draw"][0]["status"], "primary_verified")
+
 
 
 if __name__ == "__main__":
