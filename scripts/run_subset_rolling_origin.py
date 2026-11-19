@@ -285,12 +285,18 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
                            BOOTSTRAP_SEED, checkpoint_dir / "front.jsonl", digest)
     back = _evaluate_zone(rows, "back", BACK_POPULATION, BACK_SELECTION, False,
                           BOOTSTRAP_SEED + 1, checkpoint_dir / "back.jsonl", digest)
-    passed = all(
+    # This branch still uses the diagnostic Armijo solver and does not yet
+    # implement the frozen null-centered six-comparison Holm procedure.
+    # Keep the confirmatory gate closed even if all descriptive CIs look favorable.
+    solver_policy_approved = False
+    multiplicity_policy_approved = False
+    descriptive_ci_pass = all(
         zone["complete_coverage"] and all(
             zone["paired_candidate_minus_baseline"][ref] is not None
             and zone["paired_candidate_minus_baseline"][ref]["ci_95_upper"] < 0.0
             for ref in ("uniform", "expanding", "ewma"))
         for zone in (front, back))
+    passed = solver_policy_approved and multiplicity_policy_approved and descriptive_ci_pass
     result = {
         "run_type": "LOT-055-equipment-blind-exact-subset-rolling-origin",
         "snapshot_sha256": digest, "snapshot_rows": len(rows),
@@ -307,7 +313,9 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "front": front, "back": back, "confirmatory_candidate_pass": bool(passed),
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
-                        "no LOT-042 access", "no promotion or serving", "solver policy review outstanding"],
+                        "no LOT-042 access", "no promotion or serving",
+                        "solver policy review outstanding",
+                        "null-centered six-comparison Holm procedure not implemented"],
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
