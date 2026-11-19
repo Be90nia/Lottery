@@ -117,6 +117,9 @@ def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
     if (not isinstance(record, dict) or set(record) != expected_record_keys
             or record.get("record_type") != "target"):
         raise ValueError("checkpoint target record has invalid shape")
+    supplied_hash = record.get("record_sha256")
+    if not isinstance(supplied_hash, str) or supplied_hash != _checkpoint_record_hash(record):
+        raise ValueError("checkpoint target record SHA-256 mismatch")
     if type(record.get("candidate_iterations")) is not int or record["candidate_iterations"] < 0:
         raise ValueError("checkpoint candidate iteration count is invalid")
     gradient = record.get("candidate_gradient_infinity_norm")
@@ -151,12 +154,7 @@ def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
                 raise ValueError(f"checkpoint {score_key} NLL invalid for converged fit")
         elif score is not None:
             raise ValueError(f"checkpoint {score_key} score must be null when fit did not converge")
-    supplied_hash = record.get("record_sha256")
-    if not isinstance(supplied_hash, str) or supplied_hash != _checkpoint_record_hash(record):
-        raise ValueError("checkpoint target record SHA-256 mismatch")
-
-
-def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: bool,
+\n\ndef _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: bool,
                    seed: int, checkpoint_path: Path, snapshot_digest: str) -> dict:
     table = build_uniform_feature_table(m, k, include_gap_variance=include_gap)
     model = ExponentialFamily(table)
@@ -194,7 +192,6 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
         with checkpoint_path.open("x", encoding="utf-8") as handle:
             handle.write(json.dumps(header, sort_keys=True) + "\n")
             handle.flush()
-            import os
             os.fsync(handle.fileno())
 
     status_counts = {name: {} for name in ("candidate", "expanding", "ewma")}
