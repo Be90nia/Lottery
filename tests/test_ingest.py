@@ -265,7 +265,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
             raw_dir.mkdir()
             url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1"
             _snapshot(self.payload([self.row("26131")]), 1, 200, "application/json", raw_dir, url, "a" * 32)
-            _snapshot(self.payload([self.row("26132")]), 2, 200, "application/json", raw_dir, url, "b" * 32)
+            _snapshot(self.payload([self.row("26132")]), 2, 200, "application/json", raw_dir, url.replace("pageNo=1", "pageNo=2"), "b" * 32)
             with self.assertRaisesRegex(IngestionError, "one contiguous page sequence from one fetch run"):
                 ingest_snapshot_directory(raw_dir, root / "out.jsonl", require_manifests=True)
 
