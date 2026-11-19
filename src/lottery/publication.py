@@ -68,6 +68,18 @@ def _atomic_write_new(path: Path, content: bytes) -> None:
     temp.unlink(missing_ok=True)
 
 
+def _next_draw_id(previous: str, candidate: str) -> bool:
+    if (not previous.isdigit() or not candidate.isdigit()
+            or len(previous) != 5 or len(candidate) != 5):
+        return False
+    previous_year, previous_sequence = int(previous[:2]), int(previous[2:])
+    candidate_year, candidate_sequence = int(candidate[:2]), int(candidate[2:])
+    if candidate_year == previous_year:
+        return candidate_sequence == previous_sequence + 1
+    return (candidate_year == previous_year + 1
+            and candidate_sequence == 1 and previous_sequence >= 100)
+
+
 def _canonical_rows(rows: list[dict[str, Any]]) -> bytes:
     return "".join(
         json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
@@ -165,11 +177,17 @@ def reconcile_append_only(
         row for row in candidate
         if row["draw_id"] not in current_by_id
     ]
+    previous_draw_id = current_last[1]
     for row in additions:
         if row["draw_date"] <= current_last[0]:
             raise PublicationError(
                 f"new draw {row['draw_id']} is not strictly later than current history"
             )
+        if not _next_draw_id(previous_draw_id, row["draw_id"]):
+            raise PublicationError(
+                f"draw ID sequence has a gap or regression: {previous_draw_id} -> {row['draw_id']}"
+            )
+        previous_draw_id = row["draw_id"]
 
     # Preserve current rows semantically (including their original source_id)
     # and append only genuinely new candidate rows.
