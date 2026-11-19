@@ -33,13 +33,15 @@ BOOTSTRAP_SEED = 20261118
 
 
 def _confirmatory_gate(
-    descriptive_ci_pass: bool, *, solver_policy_approved: bool,
+    inferential_pass: bool, *, solver_policy_approved: bool,
     multiplicity_policy_approved: bool,
+    non_regression_policy_approved: bool,
 ) -> bool:
     return bool(
-        descriptive_ci_pass
+        inferential_pass
         and solver_policy_approved
         and multiplicity_policy_approved
+        and non_regression_policy_approved
     )
 
 
@@ -338,11 +340,12 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
                            BOOTSTRAP_SEED, checkpoint_dir / "front.jsonl", digest)
     back = _evaluate_zone(rows, "back", BACK_POPULATION, BACK_SELECTION, False,
                           BOOTSTRAP_SEED + 1, checkpoint_dir / "back.jsonl", digest)
-    # This branch still uses the diagnostic Armijo solver and does not yet
-    # implement the frozen null-centered six-comparison Holm procedure.
-    # Keep the confirmatory gate closed even if all descriptive CIs look favorable.
+    # The mathematical solver and two-hypothesis Holm policy are implemented.
+    # The non-regression margin against fixed marginal comparators is not yet
+    # numerically frozen, so confirmatory promotion remains fail-closed.
     solver_policy_approved = True
-    multiplicity_policy_approved = False
+    multiplicity_policy_approved = True
+    non_regression_policy_approved = False
     descriptive_ci_pass = all(
         zone["complete_coverage"] and all(
             zone["paired_candidate_minus_baseline"][ref] is not None
@@ -379,11 +382,11 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         for zone, comparison in primary_comparisons.items()
     }
     primary_inferential_pass = all(zone_inferential_pass.values())
-    multiplicity_policy_approved = True
     passed = _confirmatory_gate(
         primary_inferential_pass,
         solver_policy_approved=solver_policy_approved,
         multiplicity_policy_approved=multiplicity_policy_approved,
+        non_regression_policy_approved=non_regression_policy_approved,
     )
     result = {
         "run_type": "LOT-055-equipment-blind-exact-subset-rolling-origin",
@@ -412,11 +415,14 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         },
         "solver_policy_approved": solver_policy_approved,
         "multiplicity_policy_approved": multiplicity_policy_approved,
+        "non_regression_policy_approved": non_regression_policy_approved,
+        "non_regression_policy_note": "zero/non-inferiority margin against expanding and EWMA has not been frozen; descriptive comparator intervals are reported but cannot silently define a post-hoc gate",
         "confirmatory_candidate_pass": bool(passed),
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
                         "no LOT-042 access", "no promotion or serving",
-                        "unbounded L-BFGS-B specialization is tested but full confirmatory run remains unexecuted",
+                        "non-regression margin against fixed expanding/EWMA comparators remains unregistered",
+                        "full confirmatory run remains unexecuted",
                         "Holm inference is implemented for the preregistered two-hypothesis candidate-vs-uniform family; expanding/EWMA remain non-regression comparators"],
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
