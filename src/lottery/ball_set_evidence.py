@@ -93,7 +93,9 @@ def _decode_html(raw: bytes, content_type: str) -> str:
 
 def _allowed_url(url: str) -> None:
     parsed = urlsplit(url)
-    if parsed.scheme != "https" or parsed.hostname not in ALLOWED_HOSTS:
+    if (parsed.scheme != "https" or parsed.hostname not in ALLOWED_HOSTS
+            or parsed.port not in (None, 443) or parsed.username is not None
+            or parsed.password is not None or parsed.fragment):
         raise BallSetEvidenceError(f"source URL is not an approved official Jiangsu host: {url}")
 
 
