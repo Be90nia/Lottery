@@ -29,3 +29,5 @@ Both files are validated. The candidate must contain every existing draw, and al
 No-new-draw runs emit a `no_new_draws` receipt and do not write the output. Appends write a new file atomically without overwriting the input. Review the receipt and explicitly promote the output in a separate controlled operation.
 
 Corrections require a preserved raw snapshot, an incident, and a separately reviewed correction event. This tool does not update forecast/outcome ledgers, train/promote models, or access LOT-042. Trust remains `manifest_complete_not_officially_authenticated`.
+
+The publication gate validates and hashes each input from one captured byte sequence, then uses atomic no-replace creation for candidate output, sidecar manifest, and receipt. Existing evidence paths are never silently replaced.
