@@ -22,7 +22,7 @@ def rows(count=240, candidate_delta=-0.02):
                 "front": {"brier": 0.2 + delta, "log_loss": 0.4 + delta},
                 "back": {"brier": 0.3 + delta, "log_loss": 0.5 + delta},
             }
-        result.append({"target_draw_id": f"26{i:04d}", "model_scores": models})
+        result.append({"target_draw_id": f"26{i + 1:03d}", "model_scores": models})
     return result
 
 
@@ -31,7 +31,7 @@ class EvaluationGateTests(unittest.TestCase):
         options = dict(candidate_model_id="candidate-v2", champion_model_id="champion-v1",
                        dataset_sha256="a" * 64, code_commit="b" * 40,
                        protocol_version="frozen-v1", min_targets=200,
-                       replicates=200, block_length=20, seed=7)
+                       replicates=1000, block_length=50, seed=7)
         options.update(kwargs)
         return build_evaluation_receipt(rows() if data is None else data, **options)
 
@@ -54,6 +54,31 @@ class EvaluationGateTests(unittest.TestCase):
     def test_incomplete_coverage_rejected(self):
         with self.assertRaisesRegex(EvaluationGateError, "incomplete coverage"):
             self.build(rows(199))
+
+    def test_thresholds_cannot_be_lowered_below_frozen_floor(self):
+        with self.assertRaisesRegex(EvaluationGateError, "frozen gate requires"):
+            self.build(min_targets=2)
+        with self.assertRaisesRegex(EvaluationGateError, "frozen gate requires"):
+            self.build(replicates=999)
+        with self.assertRaisesRegex(EvaluationGateError, "frozen gate requires"):
+            self.build(block_length=20)
+
+    def test_score_rows_hash_and_evaluation_config_are_bound(self):
+        receipt = self.build()
+        self.assertEqual(len(receipt["score_rows_sha256"]), 64)
+        self.assertEqual(receipt["evaluation_config"], {
+            "min_targets": 200,
+            "bootstrap_replicates": 1000,
+            "block_length_draws": 50,
+            "bootstrap_seed": 7,
+        })
+        self.assertTrue(verify_evaluation_receipt(receipt))
+
+    def test_out_of_order_targets_rejected(self):
+        data = rows()
+        data[100]["target_draw_id"] = "26001"
+        with self.assertRaisesRegex(EvaluationGateError, "strictly increasing"):
+            self.build(data)
 
     def test_duplicate_target_rejected(self):
         data = rows()
