@@ -71,6 +71,12 @@ def run_mvp(
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("code_commit must be a full 40-character lowercase Git SHA")
 
+    batch["strategy_semantics"] = {
+        "type": "historical_marginal_sampling_heuristics",
+        "physical_ball_set_models": "not_implemented",
+        "physical_ball_set_blocker": "verified per-draw labels and equipment-regime chronology are unresolved",
+        "predictive_efficacy_claim": "none",
+    }
     batch["dataset"] = {
         "path": str(dataset_path),
         "sha256": dataset_sha256,
@@ -97,6 +103,8 @@ def run_mvp(
         "automatic_sync_status": "not_attempted",
         "model_training_status": "not_performed",
         "model_promotion_status": "not_performed",
+        "strategy_scope": "historical_marginal_sampling_heuristics_not_physical_ball_sets",
+        "predictive_efficacy_claim": "none",
     }
     document = {"schema_version": 1, "receipt": receipt, "batch": batch}
     rendered = json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
