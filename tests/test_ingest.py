@@ -105,6 +105,7 @@ class ParsePageTests(unittest.TestCase):
                     "http_status": 200,
                     "sha256": digest,
                     "raw_file": name,
+                    "page_no": 1,
                 }),
                 encoding="utf-8",
             )
