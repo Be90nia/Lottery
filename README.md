@@ -198,3 +198,6 @@ python scripts/collect_ball_set_evidence.py \
 ```
 
 This archives exact official provincial announcement bytes and extracts only explicit `本期使用第X套摇奖球` labels. Missing labels, source revisions, and conflicting official records remain distinct; regime and physical identity remain unresolved until independently adjudicated. The scheduled workflow carries a cumulative 90-day artifact as a staging archive, not permanent canonical storage. See [ball-set evidence archive](docs/BALL_SET_EVIDENCE_ARCHIVE.md).
+
+
+Coverage can be regenerated with `python scripts/build_ball_set_coverage.py`; see [the archive specification](docs/BALL_SET_EVIDENCE_ARCHIVE.md) for the full command and eligibility boundary.
