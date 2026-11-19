@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "src/lottery/tickets.py"
+      - "src/lottery/conditional_poisson.py"
+      - "tests/test_tickets.py"
       - "src/lottery/mvp.py"
       - "scripts/generate_tickets.py"
       - "scripts/run_mvp.py"
@@ -53,6 +55,8 @@ jobs:
           assert set(lanes) == {"uniform", "expanding", "ewma"}
           assert report["tickets_per_strategy"] == 5
           assert report["total_tickets"] == 15
+          assert report["schema_version"] == 2
+          assert report["sampler_version"] == "conditional-poisson-rejective-v1"
           assert len(report["generation_run_id"]) == 64
           assert len(report["training_dataset_fingerprint"]) == 64
           ticket_ids = []
@@ -61,6 +65,10 @@ jobs:
           for lane, tickets in lanes.items():
               assert len(tickets) == 5, lane
               assert report["strategy_metadata"][lane]["ticket_count"] == 5
+              for zone in ("front_marginal_calibration", "back_marginal_calibration"):
+                  calibration = report["strategy_metadata"][lane][zone]
+                  assert calibration["terminal_status"] == "converged"
+                  assert calibration["maximum_absolute_residual"] <= 1e-8
               lane_counts = {}
               for ticket in tickets:
                   front, back = ticket["front_numbers"], ticket["back_numbers"]
