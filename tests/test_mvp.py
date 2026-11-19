@@ -44,7 +44,15 @@ class MvpOrchestratorTests(unittest.TestCase):
                 document["batch"], ensure_ascii=False, sort_keys=True, separators=(",", ":")
             ).encode("utf-8")
             self.assertEqual(document["receipt"]["batch_sha256"], hashlib.sha256(batch_bytes).hexdigest())
-            self.assertFalse(output.with_suffix(".json.tmp").exists())
+            self.assertEqual(list(output.parent.glob("mvp.json.*.tmp")), [])
+
+    def test_output_cannot_overwrite_input_dataset(self):
+        with tempfile.TemporaryDirectory() as temp:
+            dataset = Path(temp) / "draws.jsonl"
+            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must not overwrite"):
+                run_mvp(dataset, dataset)
+            self.assertTrue(dataset.exists())
 
     def test_invalid_dataset_never_publishes_output(self):
         with tempfile.TemporaryDirectory() as temp:
