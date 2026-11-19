@@ -134,7 +134,7 @@ class EvaluationGateTests(unittest.TestCase):
             self.build(data)
 
     def test_non_integer_bootstrap_seed_rejected(self):
-        with self.assertRaisesRegex(EvaluationGateError, "thresholds or seed"):
+        with self.assertRaisesRegex(EvaluationGateError, "non-negative integer seed"):
             self.build(seed="7")
 
     def test_cli_refuses_to_overwrite_score_input(self):
