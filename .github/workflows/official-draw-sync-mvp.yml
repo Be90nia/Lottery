@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: official-draw-sync
@@ -107,6 +108,45 @@ jobs:
           path: sync-run/
           if-no-files-found: error
           retention-days: 90
+      - name: Open or update the single source-sync incident
+        if: steps.fetch.outcome == 'failure' || steps.validate_candidate.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FETCH_OUTCOME: ${{ steps.fetch.outcome }}
+          VALIDATION_OUTCOME: ${{ steps.validate_candidate.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          fetch_code="$(cat sync-run/exit-code.txt 2>/dev/null || echo unknown)"
+          body="$(cat <<EOF
+          The scheduled official-source synchronization failed or strict snapshot validation rejected the archived pages.
+
+          - Fetch outcome: ${FETCH_OUTCOME}
+          - Strict validation outcome: ${VALIDATION_OUTCOME}
+          - Fetch exit code: ${fetch_code}
+          - Workflow run: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          The exact run evidence was uploaded as an artifact. Canonical data was not modified; model training/promotion and holdout access were not performed.
+          EOF
+          )"
+          issue_number="$(gh issue list --state open --search 'LOT-052 source sync incident in:title' --json number --jq '.[0].number // empty')"
+          if [[ -n "${issue_number}" ]]; then
+            gh issue comment "${issue_number}" --body "${body}"
+          else
+            gh issue create --title "LOT-052 source sync incident" --body "${body}"
+          fi
+      - name: Close resolved source-sync incident
+        if: steps.fetch.outcome == 'success' && steps.validate_candidate.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          issue_number="$(gh issue list --state open --search 'LOT-052 source sync incident in:title' --json number --jq '.[0].number // empty')"
+          if [[ -n "${issue_number}" ]]; then
+            gh issue comment "${issue_number}" --body "Source fetch and strict snapshot validation recovered in workflow run https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}. This only resolves the fetch/validation incident; source pagination completeness is still unverified, so canonical data remains unchanged."
+            gh issue close "${issue_number}" --reason completed
+          fi
       - name: Fail visibly when the source fetch or validation failed
         if: steps.fetch.outcome == 'failure' || steps.validate_candidate.outcome == 'failure'
         run: |
