@@ -708,6 +708,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--draw-inventory", type=Path, required=True)
     parser.add_argument("--ledger", type=Path, required=True)
+    parser.add_argument("--draw-result-ledger", type=Path, required=True)
     parser.add_argument("--archive-dir", type=Path, required=True)
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--output-csv", type=Path, required=True)
@@ -718,9 +719,13 @@ def main() -> int:
     args = parser.parse_args()
     try:
         report = build_ball_set_coverage(
-            args.draw_inventory, args.ledger, args.archive_dir, code_commit=args.code_commit
+            args.draw_inventory, args.ledger, args.draw_result_ledger,
+            args.archive_dir, code_commit=args.code_commit
         )
-        protected = {args.draw_inventory.resolve(), args.ledger.resolve(), (args.archive_dir / "receipt.json").resolve()}
+        protected = {
+            args.draw_inventory.resolve(), args.ledger.resolve(), args.draw_result_ledger.resolve(),
+            (args.archive_dir / "receipt.json").resolve(),
+        }
         raw_root = (args.archive_dir / "raw").resolve()
         if any(path.resolve().is_relative_to(raw_root) for path in (
             args.output_json, args.output_csv, args.output_per_set_csv,
