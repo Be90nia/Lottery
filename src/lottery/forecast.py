@@ -7,7 +7,7 @@ signature and cannot prove who created a record.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
 import math
@@ -62,7 +62,7 @@ def _validate_forecast_payload(event: dict[str, Any]) -> None:
     payload_keys = {
         "event_type", "generated_at", "target_draw_id", "target_draw_at",
         "training_dataset_sha256", "training_draw_count",
-        "training_first_draw_id", "training_last_draw_id", "code_commit",
+        "training_first_draw_id", "training_last_draw_id", "training_last_draw_date", "code_commit",
         "model_configuration", "models",
     }
     allowed_keys = payload_keys | {"sequence", "previous_event_hash"}
@@ -92,6 +92,17 @@ def _validate_forecast_payload(event: dict[str, Any]) -> None:
             raise ForecastLedgerError(f"{field} must be a non-empty string")
     if event["training_first_draw_id"] > event["training_last_draw_id"]:
         raise ForecastLedgerError("training draw ID range is reversed")
+    if target <= event["training_last_draw_id"]:
+        raise ForecastLedgerError("target draw ID must follow the last training draw ID")
+    training_last_date_value = event.get("training_last_draw_date")
+    if not isinstance(training_last_date_value, str):
+        raise ForecastLedgerError("training_last_draw_date must be an ISO date")
+    try:
+        training_last_date = date.fromisoformat(training_last_date_value)
+    except ValueError as exc:
+        raise ForecastLedgerError("training_last_draw_date must be an ISO date") from exc
+    if target_time.date() <= training_last_date:
+        raise ForecastLedgerError("target draw date must follow the last training draw date")
 
     configuration = event.get("model_configuration")
     if not isinstance(configuration, dict) or set(configuration) != {
@@ -231,6 +242,7 @@ def create_forecast_event(
         "training_draw_count": len(records),
         "training_first_draw_id": records[0]["draw_id"],
         "training_last_draw_id": records[-1]["draw_id"],
+        "training_last_draw_date": records[-1]["draw_date"],
         "code_commit": code_commit,
         "model_configuration": {"expanding_alpha": alpha, "ewma_half_life_draws": half_life},
         "models": models,
