@@ -191,7 +191,7 @@ jobs:
 
       - name: Run preregistered reported-index rolling-origin pilot
         id: pilot
-        if: steps.reported_view.outcome == 'success'
+        if: steps.collect.outcome == 'success' && steps.reported_view.outcome == 'success'
         continue-on-error: true
         run: |
           REPORT_SHA="$(python -c 'import json; print(json.load(open("evidence-archive/coverage/coverage.json", encoding="utf-8"))["report_sha256"])')"
