@@ -107,7 +107,7 @@ class ForecastLedgerTests(unittest.TestCase):
             }
             body["models"]["uniform"]["front_inclusion_probabilities"][0] = True
             body["event_hash"] = _event_hash(body)
-            ledger.write_text(json.dumps(body) + "\\n", encoding="utf-8")
+            ledger.write_text(json.dumps(body) + "\n", encoding="utf-8")
             with self.assertRaisesRegex(ForecastLedgerError, "invalid uniform front"):
                 verify_ledger(ledger)
 
