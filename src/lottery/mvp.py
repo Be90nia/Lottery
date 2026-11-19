@@ -29,6 +29,8 @@ def run_mvp(
     """Validate one historical input and atomically publish a candidate batch receipt."""
     if dataset_path.resolve() == output_path.resolve():
         raise ValueError("output_path must not overwrite the input dataset")
+    if output_path.exists():
+        raise ValueError("output_path already exists; choose a new path to preserve prior run evidence")
     validation = validate_jsonl(dataset_path)
     raw = dataset_path.read_bytes()
     rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
@@ -41,7 +43,9 @@ def run_mvp(
     )
     dataset_sha256 = hashlib.sha256(raw).hexdigest()
     commit = code_commit or os.environ.get("GITHUB_SHA")
-    if commit is not None and not re.fullmatch(r"[0-9a-f]{40}", commit):
+    if commit is None:
+        raise ValueError("code_commit is required; pass --code-commit or run in GitHub Actions")
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("code_commit must be a full 40-character lowercase Git SHA")
 
     batch["dataset"] = {
