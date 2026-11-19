@@ -55,7 +55,7 @@ class MvpOrchestratorTests(unittest.TestCase):
             root = Path(temp)
             dataset = root / "draws.jsonl"
             output = root / "mvp.json"
-            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            dataset.write_text("".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)), encoding="utf-8")
             output.write_text("preserve-me", encoding="utf-8")
             with self.assertRaisesRegex(FileExistsError, "refusing to overwrite"):
                 run_mvp(dataset, output, code_commit="a" * 40)
@@ -67,7 +67,7 @@ class MvpOrchestratorTests(unittest.TestCase):
             root = Path(temp)
             dataset = root / "draws.jsonl"
             output = root / "mvp.json"
-            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            dataset.write_text("".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)), encoding="utf-8")
             with patch.dict(os.environ, {"GITHUB_SHA": ""}):
                 with self.assertRaisesRegex(ValueError, "GITHUB_SHA"):
                     run_mvp(dataset, output)
@@ -77,7 +77,7 @@ class MvpOrchestratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             dataset = root / "draws.jsonl"
-            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            dataset.write_text("".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)), encoding="utf-8")
             first = run_mvp(dataset, root / "first.json", seed=73, code_commit="a" * 40)
             second = run_mvp(dataset, root / "second.json", seed=73, code_commit="b" * 40)
             self.assertNotEqual(
