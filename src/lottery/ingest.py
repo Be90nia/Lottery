@@ -288,7 +288,9 @@ def ingest_snapshot_directory(
             and parsed_url is not None
             and parsed_url.scheme == "https"
             and parsed_url.hostname == "webapi.sporttery.cn"
+            and parsed_url.netloc == "webapi.sporttery.cn"
             and parsed_url.path == "/gateway/lottery/getHistoryPageListV1.qry"
+            and set(query) == {"gameNo", "provinceId", "pageSize", "isVerify", "pageNo"}
             and sidecar.get("final_url") == source_url
             and sidecar.get("redirect_chain") == []
             and query.get("gameNo") == ["85"]
