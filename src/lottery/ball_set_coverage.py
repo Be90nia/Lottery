@@ -701,7 +701,7 @@ def write_ball_set_coverage_report(
         "",
         "| Draw | Date | Front | Back | Status |",
         "|---|---|---|---|---|",
-    ]
+    ])
     for row in report["out_of_inventory_draw_results"]:
         lines.append(
             f"| {row['draw_id']} | {row['draw_date']} | "
