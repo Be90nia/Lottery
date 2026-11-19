@@ -19,7 +19,7 @@ RESULT_STATUSES = {
     "inventory_matched", "pending_inventory", "draw_mismatch",
     "draw_result_mismatch", "missing_draw_result", "invalid_draw_result",
     "source_revision_same_semantics", "source_revision_requires_review",
-    "conflict",
+    "conflict", "inventory_missing_after_match",
 }
 
 
@@ -56,6 +56,13 @@ def read_draw_result_ledger(path: Path) -> list[dict[str, Any]]:
                     or not re.fullmatch(r"\d{5}", item["draw_id"])
                     or item.get("draw_result_status") not in RESULT_STATUSES):
                 raise DrawResultLedgerError(f"invalid draw-result fields at line {line_no}")
+            if item["draw_result_status"] in (
+                "inventory_matched", "pending_inventory", "source_revision_same_semantics",
+            ):
+                if (not isinstance(item.get("front_numbers"), list)
+                        or not isinstance(item.get("back_numbers"), list)
+                        or len(item["front_numbers"]) != 5 or len(item["back_numbers"]) != 2):
+                    raise DrawResultLedgerError(f"invalid draw-result number arrays at line {line_no}")
             source = item.get("source")
             if not isinstance(source, dict) or source.get("authority_class") != "A2":
                 raise DrawResultLedgerError(f"invalid draw-result source authority at line {line_no}")
@@ -120,12 +127,17 @@ def append_draw_result(
                 and supersedes.get("front_numbers") == list(parsed.front_numbers or ())
                 and supersedes.get("back_numbers") == list(parsed.back_numbers or ())
                 and parsed.draw_result_status == "parsed"
+                and supersedes.get("draw_result_status") not in (
+                    "draw_result_mismatch", "draw_mismatch", "source_revision_requires_review", "conflict",
+                )
             )
             status = "source_revision_same_semantics" if same_result else "source_revision_requires_review"
         else:
             other = [
                 item for item in records if item["draw_id"] == parsed.draw_id
-                and item.get("draw_result_status") == "inventory_matched"
+                and item.get("draw_result_status") in (
+                    "inventory_matched", "pending_inventory", "source_revision_same_semantics",
+                )
             ]
             if other and any(
                 item.get("front_numbers") != list(parsed.front_numbers or ())
