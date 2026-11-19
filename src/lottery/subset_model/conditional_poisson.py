@@ -202,6 +202,8 @@ class ConditionalPoisson:
             raise ValueError("tolerance must be finite and positive")
         if type(max_iterations) is not int or max_iterations < 1:
             raise ValueError("max_iterations must be a positive integer")
+        if type(history_size) is not int or history_size < 1:
+            raise ValueError("history_size must be a positive integer")
 
         def evaluate(eta: tuple[float, ...]):
             model = cls(eta, k)
