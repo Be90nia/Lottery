@@ -16,6 +16,8 @@ on:
       - "src/lottery/reported_index_pilot.py"
       - "src/lottery/ingest.py"
       - "src/lottery/validate.py"
+      - "src/lottery/backtest.py"
+      - "src/lottery/conditional_poisson.py"
       - "tests/test_validate.py"
       - "tests/test_ball_set_evidence.py"
       - "tests/test_ball_set_coverage.py"
