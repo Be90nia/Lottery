@@ -86,6 +86,10 @@ class BallSetCoverageTests(unittest.TestCase):
         self.assertEqual(report["summary"]["set_index_counts"], {"1": 0, "2": 0, "3": 1})
         self.assertEqual(report["per_draw"][0]["status"], "primary_verified")
         self.assertEqual(report["per_draw"][0]["reported_set_index"], 3)
+        self.assertEqual(report["per_draw"][0]["draw_result_status"], "inventory_matched")
+        self.assertEqual(report["per_draw"][0]["front_numbers"], [3, 13, 20, 25, 34])
+        self.assertEqual(report["per_draw"][0]["back_numbers"], [9, 12])
+        self.assertEqual(report["summary"]["draw_result_inventory_matched_draws"], 1)
         self.assertFalse(report["per_draw"][0]["eligible"])
         self.assertEqual(report["per_draw"][0]["exclusion_reason"], "regime_unresolved")
         self.assertEqual(report["per_set"]["3"]["denominator_status"], "unknown_regime_boundary")
@@ -98,6 +102,7 @@ class BallSetCoverageTests(unittest.TestCase):
         self.collect(raw)
         report = self.report()
         self.assertEqual(report["per_draw"][0]["status"], "source_authority_unverified")
+        self.assertEqual(report["per_draw"][0]["draw_result_status"], "source_authority_unverified")
         self.assertEqual(report["summary"]["primary_verified_draws"], 0)
 
 
@@ -142,6 +147,7 @@ class BallSetCoverageTests(unittest.TestCase):
         raw.write_bytes(raw.read_bytes() + b"tampered")
         report = self.report()
         self.assertEqual(report["per_draw"][0]["status"], "parse_error")
+        self.assertEqual(report["per_draw"][0]["draw_result_status"], "raw_evidence_invalid")
         self.assertEqual(report["summary"]["raw_observation_objects_invalid"], 1)
 
     def test_report_hash_is_deterministic_and_outputs_are_atomic(self):
@@ -192,6 +198,9 @@ class BallSetCoverageTests(unittest.TestCase):
         self.assertEqual(report["out_of_inventory_observation_count"], 1)
         self.assertEqual(report["out_of_inventory_observations"][0]["draw_id"], "26130")
         self.assertEqual(report["out_of_inventory_observations"][0]["reported_set_index"], 1)
+        self.assertEqual(report["out_of_inventory_draw_results"][0]["draw_result_status"], "pending_inventory")
+        self.assertEqual(report["out_of_inventory_draw_results"][0]["front_numbers"], [1, 8, 17, 24, 32])
+        self.assertEqual(report["summary"]["draw_result_candidates_pending_inventory"], 1)
         self.assertEqual(report["out_of_inventory_observations"][0]["exclusion_reason"], "inventory_crosswalk_pending")
         self.assertTrue(report["out_of_inventory_observations"][0]["raw_evidence_verified"])
         self.assertEqual(report["summary"]["out_of_inventory_raw_objects_verified"], 1)
