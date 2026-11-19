@@ -109,6 +109,18 @@ jobs:
             --output-markdown evidence-archive/coverage/coverage.md \
             --code-commit "${GITHUB_SHA}"
 
+      - name: Export official draw-result candidates
+        id: candidates
+        if: steps.coverage.outcome == 'success'
+        run: |
+          python scripts/export_official_draw_candidates.py \
+            --draw-inventory data/candidates/legacy_draws.jsonl \
+            --observation-ledger evidence-archive/observations.jsonl \
+            --draw-result-ledger evidence-archive/draw-results.jsonl \
+            --archive-dir evidence-archive \
+            --output-jsonl evidence-archive/draw-result-candidates.jsonl \
+            --receipt evidence-archive/draw-result-candidates-receipt.json
+
       - name: Upload cumulative evidence archive
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
