@@ -46,3 +46,5 @@ python scripts/build_ball_set_coverage.py \
 ```
 
 The report re-hashes every raw object, verifies the complete retrieval manifest and observation identity/hash chain, re-runs the parser, and cross-checks draw ID/date against the supplied inventory. It reports verified counts by set, year, and source domain; missing/unobserved/conflicting records; first/last draw; leading/trailing and largest inter-label gaps. Because the supplied inventory is still an unverified candidate and the equipment-regime boundary/physical identities are unresolved, the report keeps every target ineligible and does not compute a training denominator or promote a 3N model.
+
+The HTTP client accepts only HTTPS on the default TLS port for the exact allow-listed official hosts; URL user-info and fragments are rejected, including across redirect hops.
