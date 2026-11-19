@@ -243,6 +243,16 @@ class AppendOnlyTests(unittest.TestCase):
         with self.assertRaisesRegex(AppendOnlyError, "raw snapshot SHA-256 mismatch"):
             self.run_gate()
 
+    def test_redirected_source_sidecar_is_rejected_at_publication(self):
+        self.prepare(self.old + [row("26132", "2026-11-18")])
+        raw = self.snapshots_dir / "page-001.json"
+        sidecar = self.snapshots_dir / "page-001.manifest.json"
+        metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+        metadata["redirect_chain"] = ["https://example.invalid/redirect-target"]
+        sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "official-source sidecar provenance is invalid"):
+            self.run_gate()
+
     def test_source_pagination_metadata_is_rechecked_from_raw_page(self):
         self.prepare(self.old + [row("26132", "2026-11-18")])
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
