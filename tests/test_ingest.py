@@ -121,6 +121,22 @@ class ParsePageTests(unittest.TestCase):
             self.assertEqual(row["source_unsort_drawresult"], "03 01 05 02 04 02 01")
             self.assertTrue(output.with_suffix(".jsonl.manifest.json").exists())
 
+    def test_offline_import_refuses_existing_output_or_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_dir = root / "raw"
+            raw_dir.mkdir()
+            raw = self.payload()
+            digest = hashlib.sha256(raw).hexdigest()
+            name = f"page-00001-{digest[:12]}.json"
+            url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1"
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, "a" * 32)
+            output = root / "draws.jsonl"
+            output.write_text("prior output", encoding="utf-8")
+            with self.assertRaisesRegex(IngestionError, "already exists"):
+                ingest_snapshot_directory(raw_dir, output, require_manifests=True)
+            self.assertEqual(output.read_text(encoding="utf-8"), "prior output")
+
     def test_offline_snapshot_import_rejects_tampered_manifest_hash(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -211,6 +227,16 @@ class FetchPaginationSafetyTests(unittest.TestCase):
             "lotteryDrawTime": "2026-11-16",
             "lotteryDrawResult": "01 02 03 04 05 01 02",
         }
+
+    def test_fetch_refuses_to_overwrite_existing_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "draws.jsonl"
+            output.write_text("prior data", encoding="utf-8")
+            with patch("lottery.ingest._fetch_page", side_effect=AssertionError("network must not run")):
+                with self.assertRaisesRegex(IngestionError, "already exists"):
+                    fetch_history(output, root / "raw")
+            self.assertEqual(output.read_text(encoding="utf-8"), "prior data")
 
     def test_full_page_at_max_pages_fails_closed_without_publishing(self):
         with tempfile.TemporaryDirectory() as temp:
