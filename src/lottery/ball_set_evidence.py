@@ -520,6 +520,7 @@ def collect_ball_set_evidence(
     fatal_statuses = {"draw_mismatch", "conflict", "source_authority_unverified", "source_revision_requires_review"}
     fatal_draw_result_statuses = {
         "draw_mismatch", "draw_result_mismatch", "source_revision_requires_review", "conflict",
+        "source_authority_unverified",
     }
     for page_index in range(max_forward_pages):
         if current_url in visited:
