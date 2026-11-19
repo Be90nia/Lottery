@@ -78,7 +78,7 @@ class MvpOrchestratorTests(unittest.TestCase):
             root = Path(temp)
             dataset = root / "draws.jsonl"
             output = root / "mvp.json"
-            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            dataset.write_text("".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)), encoding="utf-8")
             output.write_text("prior evidence", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "already exists"):
                 run_mvp(dataset, output, code_commit="e" * 40)
@@ -88,7 +88,7 @@ class MvpOrchestratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             dataset = root / "draws.jsonl"
-            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            dataset.write_text("".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "code_commit is required"):
                 run_mvp(dataset, root / "out.json")
 
