@@ -17,7 +17,7 @@ class ConfirmatoryGateTests(unittest.TestCase):
     def test_solver_and_multiplicity_reviews_are_both_required(self):
         self.assertFalse(_confirmatory_gate(
             True, solver_policy_approved=False, multiplicity_policy_approved=True,
-            non_regression_policy_approved=True,
+            non_regression_policy_approved=True, non_regression_pass=True,
         ))
         self.assertFalse(_confirmatory_gate(
             True, solver_policy_approved=True, multiplicity_policy_approved=False,
@@ -33,7 +33,11 @@ class ConfirmatoryGateTests(unittest.TestCase):
         ))
         self.assertFalse(_confirmatory_gate(
             True, solver_policy_approved=True, multiplicity_policy_approved=True,
-            non_regression_policy_approved=False,
+            non_regression_policy_approved=False, non_regression_pass=True,
+        ))
+        self.assertFalse(_confirmatory_gate(
+            True, solver_policy_approved=True, multiplicity_policy_approved=True,
+            non_regression_policy_approved=True, non_regression_pass=False,
         ))
 
 
