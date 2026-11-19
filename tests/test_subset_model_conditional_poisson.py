@@ -103,6 +103,14 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ConditionalPoisson.calibrate((0.2, 0.2, 0.2), 2)
 
+    def test_calibration_rejects_invalid_history_size(self):
+        for history_size in (0, -1, 1.5, True):
+            with self.subTest(history_size=history_size):
+                with self.assertRaisesRegex(ValueError, "history_size must be a positive integer"):
+                    ConditionalPoisson.calibrate(
+                        (0.3, 0.4, 0.5, 0.8), 2, history_size=history_size
+                    )
+
     def test_backward_sampler_returns_distinct_legal_items_and_replays(self):
         model = ConditionalPoisson((0.3, -0.2, 0.7, -0.4, 0.1, 0.8), 3)
         left_rng = random.Random(20261118)
