@@ -148,8 +148,8 @@ def verify_ledger(path: Path) -> dict[str, Any]:
                 raise ForecastLedgerError(f"line {line_no}: event must be an object")
             supplied_hash = event.get("event_hash")
             body = {key: value for key, value in event.items() if key != "event_hash"}
-            if body.get("sequence") != count + 1:
-                raise ForecastLedgerError(f"line {line_no}: sequence is not contiguous")
+            if type(body.get("sequence")) is not int or body.get("sequence") != count + 1:
+                raise ForecastLedgerError(f"line {line_no}: sequence is not a contiguous integer")
             if body.get("previous_event_hash") != previous_hash:
                 raise ForecastLedgerError(f"line {line_no}: previous hash does not match")
             if not isinstance(supplied_hash, str) or supplied_hash != _event_hash(body):
@@ -182,23 +182,21 @@ def create_forecast_event(
 ) -> dict[str, Any]:
     records = _validate_rows(rows)
     validate_records(records)
-    if not target_draw_id.strip():
-        raise ForecastLedgerError("target draw id must not be empty")
-    if not re.fullmatch(r"[0-9a-f]{64}", training_sha256):
+    if not isinstance(target_draw_id, str) or not target_draw_id.strip():
+        raise ForecastLedgerError("target draw id must not be a non-empty string")
+    if not isinstance(training_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", training_sha256):
         raise ForecastLedgerError("training dataset SHA-256 must be 64 lowercase hex characters")
-    if not CODE_COMMIT_RE.fullmatch(code_commit):
+    if not isinstance(code_commit, str) or not CODE_COMMIT_RE.fullmatch(code_commit):
         raise ForecastLedgerError("code commit must be a full 40-character lowercase Git SHA")
-    if alpha <= 0 or half_life <= 0:
-        raise ForecastLedgerError("alpha and half-life must be positive")
+    if (
+        type(alpha) not in (int, float) or not math.isfinite(alpha) or alpha <= 0
+        or type(half_life) not in (int, float) or not math.isfinite(half_life) or half_life <= 0
+    ):
+        raise ForecastLedgerError("alpha and half-life must be finite positive numbers")
 
-    try:
-        target_time = datetime.fromisoformat(target_draw_at.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ForecastLedgerError("target draw timestamp must be ISO-8601 with timezone") from exc
-    if target_time.tzinfo is None or target_time.utcoffset() is None:
-        raise ForecastLedgerError("target draw timestamp must include a timezone")
+    target_time = _aware_timestamp(target_draw_at, "target draw timestamp")
     now = generated_at or datetime.now(timezone.utc)
-    if now.tzinfo is None or now.utcoffset() is None:
+    if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
         raise ForecastLedgerError("generated_at must include a timezone")
     if target_time <= now:
         raise ForecastLedgerError("target draw must be strictly in the future at forecast creation")
