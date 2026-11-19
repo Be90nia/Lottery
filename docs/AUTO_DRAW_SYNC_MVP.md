@@ -24,3 +24,6 @@ The collector currently stops on an empty or short page. That behavior is not, b
 ## Operator path
 
 Open **Actions → official-draw-sync-mvp → Run workflow** for an immediate probe. Download the `official-draw-sync-*` artifact and inspect `sync-receipt.json`, `fetch-error.txt`, raw page snapshots, and manifests. Do not manually copy candidate output into canonical history without completing the acceptance gates above.
+
+
+Repeated captures of byte-identical pages reuse the first content-addressed raw object and its original retrieval manifest. Existing objects or manifests that disagree with the expected hash/source identity cause a fail-closed error rather than being overwritten.
