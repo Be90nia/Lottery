@@ -29,3 +29,8 @@ Both files are validated. The candidate must contain every existing draw, and al
 No-new-draw runs emit a `no_new_draws` receipt and do not write the output. Appends write a new file atomically without overwriting the input. Review the receipt and explicitly promote the output in a separate controlled operation.
 
 Corrections require a preserved raw snapshot, an incident, and a separately reviewed correction event. This tool does not update forecast/outcome ledgers, train/promote models, or access LOT-042. Trust remains `manifest_complete_not_officially_authenticated`.
+
+
+## Source completeness gate
+
+A candidate is not append-eligible merely because its raw pages have valid hashes and the candidate contains all currently known draws. The publisher also requires authoritative pagination metadata that matches the observed unique draw count, non-empty page count, page size, and contiguous page inventory. The current Sporttery collector does not yet validate authoritative total-page/record metadata, so its manifests explicitly set `source_completeness_verified: false`; such snapshots remain review artifacts and the append gate rejects them. This is intentional: a truncated but internally valid fetch must never advance the candidate history.
