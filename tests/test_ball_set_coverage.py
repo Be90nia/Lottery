@@ -183,6 +183,8 @@ class BallSetCoverageTests(unittest.TestCase):
         self.assertEqual(report["out_of_inventory_observations"][0]["draw_id"], "26130")
         self.assertEqual(report["out_of_inventory_observations"][0]["reported_set_index"], 1)
         self.assertEqual(report["out_of_inventory_observations"][0]["exclusion_reason"], "inventory_crosswalk_pending")
+        self.assertTrue(report["out_of_inventory_observations"][0]["raw_evidence_verified"])
+        self.assertEqual(report["summary"]["out_of_inventory_raw_objects_verified"], 1)
         self.assertEqual(report["per_draw"][0]["status"], "primary_verified")
 
 
