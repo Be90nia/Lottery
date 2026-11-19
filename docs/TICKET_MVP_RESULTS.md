@@ -56,3 +56,8 @@ Negative means the candidate model is better; positive means worse.
 
 
 The current one-command MVP smoke run uses the pinned 2,949-row candidate snapshot ending at draw 26131 (2026-11-16), SHA-256 `9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa`. Its manifest trust status remains `manifest_complete_not_officially_authenticated`; this is a fresher candidate input, not an official-authentication claim. The older 2,901-row legacy candidate remains available for the historical benchmark reproduction.
+
+
+## Latest pinned-input smoke (2026-11-19)
+
+GitHub Actions run `44470702950` completed successfully and uploaded `ticket-mvp-candidates` (artifact SHA-256 `d5ac8018bcd045b7b79de7e0e4064376321ce903184cbcdb8de84093886cc248`). It generated 15 candidate tickets: five each for `uniform`, `expanding`, and `ewma`, from 2,949 records spanning draw `07001` through `26131` (2026-11-16). Dataset SHA-256: `9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa`; adjacent manifest SHA-256: `21e225e772d9c3192eb5878d3546e20d2560ea826ec5ee21bfabf300ceedb315`. Trust status remains `manifest_complete_not_officially_authenticated`. Receipt status is `candidate_batch_generated`; automatic sync, model training, and model promotion were not performed.
