@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lottery.append_only import AppendOnlyError, reconcile_append_only
+from lottery.append_only import AppendOnlyError, _atomic_write_new, reconcile_append_only
 
 
 def row(draw_id, draw_date, front=None):
@@ -149,6 +149,14 @@ class AppendOnlyTests(unittest.TestCase):
                 self.current, self.candidate, self.manifest,
                 self.output, self.manifest,
             )
+
+    def test_atomic_publication_primitive_never_clobbers_existing_path(self):
+        target = self.root / "atomic.json"
+        _atomic_write_new(target, b"first")
+        with self.assertRaisesRegex(AppendOnlyError, "refusing to overwrite existing artifact"):
+            _atomic_write_new(target, b"second")
+        self.assertEqual(target.read_bytes(), b"first")
+        self.assertEqual(list(self.root.glob("atomic.json.*.tmp")), [])
 
     def test_existing_publication_is_never_overwritten(self):
         self.prepare(self.old + [row("26132", "2026-11-18")])
