@@ -189,8 +189,10 @@ def reconcile_append_only(
     receipt_path: Path,
     snapshots_dir: Path,
 ) -> dict[str, Any]:
+    output_manifest_path = output_path.with_suffix(output_path.suffix + ".manifest.json")
     paths = [p.resolve() for p in (
-        current_path, candidate_path, candidate_manifest_path, output_path, receipt_path
+        current_path, candidate_path, candidate_manifest_path, output_path,
+        output_manifest_path, receipt_path
     )]
     if len(set(paths)) != len(paths):
         raise PublicationError("current, candidate, manifest, output, and receipt paths must be distinct")
@@ -308,7 +310,6 @@ def reconcile_append_only(
             "candidate_validation": candidate_validation,
         }
     else:
-        output_manifest_path = output_path.with_suffix(output_path.suffix + ".manifest.json")
         if output_path.exists() or output_manifest_path.exists():
             raise PublicationError("output or output manifest already exists; refusing to overwrite a prior candidate")
         payload = _canonical_rows(merged)
