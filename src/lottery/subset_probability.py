@@ -566,3 +566,58 @@ def fit_weighted_subset_baseline(training_rows: Sequence[dict[str, object]], zon
     targets = marginal_inclusion_targets(training_rows, zone, family=family)
     k = 5 if zone == "front" else 2
     return calibrate_weighted_subset(targets, k)
+
+
+def weighted_subset_log_probability(subset: Sequence[int], calibration: CalibrationResult, k: int) -> float:
+    if not calibration.forecast_ready:
+        raise RuntimeError("uncalibrated weighted-subset model is not scoreable")
+    return conditional_poisson_log_probability(subset, calibration.log_weights, k)
+
+
+def make_weighted_baseline_factory(family: str):
+    """Create a rolling-origin model factory for one frozen marginal baseline."""
+    if family not in ("expanding", "ewma"):
+        raise ValueError("family must be expanding or ewma")
+
+    def factory(training_rows: Sequence[dict[str, object]], zone: str):
+        result = fit_weighted_subset_baseline(training_rows, zone, family=family)
+        if not result.forecast_ready:
+            raise RuntimeError(
+                f"{family} calibration not ready: {result.status}; "
+                f"residual={result.max_abs_residual:.12g}; {result.termination_reason}"
+            )
+        k = 5 if zone == "front" else 2
+        return lambda subset: weighted_subset_log_probability(subset, result, k)
+
+    return factory
+
+
+def make_exponential_factory(front_cells: FeatureCells, back_cells: FeatureCells):
+    """Create the preregistered complete-set candidate factory.
+
+    The caller must provide exact-support feature cells built once from the
+    legal combinatorial spaces, never from empirical history.
+    """
+    if (front_cells.schema.population_size, front_cells.schema.selection_size) != FRONT:
+        raise ValueError("front feature cells have the wrong support")
+    if (back_cells.schema.population_size, back_cells.schema.selection_size) != BACK:
+        raise ValueError("back feature cells have the wrong support")
+
+    def factory(training_rows: Sequence[dict[str, object]], zone: str):
+        if zone == "front":
+            field, cells = "front_numbers", front_cells
+        elif zone == "back":
+            field, cells = "back_numbers", back_cells
+        else:
+            raise ValueError("zone must be front or back")
+        training = [validate_subset(row[field], cells.schema.population_size,
+                                   cells.schema.selection_size) for row in training_rows]
+        result = fit_exponential(training, cells)
+        if not result.forecast_ready:
+            raise RuntimeError(
+                f"complete-set fit not ready: {result.status}; "
+                f"gradient_inf_norm={result.gradient_inf_norm:.12g}; {result.termination_reason}"
+            )
+        return result.score_log_probability
+
+    return factory
