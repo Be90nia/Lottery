@@ -134,7 +134,7 @@ forecast ledger.
 python scripts/outcome_ledger.py record --forecasts data/holdout/forecast-ledger.jsonl \
   --outcomes data/holdout/outcome-ledger.jsonl --target-draw-id 27XXX \
   --published-at 2027-01-01T20:40:00+08:00 --captured-at 2027-01-01T20:41:00+08:00 \
-  --source-url https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry \
+  --source-url 'https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1' \
   --snapshot data/raw/sporttery/official-response.json --http-status 200 \
   --front 1,2,3,4,5 --back 1,2
 python scripts/outcome_ledger.py score --forecasts data/holdout/forecast-ledger.jsonl \
