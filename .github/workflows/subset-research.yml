@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       resume_checkpoints:
-        description: "Restore checkpoint ledgers from the latest completed run of this exact code revision"
+        description: "Restore checkpoints from the latest completed run only when evaluator source and frozen data are unchanged"
         type: boolean
         required: false
         default: true
@@ -38,33 +38,63 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
-      - name: Restore prior checkpoint for the identical code revision
+      - name: Restore prior checkpoint when evaluator source is unchanged
         if: github.event_name != 'workflow_dispatch' || inputs.resume_checkpoints
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          set -euo pipefail
           branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-          previous_run="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
+          previous="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
             --json databaseId,headSha,status \
-            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .headSha == env.RESEARCH_CODE_COMMIT and .status == "completed")) | first | .databaseId // empty')"
-          if [ -z "$previous_run" ]; then
-            echo "No completed run for this exact code revision; starting with an empty checkpoint."
+            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed")) | first // empty')"
+          if [ -z "$previous" ]; then
+            echo "No completed prior run; starting with empty checkpoints."
+            exit 0
+          fi
+          previous_run="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["databaseId"])' "$previous")"
+          previous_sha="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["headSha"])' "$previous")"
+          gh auth setup-git
+          git fetch --no-tags origin "$previous_sha" --depth=1
+          if ! git diff --quiet "$previous_sha" "$RESEARCH_CODE_COMMIT" -- scripts/run_subset_rolling_origin.py src/lottery/subset_model; then
+            echo "Evaluator source changed since run $previous_run; refusing checkpoint reuse."
             exit 0
           fi
           mkdir -p previous-artifact
-          if gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-artifact; then
-            if [ -d previous-artifact/subset-model-checkpoints ]; then
-              mkdir -p subset-model-checkpoints
-              cp -a previous-artifact/subset-model-checkpoints/. subset-model-checkpoints/
-              echo "Restored checkpoint ledgers from run $previous_run."
-            else
-              echo "Previous artifact contained no checkpoint directory; starting fresh."
-            fi
-          else
-            echo "Previous run had no downloadable artifact; starting fresh."
+          if ! gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-artifact; then
+            echo "Previous run has no downloadable artifact; starting fresh."
+            exit 0
           fi
+          if [ ! -d previous-artifact/subset-model-checkpoints ]; then
+            echo "Previous artifact has no checkpoint directory; starting fresh."
+            exit 0
+          fi
+          mkdir -p subset-model-checkpoints
+          cp -a previous-artifact/subset-model-checkpoints/. subset-model-checkpoints/
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import os
+          files = sorted(Path("subset-model-checkpoints").glob("*.jsonl"))
+          if not files:
+              raise SystemExit("restored checkpoint directory is empty")
+          current = os.environ["RESEARCH_CODE_COMMIT"]
+          for path in files:
+              lines = path.read_text(encoding="utf-8").splitlines()
+              if not lines:
+                  raise SystemExit(f"empty checkpoint: {path}")
+              header = json.loads(lines[0])
+              if header.get("schema") != "lot-055-checkpoint-v2":
+                  raise SystemExit(f"unsupported checkpoint schema: {path}")
+              header["code_commit"] = current
+              lines[0] = json.dumps(header, sort_keys=True)
+              temporary = path.with_name(path.name + ".tmp")
+              temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
+              temporary.replace(path)
+          print(f"Restored {len(files)} checkpoint ledgers after confirming evaluator source identity.")
+          PY
       - name: Run full frozen 2,649-target exact-subset evaluation
         run: |
           python scripts/run_subset_rolling_origin.py \
