@@ -382,7 +382,7 @@ def build_ball_set_coverage(
             "observed_draws": sum(1 for row in per_draw if row["status"] != "unobserved"),
             "primary_verified_draws": len(verified_rows),
             "primary_verified_coverage_rate": len(verified_rows) / len(inventory),
-            "observed_window_draws": window_length,
+            "observed_window_inventory_positions": window_length,
             "observed_window_coverage_rate": (
                 len([row for row in verified_rows if window_start <= inventory_positions[row["draw_id"]] <= window_end]) / window_length
                 if window_length else 0.0
