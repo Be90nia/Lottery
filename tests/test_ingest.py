@@ -101,6 +101,8 @@ class ParsePageTests(unittest.TestCase):
                 json.dumps({
                     "source": "Sporttery public historical draw API",
                     "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1",
+                    "final_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1",
+                    "redirect_chain": [],
                     "page_no": 1,
                     "run_id": "fixture-run",
                     "retrieved_at": "2026-11-18T00:00:00+00:00",
@@ -121,6 +123,27 @@ class ParsePageTests(unittest.TestCase):
             row = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(row["source_unsort_drawresult"], "03 01 05 02 04 02 01")
             self.assertTrue(output.with_suffix(".jsonl.manifest.json").exists())
+
+            sidecar_path = raw_dir / f"page-00001-{digest[:12]}.manifest.json"
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            sidecar["redirect_chain"] = ["https://example.invalid/redirect-target"]
+            sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+            with self.assertRaisesRegex(IngestionError, "lacks complete official-source provenance"):
+                ingest_snapshot_directory(
+                    raw_dir, root / "redirected.jsonl", require_manifests=True
+                )
+
+            sidecar["redirect_chain"] = []
+            sidecar["url"] = sidecar["url"].replace(
+                "https://webapi.sporttery.cn/",
+                "https://webapi.sporttery.cn:444/",
+            )
+            sidecar["final_url"] = sidecar["url"]
+            sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+            with self.assertRaisesRegex(IngestionError, "lacks complete official-source provenance"):
+                ingest_snapshot_directory(
+                    raw_dir, root / "nonstandard-port.jsonl", require_manifests=True
+                )
 
     def test_strict_offline_import_rejects_noncontiguous_page_inventory(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -149,6 +172,11 @@ class ParsePageTests(unittest.TestCase):
                             "https://webapi.sporttery.cn/gateway/lottery/"
                             f"getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo={page_no}"
                         ),
+                        "final_url": (
+                            "https://webapi.sporttery.cn/gateway/lottery/"
+                            f"getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo={page_no}"
+                        ),
+                        "redirect_chain": [],
                         "page_no": page_no,
                         "run_id": "same-fetch-run",
                         "retrieved_at": "2026-11-18T00:00:00+00:00",
@@ -260,7 +288,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
             root = Path(temp)
             output = root / "processed" / "draws.jsonl"
             raw_dir = root / "raw"
-            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json")):
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=1&isVerify=1&pageNo=1")):
                 with self.assertRaisesRegex(IngestionError, "potentially truncated"):
                     fetch_history(output, raw_dir, page_size=1, max_pages=1, delay_seconds=0)
             self.assertFalse(output.exists())
@@ -270,7 +298,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             output = root / "processed" / "draws.jsonl"
-            with patch("lottery.ingest._fetch_page", return_value=(self.payload([]), 200, "application/json")):
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([]), 200, "application/json", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1")):
                 with self.assertRaisesRegex(IngestionError, "no draws"):
                     fetch_history(output, root / "raw", page_size=100, delay_seconds=0)
             self.assertFalse(output.exists())
@@ -279,7 +307,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             output = root / "processed" / "draws.jsonl"
-            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json")):
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=2&isVerify=1&pageNo=1")):
                 result = fetch_history(output, root / "raw", page_size=2, delay_seconds=0)
             self.assertEqual(result["records"], 1)
             self.assertEqual(result["pagination_end_reason"], "short_page")

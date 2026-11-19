@@ -221,7 +221,11 @@ def _verify_source_completeness_attestation(
                 or not isinstance(sidecar.get("run_id"), str) or not sidecar.get("run_id")
                 or not timestamp_valid
                 or parsed is None or parsed.scheme != "https"
-                or parsed.hostname != "webapi.sporttery.cn" or parsed.path != api_path
+                or parsed.hostname != "webapi.sporttery.cn" or parsed.netloc != "webapi.sporttery.cn"
+                or parsed.path != api_path
+                or set(query) != {"gameNo", "provinceId", "pageSize", "isVerify", "pageNo"}
+                or sidecar.get("final_url") != source_url
+                or sidecar.get("redirect_chain") != []
                 or query.get("gameNo") != ["85"] or query.get("provinceId") != ["0"]
                 or query.get("isVerify") != ["1"]
                 or query.get("pageNo") != [str(expected_page_no)]

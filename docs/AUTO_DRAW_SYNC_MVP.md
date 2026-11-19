@@ -2,7 +2,7 @@
 
 ## What runs
 
-The `official-draw-sync-mvp` GitHub Actions workflow runs daily at 15:17 UTC and can also be started manually. It invokes the existing strict Sporttery history collector in an isolated temporary directory, preserving raw response snapshots and per-page SHA-256 manifests. It then re-imports the archived pages with `--require-manifests` to build a validated candidate JSONL plus its output manifest. Strict import binds each sidecar's `page_no` to the URL's `pageNo`, requires the same `gameNo=85`, `provinceId=0`, `isVerify=1` and `pageSize` across all pages, requires a single fetch `run_id`, and rejects missing or duplicate page numbers in the observed inventory. The receipt binds the candidate and manifest hashes and carries the collector's pagination status. It uploads a 90-day run artifact and a machine-readable `sync-receipt.json`.
+The `official-draw-sync-mvp` GitHub Actions workflow runs daily at 15:17 UTC and can also be started manually. It invokes the existing strict Sporttery history collector in an isolated temporary directory, preserving raw response snapshots and per-page SHA-256 manifests with requested URL, final URL, and an explicit empty redirect chain. The collector rejects HTTP redirects before following them. It then re-imports the archived pages with `--require-manifests` to build a validated candidate JSONL plus its output manifest. Strict import binds each sidecar's `page_no` to the URL's `pageNo`, requires the same `gameNo=85`, `provinceId=0`, `isVerify=1` and `pageSize` across all pages, requires a single fetch `run_id`, and rejects missing or duplicate page numbers in the observed inventory. The receipt binds the candidate and manifest hashes and carries the collector's pagination status. It uploads a 90-day run artifact and a machine-readable `sync-receipt.json`.
 
 The workflow is deliberately read-only with respect to the repository: it has `contents: read`, checkout credentials are disabled, and it never commits or replaces canonical history. A completed fetch and strict snapshot import is labeled `candidate_archived_untrusted`, not authenticated official data. Page-manifest consistency is checked, while source pagination completeness remains explicitly unverified. A network, HTTP, parsing, or validation failure produces an evidence artifact and a visibly failed run.
 
@@ -15,7 +15,7 @@ The collector currently stops on an empty or short page. That behavior is not, b
 ## MVP acceptance gates
 
 1. Daily and manual runs are deterministic in scope and non-overlapping.
-2. Every received page is preserved with its exact response bytes, source URL, HTTP status, retrieval timestamp, parser version, and SHA-256.
+2. Every received page is preserved with its exact response bytes, requested and final URL, HTTP status, retrieval timestamp, parser version, and SHA-256. HTTP redirects are rejected before following; strict import and append-only publication require the final URL to equal the exact requested Sporttery endpoint and the redirect chain to be empty.
 3. Any request, HTTP, schema, duplicate-conflict, or number-range error fails closed and retains diagnostics.
 4. The receipt states fetch and strict-import outcomes, candidate and manifest hashes, pagination-completeness status, code commit, and that canonical data/model state was not modified.
 5. No source response is treated as official authentication merely because it came from the configured endpoint or has a matching hash.

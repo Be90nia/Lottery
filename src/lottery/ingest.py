@@ -26,6 +26,15 @@ class IngestionError(RuntimeError):
     pass
 
 
+class _RejectRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse redirects so archived bytes can only come from the requested origin."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise IngestionError(
+            f"refusing HTTP redirect from {req.full_url!r} to {newurl!r}"
+        )
+
+
 @dataclass(frozen=True)
 class Draw:
     draw_id: str
@@ -40,7 +49,9 @@ class Draw:
     source_equipment_count: Any = None
 
 
-def _fetch_page(page_no: int, page_size: int, timeout: int = 20, retries: int = 3) -> tuple[bytes, int, str]:
+def _fetch_page(
+    page_no: int, page_size: int, timeout: int = 20, retries: int = 3
+) -> tuple[bytes, int, str, str]:
     params = urllib.parse.urlencode({
         "gameNo": "85", "provinceId": "0", "pageSize": str(page_size),
         "isVerify": "1", "pageNo": str(page_no),
@@ -55,9 +66,30 @@ def _fetch_page(page_no: int, page_size: int, timeout: int = 20, retries: int = 
     for attempt in range(retries):
         request = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            opener = urllib.request.build_opener(_RejectRedirect)
+            with opener.open(request, timeout=timeout) as response:
+                final_url = response.geturl()
+                if final_url != url:
+                    raise IngestionError(
+                        f"page {page_no}: response URL differs from requested official endpoint"
+                    )
                 body = response.read()
-                return body, response.status, response.headers.get("Content-Type", "")
+                return (
+                    body,
+                    response.status,
+                    response.headers.get("Content-Type", ""),
+                    final_url,
+                )
+        except IngestionError:
+            raise
+        except urllib.error.HTTPError as exc:
+            if 300 <= exc.code < 400:
+                raise IngestionError(
+                    f"page {page_no}: HTTP redirect rejected ({exc.code})"
+                ) from exc
+            last_error = exc
+            if attempt + 1 < retries:
+                time.sleep(1.5 * (attempt + 1))
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_error = exc
             if attempt + 1 < retries:
@@ -65,7 +97,16 @@ def _fetch_page(page_no: int, page_size: int, timeout: int = 20, retries: int = 
     raise IngestionError(f"page {page_no}: request failed after {retries} attempts: {last_error}")
 
 
-def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir: Path, url: str, run_id: str) -> str:
+def _snapshot(
+    raw: bytes,
+    page_no: int,
+    status: int,
+    content_type: str,
+    raw_dir: Path,
+    url: str,
+    final_url: str,
+    run_id: str,
+) -> str:
     digest = hashlib.sha256(raw).hexdigest()
     retrieved_at = datetime.now(timezone.utc).isoformat()
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -75,6 +116,8 @@ def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir:
     manifest_path.write_text(json.dumps({
         "source": "Sporttery public historical draw API",
         "url": url,
+        "final_url": final_url,
+        "redirect_chain": [],
         "retrieved_at": retrieved_at,
         "http_status": status,
         "content_type": content_type,
@@ -245,7 +288,11 @@ def ingest_snapshot_directory(
             and parsed_url is not None
             and parsed_url.scheme == "https"
             and parsed_url.hostname == "webapi.sporttery.cn"
+            and parsed_url.netloc == "webapi.sporttery.cn"
             and parsed_url.path == "/gateway/lottery/getHistoryPageListV1.qry"
+            and set(query) == {"gameNo", "provinceId", "pageSize", "isVerify", "pageNo"}
+            and sidecar.get("final_url") == source_url
+            and sidecar.get("redirect_chain") == []
             and query.get("gameNo") == ["85"]
             and query.get("provinceId") == ["0"]
             and query.get("isVerify") == ["1"]
@@ -354,10 +401,12 @@ def fetch_history(
             "isVerify": "1", "pageNo": str(page_no),
         })
         url = f"{API_URL}?{params}"
-        raw, status, content_type = _fetch_page(page_no, page_size)
+        raw, status, content_type, final_url = _fetch_page(page_no, page_size)
         if status != 200:
             raise IngestionError(f"page {page_no}: unexpected HTTP status {status}")
-        digest = _snapshot(raw, page_no, status, content_type, raw_dir, url, run_id)
+        digest = _snapshot(
+            raw, page_no, status, content_type, raw_dir, url, final_url, run_id
+        )
         rows = _parse_page(raw, page_no, digest)
         page_manifests.append({"page_no": page_no, "sha256": digest, "records": len(rows), "run_id": run_id})
         if not rows:

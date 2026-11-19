@@ -77,6 +77,8 @@ def write_manifest(candidate, manifest_path, snapshots_dir, page_size=100):
         sidecar = {
             "source": "Sporttery public historical draw API",
             "url": source_url,
+            "final_url": source_url,
+            "redirect_chain": [],
             "http_status": 200,
             "content_type": "application/json",
             "sha256": digest,
@@ -239,6 +241,26 @@ class AppendOnlyTests(unittest.TestCase):
         raw = self.snapshots_dir / "page-001.json"
         raw.write_bytes(raw.read_bytes() + b" ")
         with self.assertRaisesRegex(AppendOnlyError, "raw snapshot SHA-256 mismatch"):
+            self.run_gate()
+
+    def test_redirected_source_sidecar_is_rejected_at_publication(self):
+        self.prepare(self.old + [row("26132", "2026-11-18")])
+        raw = self.snapshots_dir / "page-001.json"
+        sidecar = self.snapshots_dir / "page-001.manifest.json"
+        metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+        metadata["redirect_chain"] = ["https://example.invalid/redirect-target"]
+        sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "official-source sidecar provenance is invalid"):
+            self.run_gate()
+
+        metadata["redirect_chain"] = []
+        metadata["url"] = metadata["url"].replace(
+            "https://webapi.sporttery.cn/",
+            "https://webapi.sporttery.cn:444/",
+        )
+        metadata["final_url"] = metadata["url"]
+        sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "official-source sidecar provenance is invalid"):
             self.run_gate()
 
     def test_source_pagination_metadata_is_rechecked_from_raw_page(self):
