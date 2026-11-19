@@ -9,6 +9,7 @@ from lottery.ball_set_evidence import (
     BallSetEvidenceError,
     collect_ball_set_evidence,
     parse_announcement,
+    _next_draw_id,
 )
 
 BASE = "https://www.js-lottery.com/cms/post-148224.html"
@@ -64,6 +65,12 @@ class BallSetParserTests(unittest.TestCase):
         raw = page(newer=("26129", "/cms/post-148233.html"))
         parsed = parse_announcement(raw, BASE)
         self.assertEqual(parsed.newer_links, (("26129", "https://www.js-lottery.com/cms/post-148233.html"),))
+    def test_draw_id_sequence_and_year_rollover_are_bounded(self):
+        self.assertTrue(_next_draw_id("26154", "26155"))
+        self.assertTrue(_next_draw_id("26155", "27001"))
+        self.assertFalse(_next_draw_id("26110", "27001"))
+        self.assertFalse(_next_draw_id("26154", "26156"))
+
 
     def test_non_official_host_is_rejected(self):
         with self.assertRaisesRegex(BallSetEvidenceError, "not an approved official"):
