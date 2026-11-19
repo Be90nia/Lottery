@@ -377,12 +377,28 @@ def build_ball_set_coverage(
             "draw_mismatch": 0, "source_authority_unverified": 0,
             "parse_error": 0, "unsupported_label": 0, "non_primary_only": 0,
             "set_1": 0, "set_2": 0, "set_3": 0,
+            "draw_result_inventory_matched": 0, "draw_result_mismatch": 0,
+            "draw_result_missing_or_invalid": 0, "draw_result_conflict": 0,
+            "draw_result_review_required": 0, "draw_result_raw_evidence_invalid": 0,
         })
         bucket["inventory_draws"] += 1
         if item["status"] in bucket:
             bucket[item["status"]] += 1
         if item["status"] == "primary_verified":
             bucket[f"set_{item['reported_set_index']}"] += 1
+        result_status = item["draw_result_status"]
+        if result_status == "inventory_matched":
+            bucket["draw_result_inventory_matched"] += 1
+        elif result_status in ("draw_result_mismatch", "draw_mismatch"):
+            bucket["draw_result_mismatch"] += 1
+        elif result_status in ("missing_draw_result", "invalid_draw_result"):
+            bucket["draw_result_missing_or_invalid"] += 1
+        elif result_status == "conflict":
+            bucket["draw_result_conflict"] += 1
+        elif result_status == "source_revision_requires_review":
+            bucket["draw_result_review_required"] += 1
+        elif result_status == "raw_evidence_invalid":
+            bucket["draw_result_raw_evidence_invalid"] += 1
 
     per_set: dict[str, Any] = {}
     inventory_positions = {row["draw_id"]: i for i, row in enumerate(inventory)}
@@ -476,6 +492,9 @@ def build_ball_set_coverage(
         "inventory_trust_status": "candidate_unverified",
         "inventory_validation": validation,
         "observation_ledger_sha256": _sha_bytes(ledger_raw),
+        "draw_result_ledger_sha256": _sha_bytes(draw_result_ledger_raw),
+        "draw_result_observation_count": len(draw_result_records),
+        "draw_result_status_counts": draw_result_status_counts,
         "collector_receipt_sha256": _sha_bytes(collector_receipt_raw) if collector_receipt_raw else None,
         "collector_receipt_status": collector_receipt.get("status") if collector_receipt else "missing",
         "source_completeness_verified": collector_receipt.get("source_completeness_verified") if collector_receipt else None,
@@ -484,6 +503,7 @@ def build_ball_set_coverage(
         "out_of_inventory_observation_count": out_of_inventory,
         "out_of_inventory_observations": out_of_inventory_records,
         "out_of_inventory_raw_objects_verified": out_of_inventory_raw_verified,
+        "out_of_inventory_draw_results": out_of_inventory_draw_results,
         "out_of_inventory_draw_results": out_of_inventory_draw_results,
         "out_of_inventory_draw_result_count": len(out_of_inventory_draw_results),
         "out_of_inventory_draw_result_raw_objects_verified": out_of_inventory_result_raw_verified,
@@ -509,6 +529,15 @@ def build_ball_set_coverage(
             "out_of_inventory_raw_objects_invalid": out_of_inventory_raw_invalid,
             "regime_assignment_count": 0,
             "regime_assignment_coverage_rate": 0.0,
+            "draw_result_inventory_matched_draws": sum(1 for row in per_draw if row["draw_result_status"] == "inventory_matched"),
+            "draw_result_mismatches": sum(1 for row in per_draw if row["draw_result_status"] in ("draw_result_mismatch", "draw_mismatch")),
+            "draw_result_conflicts": sum(1 for row in per_draw if row["draw_result_status"] == "conflict"),
+            "draw_result_pending_inventory": sum(1 for row in out_of_inventory_draw_results if row["draw_result_status"] == "pending_inventory"),
+            "draw_result_candidates_pending_inventory": sum(1 for row in out_of_inventory_draw_results if row["draw_result_status"] == "pending_inventory" and row["raw_evidence_verified"]),
+            "draw_result_raw_objects_verified": draw_result_raw_verified,
+            "draw_result_raw_objects_invalid": draw_result_raw_invalid,
+            "out_of_inventory_draw_result_raw_objects_verified": out_of_inventory_result_raw_verified,
+            "out_of_inventory_draw_result_raw_objects_invalid": out_of_inventory_result_raw_invalid,
             "eligible_slot_targets": 0,
             "training_eligibility": "blocked_regime_unresolved",
         },
