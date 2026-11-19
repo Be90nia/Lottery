@@ -2,7 +2,8 @@
 import math
 import unittest
 
-from lottery.exact_backtest import (holm_adjust, moving_block_bootstrap_ci, uniform_exact_nll,
+from lottery.exact_backtest import (holm_adjust, moving_block_bootstrap_ci,
+                                    moving_block_bootstrap_inference, uniform_exact_nll,
                                     evaluate_rolling_origin, verify_frozen_snapshot,
                                     verify_target_manifest)
 
@@ -13,14 +14,14 @@ def draw(index, front, back):
 
 
 class ExactBacktestPrimitiveTests(unittest.TestCase):
-    def test_holm_six_hypothesis_family(self):
-        values = {"a": .001, "b": .004, "c": .01, "d": .02, "e": .04, "f": .5}
-        self.assertEqual(holm_adjust(values, expected_family_size=6),
-                         {"a": .006, "b": .02, "c": .04, "d": .06, "e": .08, "f": .5})
+    def test_holm_two_zone_confirmatory_family(self):
+        values = {"front": .01, "back": .02}
+        self.assertEqual(holm_adjust(values, expected_family_size=2),
+                         {"front": .02, "back": .02})
 
     def test_holm_rejects_wrong_family_size(self):
         with self.assertRaises(ValueError):
-            holm_adjust({"front": .01}, expected_family_size=6)
+            holm_adjust({"front": .01}, expected_family_size=2)
 
     def test_bootstrap_requires_full_block_and_is_reproducible(self):
         values = [float(index - 25) for index in range(50)]
@@ -29,6 +30,14 @@ class ExactBacktestPrimitiveTests(unittest.TestCase):
         self.assertEqual(first, second)
         with self.assertRaises(ValueError):
             moving_block_bootstrap_ci(values[:49], block_length=50, seed=71)
+
+    def test_null_centered_bootstrap_one_sided_p_value(self):
+        result = moving_block_bootstrap_inference(
+            [-1.0] * 50, replicates=1000, block_length=50, seed=20261118
+        )
+        self.assertEqual(result["p_value_one_sided_improvement"], 1 / 1001)
+        self.assertEqual(result["ci95_lower"], -1.0)
+        self.assertEqual(result["ci95_upper"], -1.0)
 
     def test_uniform_exact_set_score(self):
         self.assertAlmostEqual(uniform_exact_nll(35, 5), math.log(math.comb(35, 5)), places=12)
