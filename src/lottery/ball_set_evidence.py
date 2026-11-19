@@ -497,6 +497,11 @@ def collect_ball_set_evidence(
     _allowed_url(seed_url)
 
     observations = _read_ledger(ledger_path)
+    from .draw_results import append_draw_result, backfill_draw_result_ledger, read_draw_result_ledger
+    draw_result_backfill = backfill_draw_result_ledger(
+        observations, archive_dir=archive_dir, inventory=inventory,
+        inventory_sha256=inventory_sha256, ledger_path=draw_result_ledger_path,
+    )
     known = [item for item in observations if item.get("source", {}).get("authority_class") == "A2"]
     if known:
         latest = max(known, key=lambda item: (item["draw_id"], item["source"].get("retrieved_at_utc", "")))
@@ -516,7 +521,9 @@ def collect_ball_set_evidence(
     visited: set[str] = set()
     status = "no_new_page"
     next_expected: str | None = None
-    errors: list[str] = []
+    errors: list[str] = list(draw_result_backfill["errors"])
+    if errors:
+        status = "review_required"
     fatal_statuses = {"draw_mismatch", "conflict", "source_authority_unverified", "source_revision_requires_review"}
     fatal_draw_result_statuses = {
         "draw_mismatch", "draw_result_mismatch", "source_revision_requires_review", "conflict",
@@ -572,7 +579,6 @@ def collect_ball_set_evidence(
             expected_draw_date=expected_date if page_index == 0 else None,
             ledger_path=ledger_path, inventory=inventory, inventory_sha256=inventory_sha256,
         )
-        from .draw_results import append_draw_result
         draw_result_result = append_draw_result(
             fetched, parsed, manifest, inventory=inventory,
             inventory_sha256=inventory_sha256, ledger_path=draw_result_ledger_path,
@@ -624,14 +630,7 @@ def collect_ball_set_evidence(
         "draw_inventory_sha256": inventory_sha256,
         "draw_inventory_rows": len(inventory_rows),
         "draw_inventory_trust_status": "candidate_unverified",
-        "draw_result_crosswalk": {
-            "inventory_matched": sum(1 for item in draw_result_results if item.get("status") == "inventory_matched"),
-            "pending_inventory": sum(1 for item in draw_result_results if item.get("status") == "pending_inventory"),
-            "draw_result_mismatches": sum(1 for item in draw_result_results if item.get("status") == "draw_result_mismatch"),
-            "draw_mismatches": sum(1 for item in draw_result_results if item.get("status") == "draw_mismatch"),
-            "missing_or_invalid": sum(1 for item in draw_result_results if item.get("status") in ("missing_draw_result", "invalid_draw_result")),
-            "review_required": sum(1 for item in draw_result_results if item.get("status") in ("source_revision_requires_review", "conflict")),
-        },
+        "draw_result_crosswalk": draw_result_ledger_status_counts,
         "inventory_crosswalk": {
             "matched_draws": sum(1 for item in fetched_pages if item.get("draw_id") in inventory and inventory[item["draw_id"]]["draw_date"] == item.get("draw_date")),
             "not_in_inventory": sum(1 for item in fetched_pages if item.get("draw_id") not in inventory),
