@@ -43,7 +43,12 @@ jobs:
           document = json.loads(Path("mvp-output.json").read_text(encoding="utf-8"))
           report = document["batch"]
           receipt = document["receipt"]
+          assert document["schema_version"] == 2
+          assert receipt["schema_version"] == 2
           assert receipt["status"] == "candidate_batch_generated"
+          assert receipt["sampler_version"] == "conditional-poisson-rejective-v1"
+          assert receipt["sampling_calibration_status"] == "passed"
+          assert receipt["maximum_marginal_calibration_residual"] <= 1e-8
           assert receipt["code_commit"] == os.environ["GITHUB_SHA"]
           assert report["code_commit"] == os.environ["GITHUB_SHA"]
           assert receipt["published_ticket_count"] == 15
