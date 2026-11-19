@@ -192,11 +192,11 @@ class ExponentialFamily:
         gradient_tolerance: float = 1e-8,
         history_size: int = 10,
     ) -> FitResult:
-        """Fit mean-NLL + L2 using deterministic limited-memory BFGS.
+        """Fit mean-NLL + L2 with the frozen SciPy L-BFGS-B solver.
 
-        There are no box constraints in this model, so the unbounded L-BFGS
-        variant is equivalent to L-BFGS-B with no active bounds. Armijo
-        backtracking is used; terminal failure is retained, never hidden.
+        Parameters are unconstrained, so no box bounds are supplied. SciPy,
+        NumPy, stopping tolerances, history size, and line-search budget are
+        pinned by the project environment and recorded in the result.
         """
         if not observations:
             raise ValueError("at least one training observation is required")
@@ -224,109 +224,56 @@ class ExponentialFamily:
             for index in range(self.dimension)
         )
 
-        theta = tuple(0.0 for _ in range(self.dimension))
-        objective, gradient, unregularized = self.objective_and_gradient(
-            theta, observed_mean, regularization_lambda
-        )
-        s_history: list[tuple[float, ...]] = []
-        y_history: list[tuple[float, ...]] = []
-        rho_history: list[float] = []
-        status = "max_iterations"
-        message = "maximum iteration count reached"
-        iterations = 0
+        try:
+            import scipy
+            from scipy.optimize import minimize
+        except ImportError as exc:
+            raise RuntimeError(
+                "SciPy is required for the preregistered L-BFGS-B subset-model solver"
+            ) from exc
 
-        for iteration in range(max_iterations + 1):
-            grad_inf = max(abs(value) for value in gradient)
-            if grad_inf <= gradient_tolerance:
-                status = "converged"
-                message = "gradient infinity norm reached tolerance"
-                iterations = iteration
-                break
-            if iteration == max_iterations:
-                iterations = iteration
-                break
-
-            q = list(gradient)
-            alphas: list[float] = []
-            for s_vec, y_vec, rho in zip(
-                reversed(s_history), reversed(y_history), reversed(rho_history)
-            ):
-                alpha = rho * _dot(s_vec, q)
-                alphas.append(alpha)
-                q = [q[i] - alpha * y_vec[i] for i in range(self.dimension)]
-
-            if s_history:
-                sy = _dot(s_history[-1], y_history[-1])
-                yy = _dot(y_history[-1], y_history[-1])
-                scale = sy / yy if yy > 0 else 1.0
-            else:
-                scale = 1.0
-            direction_seed = [scale * value for value in q]
-            for (s_vec, y_vec, rho), alpha in zip(
-                zip(s_history, y_history, rho_history), reversed(alphas)
-            ):
-                beta = rho * _dot(y_vec, direction_seed)
-                direction_seed = [
-                    direction_seed[i] + s_vec[i] * (alpha - beta)
-                    for i in range(self.dimension)
-                ]
-            direction = tuple(-value for value in direction_seed)
-            directional_derivative = _dot(gradient, direction)
-            if not isfinite(directional_derivative) or directional_derivative >= 0:
-                direction = tuple(-value for value in gradient)
-                directional_derivative = -_dot(gradient, gradient)
-                s_history.clear()
-                y_history.clear()
-                rho_history.clear()
-
-            step = 1.0
-            accepted = None
-            for _ in range(60):
-                trial = tuple(theta[i] + step * direction[i] for i in range(self.dimension))
-                try:
-                    trial_objective, trial_gradient, trial_unregularized = self.objective_and_gradient(
-                        trial, observed_mean, regularization_lambda
-                    )
-                except (ArithmeticError, ValueError, OverflowError):
-                    step *= 0.5
-                    continue
-                if trial_objective <= objective + 1e-4 * step * directional_derivative:
-                    accepted = (trial, trial_objective, trial_gradient, trial_unregularized)
-                    break
-                step *= 0.5
-            if accepted is None:
-                status = "line_search_failed"
-                message = "Armijo backtracking could not find an acceptable step"
-                iterations = iteration
-                break
-
-            new_theta, new_objective, new_gradient, new_unregularized = accepted
-            s_vec = tuple(new_theta[i] - theta[i] for i in range(self.dimension))
-            y_vec = tuple(new_gradient[i] - gradient[i] for i in range(self.dimension))
-            curvature = _dot(s_vec, y_vec)
-            if curvature > 1e-12 * max(1.0, sum(value * value for value in s_vec) ** 0.5
-                                        * sum(value * value for value in y_vec) ** 0.5):
-                s_history.append(s_vec)
-                y_history.append(y_vec)
-                rho_history.append(1.0 / curvature)
-                if len(s_history) > history_size:
-                    s_history.pop(0)
-                    y_history.pop(0)
-                    rho_history.pop(0)
-            theta, objective, gradient, unregularized = (
-                new_theta, new_objective, new_gradient, new_unregularized
+        def objective_and_jacobian(parameters):
+            theta_values = tuple(float(value) for value in parameters)
+            objective, gradient, _ = self.objective_and_gradient(
+                theta_values, observed_mean, regularization_lambda
             )
-            iterations = iteration + 1
+            return objective, list(gradient)
 
-        # Independent terminal recomputation is mandatory for readiness.
+        result = minimize(
+            objective_and_jacobian,
+            x0=[0.0] * self.dimension,
+            method="L-BFGS-B",
+            jac=True,
+            bounds=None,
+            options={
+                "maxiter": max_iterations,
+                "maxfun": max_iterations * 100,
+                "maxcor": history_size,
+                "maxls": 60,
+                "ftol": 0.0,
+                "gtol": float(gradient_tolerance),
+            },
+        )
+
+        theta = tuple(float(value) for value in result.x)
         final_objective, final_gradient, final_unregularized = self.objective_and_gradient(
             theta, observed_mean, regularization_lambda
         )
         gradient_inf = max(abs(value) for value in final_gradient)
-        converged = status == "converged" and gradient_inf <= gradient_tolerance
-        if not converged and status == "converged":
+        converged = gradient_inf <= gradient_tolerance
+        message = str(result.message)
+        if converged:
+            status = "converged"
+        elif result.status == 1:
+            status = "max_iterations"
+        elif result.status == 2:
+            status = "line_search_failed"
+        elif result.success:
             status = "post_fit_validation_failed"
-            message = "independent post-fit gradient check failed"
+            message = "SciPy reported success but independent gradient validation failed: " + message
+        else:
+            status = "optimizer_failed"
+
         return FitResult(
             terminal_status=status,
             converged=converged,
@@ -334,9 +281,9 @@ class ExponentialFamily:
             unregularized_mean_nll=final_unregularized,
             penalized_objective=final_objective,
             gradient_infinity_norm=gradient_inf,
-            iterations=iterations,
+            iterations=int(result.nit),
             regularization_lambda=regularization_lambda,
             objective_scale="mean_nll",
-            solver="deterministic_unbounded_lbfgs_armijo_v1",
+            solver=f"scipy.optimize.L-BFGS-B/{scipy.__version__}",
             message=message,
         )
