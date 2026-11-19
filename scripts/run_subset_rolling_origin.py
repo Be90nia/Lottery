@@ -11,6 +11,7 @@ import json
 import math
 import os
 import random
+import sys
 import numpy
 import scipy
 from pathlib import Path
@@ -219,9 +220,12 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
         "snapshot_sha256": snapshot_digest,
         "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
         "environment_fingerprint": hashlib.sha256(Path("pyproject.toml").read_bytes()).hexdigest(),
+        "backtest_source_sha256": hashlib.sha256(Path("src/lottery/backtest.py").read_bytes()).hexdigest(),
+        "python_version": sys.version.split()[0],
         "solver": "scipy.optimize.L-BFGS-B",
         "solver_version": scipy.__version__,
         "numpy_version": numpy.__version__,
+        "python_version": sys.version.split()[0],
         "solver_options": {
             "max_iterations": CANDIDATE_MAX_ITERATIONS,
             "max_function_evaluations": CANDIDATE_MAX_ITERATIONS * 100,
