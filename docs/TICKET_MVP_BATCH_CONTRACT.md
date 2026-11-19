@@ -9,7 +9,7 @@ These are three computational strategies, **not three physical ball-set identiti
 ## Provenance
 
 Every result records:
-- deterministic generation run ID derived from canonical training rows, seed, N, alpha, half-life, strategy order, and sampler version;
+- deterministic generation run ID derived from canonical training rows, seed, N, alpha, half-life, strategy order, sampler version, and code commit;
 - canonical training-data fingerprint and exact file SHA-256 in the CLI dataset block;
 - master seed, algorithm identifier, and deterministic slot-seed derivation;
 - per-strategy slot seed, model label, ticket count, training cutoff draw ID, sampling method, unique-combination count, and duplicate-ticket count;
