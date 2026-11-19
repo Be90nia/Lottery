@@ -53,7 +53,7 @@ def build_reported_set_index_view(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ReportedSetIndexError(f"inventory or coverage report is invalid JSON: {exc}") from exc
     try:
-        validation = validate_records(inventory)
+        validate_records(inventory)
     except DatasetValidationError as exc:
         raise ReportedSetIndexError(f"draw inventory is invalid: {exc}") from exc
 
