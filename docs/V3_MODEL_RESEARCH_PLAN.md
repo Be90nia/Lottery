@@ -35,18 +35,22 @@ This is an exploratory extension of the historical evaluation, not an untouched 
 Use lag (r in {1,2,3,4}), where lag 1 means the immediately preceding draw. Analyze front and back zones separately.
 
 Predeclared statistics:
-1. **Same-number recurrence:** for every number, compare observed joint inclusion (I_{t,n}I_{t-r,n}) with the independent-draw expectation ((k/N)^2). Also report zone-level repeat counts per draw.
-2. **Lagged cross-number transition:** for every ordered pair ((a,b)), compare (I_{t-r,a}I_{t,b}) with its legal independent-draw expectation. Preserve direction; do not collapse (a 	o b) and (b 	o a).
-3. **Set overlap:** number of shared values between draw (t-r) and draw (t), compared with the exact hypergeometric overlap distribution for two independent fixed-size draws.
-4. **Temporal stability:** report the same fixed statistics in predeclared calendar blocks only as a descriptive robustness view; do not select a favorable era after seeing results.
+1. **Same-number recurrence:** per-number joint inclusion and zone-level repeat counts.
+2. **Lagged cross-number transition:** every ordered pair (a,b), preserving direction; (a→b) and (b→a) are distinct.
+3. **Set overlap:** shared values between the two fixed-size draw sets. Report both the conditional circular-shift expectation and the independent legal-draw expectation n·k²/N.
+4. **Temporal stability:** calendar-block summaries are descriptive only and cannot be used to select a favorable era.
 
-Multiplicity:
-- Define the full family before computation: four lags × two zones × all same-number hypotheses, plus four lags × two zones × all ordered cross-number hypotheses.
-- Apply Holm correction across the complete family, not separately within a chosen lag or zone.
-- Use a legal without-replacement permutation/simulation null that preserves each draw's zone size. For temporal dependence tests, permute whole draw rows within the specified eligible series or use a circular/block shift that breaks alignment while preserving each draw's internal selected set.
-- Report raw counts, expected values, effect sizes, raw p-values, adjusted p-values, and Monte Carlo uncertainty/seed where simulation is used.
+### Randomization and multiplicity
 
-A statistically unusual transition is a diagnostic, not evidence of manipulation and not automatically a useful forecast feature.
+The null is a Monte Carlo uniform permutation of complete draw rows without replacement. Each permutation preserves every draw's legal fixed-size front/back sets and all per-number inclusion totals, while breaking chronological order between draws. This directly tests temporal dependence conditional on the observed draw rows; it does not model or imply a physical draw mechanism.
+
+Two independent, seeded permutation samples are used: one estimates the null mean/standard deviation for every ordered transition and aggregate set-overlap statistic; the second estimates the maximum-statistic tail probability. The default is 1,999 permutations for each sample, with the seed and Monte Carlo uncertainty recorded in the output. The p-value uses the plus-one correction.
+
+To control multiplicity without treating thousands of pair-level p-values as separately confirmatory, the family is **eight omnibus tests**: four lags × two zones. Each omnibus statistic is the maximum absolute standardized deviation across all ordered number transitions (including the same-number diagonal) and aggregate set overlap for that zone and lag. The maximum is evaluated against the independently generated row-permutation null. Holm correction is applied across all eight omnibus tests. Per-number and per-pair results are effect-size diagnostics only; they do not carry individual significance claims.
+
+The report includes raw transition counts, permutation expectations and standard deviations, effect sizes, recurrence totals, set overlaps, permutation counts/seeds, Monte Carlo uncertainty, omnibus statistics, raw p-values, and Holm-adjusted p-values.
+
+A statistically unusual transition is a diagnostic, not evidence of manipulation and not automatically a useful forecast feature. Any apparent signal must be independently checked before Phase C.
 
 ## Phase C — lag-feature predictive experiment
 
