@@ -111,7 +111,7 @@ python scripts/run_mvp.py --dataset data/candidates/legacy_draws.jsonl \
 
 The one-command runner requires a full code commit SHA (or the Actions-provided `GITHUB_SHA`), binds it into the deterministic generation identity and ticket IDs, and atomically publishes a machine-readable receipt alongside the batch. It refuses to overwrite an existing output file; choose a new path for each batch. The receipt makes explicit that source authentication, automatic sync, model training, and promotion were not performed by this command. The lower-level `scripts/generate_tickets.py` command remains available for direct candidate generation.
 
-The command emits N tickets in each of three explicitly separate strategy
+The command emits a schema-v2 batch and receipt, including the conditional-Poisson sampler version and the maximum marginal-calibration residual, and generates N tickets in each of three explicitly separate strategy
 lanes: legal uniform sampling, expanding-frequency weights, and EWMA weights.
 Duplicate complete tickets are preserved (sampling is with replacement across
 tickets) and reported in the batch receipt; no hidden deduplication or reroll occurs.
