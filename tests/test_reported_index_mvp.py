@@ -87,6 +87,8 @@ def make_inputs(root):
         "holdout_accessed": False,
         "holdout_feedback_used": False,
         "inference": {"comparison_count": 12},
+        "target_counts": {"1": 160, "2": 147, "3": 160},
+        "significant_index_specific_improvements": [],
         "decision": "no_confirmed_index_specific_improvement_over_uniform",
     }
     pilot = {**pilot_body, "report_sha256": sha(canonical(pilot_body))}
