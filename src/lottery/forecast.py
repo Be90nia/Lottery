@@ -140,7 +140,7 @@ def verify_ledger(path: Path) -> dict[str, Any]:
                 raise ForecastLedgerError(f"line {line_no}: event must be an object")
             supplied_hash = event.get("event_hash")
             body = {key: value for key, value in event.items() if key != "event_hash"}
-            if body.get("sequence") != count + 1:
+            if type(body.get("sequence")) is not int or body.get("sequence") != count + 1:
                 raise ForecastLedgerError(f"line {line_no}: sequence is not contiguous")
             if body.get("previous_event_hash") != previous_hash:
                 raise ForecastLedgerError(f"line {line_no}: previous hash does not match")
