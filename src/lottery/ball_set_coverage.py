@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 import tempfile
 from typing import Any
 
@@ -185,7 +186,6 @@ def build_ball_set_coverage(
             source = observation.get("source", {})
             final_url = source.get("final_url") if isinstance(source, dict) else None
             if isinstance(final_url, str):
-                from urllib.parse import urlsplit
                 source_domains.add(urlsplit(final_url).hostname or "")
             result = _verify_observation(observation, row, archive_dir)
             evaluated.append(result)
@@ -282,6 +282,13 @@ def build_ball_set_coverage(
         matched = [row for row in verified_rows if row["reported_set_index"] == set_index]
         positions = sorted(inventory_positions[row["draw_id"]] for row in matched)
         gaps = [right - left for left, right in zip(positions, positions[1:])]
+        leading_missing = positions[0] if positions else None
+        trailing_missing = len(inventory) - 1 - positions[-1] if positions else None
+        missing_runs = [gap - 1 for gap in gaps]
+        if leading_missing is not None:
+            missing_runs.append(leading_missing)
+        if trailing_missing is not None:
+            missing_runs.append(trailing_missing)
         date_gaps = []
         for left, right in zip(matched, matched[1:]):
             date_gaps.append((datetime.fromisoformat(right["draw_date"]) -
@@ -294,13 +301,46 @@ def build_ball_set_coverage(
             "last_draw_date": matched[-1]["draw_date"] if matched else None,
             "calendar_years": sorted({row["draw_date"][:4] for row in matched}),
             "largest_gap_inventory_positions": max(gaps) if gaps else None,
+            "leading_missing_inventory_positions": leading_missing,
+            "trailing_missing_inventory_positions": trailing_missing,
             "longest_missing_inventory_run_between_verified": max((gap - 1 for gap in gaps), default=None),
+            "longest_missing_inventory_run_including_edges": max(missing_runs) if missing_runs else None,
             "largest_gap_elapsed_days": max(date_gaps) if date_gaps else None,
             "expected_draws": None,
             "coverage_rate": None,
             "denominator_status": "unknown_regime_boundary",
             "eligible_rolling_origin_targets": 0,
         }
+
+    by_source_domain: dict[str, dict[str, Any]] = {}
+    for observation in observations:
+        source = observation.get("source", {})
+        final_url = source.get("final_url") if isinstance(source, dict) else None
+        domain = urlsplit(final_url).hostname if isinstance(final_url, str) else None
+        if not domain:
+            continue
+        bucket = by_source_domain.setdefault(domain, {
+            "domain": domain, "observation_versions": 0, "explicit_label_versions": 0,
+            "primary_verified_at_capture": 0, "pending_inventory_at_capture": 0,
+            "source_revision_requires_review": 0, "conflict_records": 0,
+            "missing_label_records": 0, "unsupported_label_records": 0,
+        })
+        bucket["observation_versions"] += 1
+        if observation.get("reported_set_index") in (1, 2, 3):
+            bucket["explicit_label_versions"] += 1
+        status = observation.get("observation_status")
+        if status == "primary_verified":
+            bucket["primary_verified_at_capture"] += 1
+        elif status == "official_label_pending_inventory":
+            bucket["pending_inventory_at_capture"] += 1
+        elif status == "source_revision_requires_review":
+            bucket["source_revision_requires_review"] += 1
+        elif status == "conflict":
+            bucket["conflict_records"] += 1
+        elif status == "missing_label":
+            bucket["missing_label_records"] += 1
+        elif status == "unsupported_label":
+            bucket["unsupported_label_records"] += 1
 
     payload = {
         "schema_version": "lottery.ball-set-coverage/v1",
@@ -333,6 +373,7 @@ def build_ball_set_coverage(
         },
         "per_set": per_set,
         "by_year": [years[key] for key in sorted(years)],
+        "by_source_domain": [by_source_domain[key] for key in sorted(by_source_domain)],
         "per_draw": per_draw,
         "code_commit": code_commit,
     }
@@ -403,6 +444,19 @@ def write_ball_set_coverage_report(
             f"| {row['year']} | {row['inventory_draws']} | {row['primary_verified']} | "
             f"{row['missing_official_label']} | {row['unobserved']} | "
             f"{row['conflicting_official_sources']} | {row['set_1']} | {row['set_2']} | {row['set_3']} |"
+        )
+    lines.extend([
+        "",
+        "## Source domains",
+        "",
+        "| Domain | Observation versions | Explicit labels | Primary verified at capture | Pending inventory | Conflicts | Review required |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for row in report["by_source_domain"]:
+        lines.append(
+            f"| {row['domain']} | {row['observation_versions']} | {row['explicit_label_versions']} | "
+            f"{row['primary_verified_at_capture']} | {row['pending_inventory_at_capture']} | "
+            f"{row['conflict_records']} | {row['source_revision_requires_review']} |"
         )
     lines.extend([
         "",
