@@ -257,24 +257,30 @@ jobs:
             --code-commit "$GITHUB_SHA" \
             --output-dir evidence-archive/coverage/reported-set-index-pilot
 
-      - name: Generate all reported-index candidate lanes
+      - name: Generate all live reported-index candidate lanes
         id: candidates
-        if: steps.pilot.outcome == 'success'
+        if: steps.pilot.outcome == 'success' && steps.source_candidate.outcome == 'success'
         continue-on-error: true
         run: |
           REPORT_SHA="$(python -c 'import json; print(json.load(open("evidence-archive/coverage/coverage.json", encoding="utf-8"))["report_sha256"])')"
           VIEW_STEM="reported-set-index-${REPORT_SHA:0:16}"
           VIEW_MANIFEST="evidence-archive/coverage/reported-set-index/${VIEW_STEM}.manifest.json"
           VIEW_MANIFEST_SHA="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["manifest_sha256"])' "$VIEW_MANIFEST")"
+          LIVE_STEM="reported-set-index-live-${REPORT_SHA:0:16}"
+          CANDIDATE_STEM="jiangsu-draw-candidate-${REPORT_SHA:0:16}"
           PILOT_PATH="evidence-archive/coverage/reported-set-index-pilot/reported-set-index-pilot-${VIEW_MANIFEST_SHA:0:12}-${GITHUB_SHA:0:12}.json"
-          python scripts/run_reported_set_index_mvp.py \
-            --view "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.jsonl" \
-            --view-manifest "$VIEW_MANIFEST" \
+          python scripts/run_live_reported_index_mvp.py \
+            --frozen-view "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.jsonl" \
+            --frozen-manifest "$VIEW_MANIFEST" \
+            --live-view "evidence-archive/coverage/reported-set-index-live/${LIVE_STEM}.jsonl" \
+            --live-manifest "evidence-archive/coverage/reported-set-index-live/${LIVE_STEM}.jsonl.manifest.json" \
+            --candidate-dataset "evidence-archive/candidates/${CANDIDATE_STEM}.jsonl" \
+            --candidate-manifest "evidence-archive/candidates/${CANDIDATE_STEM}.jsonl.manifest.json" \
             --pilot-report "$PILOT_PATH" \
             --tickets-per-strategy 5 \
             --seed 20261119 \
             --code-commit "$GITHUB_SHA" \
-            --output-dir evidence-archive/coverage/reported-index-mvp
+            --output-dir evidence-archive/candidates/live-reported-index-mvp
 
       - name: Upload cumulative evidence archive
         if: always()
