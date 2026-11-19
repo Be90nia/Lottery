@@ -112,10 +112,16 @@ class ReportedSetIndexViewTests(unittest.TestCase):
         self.temp.cleanup()
 
     def build(self):
-        with patch(
-            "lottery.reported_set_index.build_ball_set_coverage",
-            return_value={"report_sha256": self.report["report_sha256"]},
-        ) as replay:
+        with (
+            patch(
+                "lottery.reported_set_index.build_ball_set_coverage",
+                return_value={"report_sha256": self.report["report_sha256"]},
+            ) as replay,
+            patch("lottery.reported_set_index.PILOT_EXPECTED_SET_COUNTS", {"1": 1, "2": 1, "3": 0}),
+            patch("lottery.reported_set_index.PILOT_EXPECTED_RECORD_COUNT", 2),
+            patch("lottery.reported_set_index.PILOT_EXPECTED_FIRST_DRAW", "26001"),
+            patch("lottery.reported_set_index.PILOT_EXPECTED_LAST_DRAW", "26002"),
+        ):
             result = build_reported_set_index_view(
                 self.inventory, self.coverage, self.ledger, self.archive
             )
@@ -150,6 +156,16 @@ class ReportedSetIndexViewTests(unittest.TestCase):
         output.write_bytes(b"tampered")
         with self.assertRaisesRegex(ReportedSetIndexError, "conflicts"):
             write_reported_set_index_view(rows, manifest, self.root / "out")
+
+    def test_unregistered_count_change_is_rejected(self):
+        with patch(
+            "lottery.reported_set_index.build_ball_set_coverage",
+            return_value={"report_sha256": self.report["report_sha256"]},
+        ):
+            with self.assertRaisesRegex(ReportedSetIndexError, "frozen pilot preregistration"):
+                build_reported_set_index_view(
+                    self.inventory, self.coverage, self.ledger, self.archive
+                )
 
     def test_coverage_report_tampering_is_rejected_before_replay(self):
         self.report["summary"]["primary_verified_draws"] = 99
