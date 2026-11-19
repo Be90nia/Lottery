@@ -23,7 +23,7 @@ from .backtest import (
     BACK_PICK, BACK_SIZE, DEFAULT_ALPHA, FRONT_PICK, FRONT_SIZE,
     _probabilities, _validate_rows,
 )
-from .validate import validate_jsonl
+from .validate import validate_records
 
 
 STRATEGIES = ("uniform", "expanding", "ewma")
@@ -224,9 +224,9 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        validation = validate_jsonl(args.dataset)
         raw = args.dataset.read_bytes()
         rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
+        validation = validate_records(rows)
         report = generate_ticket_candidates(
             rows, tickets_per_strategy=args.tickets, seed=args.seed,
             alpha=args.alpha, half_life=args.half_life,
