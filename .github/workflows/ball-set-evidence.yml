@@ -9,6 +9,8 @@ on:
       - ".github/workflows/ball-set-evidence.yml"
       - "config/ball_set_source_registry.json"
       - "src/lottery/ball_set_evidence.py"
+      - "src/lottery/validate.py"
+      - "tests/test_validate.py"
       - "scripts/collect_ball_set_evidence.py"
       - "scripts/build_ball_set_coverage.py"
       - "data/candidates/pinned-draws-20261118.jsonl"
