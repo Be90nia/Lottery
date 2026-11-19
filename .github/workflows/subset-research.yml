@@ -6,11 +6,15 @@ on:
     paths:
       - "scripts/run_subset_rolling_origin.py"
       - "src/lottery/subset_model/**"
-      - "tests/test_subset_model_rolling_origin.py"
       - ".github/workflows/subset-research.yml"
 
 permissions:
   contents: read
+  actions: read
+
+concurrency:
+  group: exact-subset-research-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   full-rolling-origin:
@@ -26,6 +30,32 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
+      - name: Restore prior checkpoint for the identical code revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          previous_run="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
+            --json databaseId,headSha,status \
+            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .headSha == env.GITHUB_SHA and .status == "completed")) | first | .databaseId // empty')"
+          if [ -z "$previous_run" ]; then
+            echo "No completed run for this exact code revision; starting with an empty checkpoint."
+            exit 0
+          fi
+          mkdir -p previous-artifact
+          if gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-artifact; then
+            if [ -d previous-artifact/subset-model-checkpoints ]; then
+              mkdir -p subset-model-checkpoints
+              cp -a previous-artifact/subset-model-checkpoints/. subset-model-checkpoints/
+              echo "Restored checkpoint ledgers from run $previous_run."
+            else
+              echo "Previous artifact contained no checkpoint directory; starting fresh."
+            fi
+          else
+            echo "Previous run had no downloadable artifact; starting fresh."
+          fi
       - name: Run full frozen 2,649-target exact-subset evaluation
         run: |
           python scripts/run_subset_rolling_origin.py \
