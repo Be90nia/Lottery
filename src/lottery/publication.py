@@ -108,6 +108,18 @@ def reconcile_append_only(
         raise PublicationError("candidate snapshot provenance is incomplete")
     if manifest.get("trust_status") != "manifest_complete_not_officially_authenticated":
         raise PublicationError("candidate trust status is not the expected unverified state")
+    if manifest.get("source_completeness_verified") is not True:
+        raise PublicationError("source pagination completeness is unverified; refusing to append a partial snapshot")
+    completeness = manifest.get("completeness_evidence")
+    if not isinstance(completeness, dict) or completeness.get("method") != "official_pagination_metadata":
+        raise PublicationError("official pagination completeness evidence is missing")
+    if (type(completeness.get("reported_total_records")) is not int
+            or completeness["reported_total_records"] != len(candidate)
+            or type(completeness.get("reported_total_pages")) is not int
+            or completeness["reported_total_pages"] < 1
+            or type(completeness.get("page_size")) is not int
+            or not 1 <= completeness["page_size"] <= 100):
+        raise PublicationError("official pagination totals do not match the candidate snapshot")
     if type(manifest.get("snapshot_count")) is not int or manifest["snapshot_count"] < 1:
         raise PublicationError("candidate manifest must reference at least one raw snapshot")
     snapshots = manifest.get("snapshots")
@@ -122,6 +134,17 @@ def reconcile_append_only(
                 or not isinstance(item.get("raw_file"), str)
                 or not item["raw_file"]):
             raise PublicationError("candidate manifest contains an invalid snapshot entry")
+    observed_pages = [item.get("page_no") for item in snapshots]
+    expected_pages = list(range(1, len(snapshots) + 1))
+    if observed_pages != expected_pages:
+        raise PublicationError("candidate snapshot page inventory is incomplete or out of order")
+    data_pages = [item for item in snapshots if type(item.get("records")) is int and item["records"] > 0]
+    terminal_empty = bool(snapshots and snapshots[-1].get("records") == 0)
+    if len(data_pages) != completeness["reported_total_pages"]:
+        raise PublicationError("reported page count does not match observed non-empty pages")
+    expected_snapshot_count = completeness["reported_total_pages"] + (1 if terminal_empty else 0)
+    if len(snapshots) != expected_snapshot_count:
+        raise PublicationError("snapshot inventory contains missing or unexpected terminal pages")
 
     current_by_id = {row["draw_id"]: row for row in current}
     candidate_by_id = {row["draw_id"]: row for row in candidate}
