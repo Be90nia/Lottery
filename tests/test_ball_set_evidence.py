@@ -182,6 +182,31 @@ class BallSetArchiveTests(unittest.TestCase):
         self.assertIn("HTTP 567 blocked", receipt["errors"][0])
         self.assertTrue(self.receipt.exists())
 
+    def test_label_outside_inventory_is_pending_not_primary_verified(self):
+        next_url = "https://www.js-lottery.com/cms/post-148233.html"
+        third_url = "https://www.js-lottery.com/cms/post-148247.html"
+        pages = {
+            BASE: fetched(BASE, page(newer=("26129", "/cms/post-148233.html"))),
+            next_url: fetched(next_url, page("26129", "2026年11月11日", 2,
+                                             newer=("26130", "/cms/post-148247.html"))),
+            third_url: fetched(third_url, page("26130", "2026年11月14日", 1)),
+        }
+        receipt = self.collect(lambda url: pages[url])
+        records = [json.loads(line) for line in self.ledger.read_text().splitlines()]
+        self.assertEqual(receipt["inventory_crosswalk"]["not_in_inventory"], 1)
+        self.assertEqual(records[-1]["observation_status"], "official_label_pending_inventory")
+        self.assertEqual(records[-1]["reported_set_index"], 1)
+
+    def test_inventory_date_mismatch_fails_closed(self):
+        next_url = "https://www.js-lottery.com/cms/post-148233.html"
+        pages = {
+            BASE: fetched(BASE, page(newer=("26129", "/cms/post-148233.html"))),
+            next_url: fetched(next_url, page("26129", "2026年11月12日", 2)),
+        }
+        receipt = self.collect(lambda url: pages[url])
+        self.assertEqual(receipt["status"], "review_required")
+        self.assertEqual(receipt["observation_results"][-1]["status"], "draw_mismatch")
+
 
 if __name__ == "__main__":
     unittest.main()
