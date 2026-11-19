@@ -206,8 +206,24 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     uniform_nll = math.log(math.comb(m, k))
     expected = len(rows) - MIN_TRAIN
     header = {
-        "record_type": "header", "schema": "lot-055-checkpoint-v2",
-        "snapshot_sha256": snapshot_digest, "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
+        "record_type": "header", "schema": "lot-055-checkpoint-v3",
+        "snapshot_sha256": snapshot_digest,
+        "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
+        "environment_fingerprint": hashlib.sha256(Path("pyproject.toml").read_bytes()).hexdigest(),
+        "solver": "scipy.optimize.L-BFGS-B",
+        "solver_version": scipy.__version__,
+        "numpy_version": numpy.__version__,
+        "solver_options": {
+            "max_iterations": CANDIDATE_MAX_ITERATIONS,
+            "max_function_evaluations": CANDIDATE_MAX_ITERATIONS * 100,
+            "history_size": 10,
+            "max_line_search_steps": 60,
+            "ftol": 0.0,
+            "gradient_tolerance": CANDIDATE_GRADIENT_TOLERANCE,
+            "bounds": None,
+        },
+        "objective_scale": "mean_nll",
+        "regularization_lambda": 1.0,
         "zone": zone,
         "minimum_training_rows": MIN_TRAIN, "first_target": rows[MIN_TRAIN]["draw_id"],
         "last_target": rows[-1]["draw_id"], "models": ["uniform", "expanding", "ewma", "exponential_family"],
