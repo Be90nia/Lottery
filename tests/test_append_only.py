@@ -57,4 +57,6 @@ class AppendOnlyTests(unittest.TestCase):
   self.prep(self.old)
   with self.assertRaisesRegex(AppendOnlyError,"paths must be distinct"):
    reconcile_append_only(self.cur,self.can,self.man,self.out,self.man)
-\nif __name__=="__main__": unittest.main()
+
+
+if __name__=="__main__": unittest.main()
