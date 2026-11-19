@@ -468,8 +468,8 @@ def _archive_observation(
 
 def collect_ball_set_evidence(
     registry_path: Path, archive_dir: Path, ledger_path: Path, *,
-    receipt_path: Path, draw_inventory_path: Path, delay_seconds: float = 1.0,
-    max_forward_pages: int = 2000,
+    receipt_path: Path, draw_inventory_path: Path, draw_result_ledger_path: Path,
+    delay_seconds: float = 1.0, max_forward_pages: int = 2000,
 ) -> dict[str, Any]:
     if delay_seconds < 0 or type(max_forward_pages) is not int or max_forward_pages < 1:
         raise ValueError("invalid delay or max_forward_pages")
@@ -512,11 +512,15 @@ def collect_ball_set_evidence(
 
     fetched_pages: list[dict[str, Any]] = []
     observation_results: list[dict[str, Any]] = []
+    draw_result_results: list[dict[str, Any]] = []
     visited: set[str] = set()
     status = "no_new_page"
     next_expected: str | None = None
     errors: list[str] = []
     fatal_statuses = {"draw_mismatch", "conflict", "source_authority_unverified", "source_revision_requires_review"}
+    fatal_draw_result_statuses = {
+        "draw_mismatch", "draw_result_mismatch", "source_revision_requires_review", "conflict",
+    }
     for page_index in range(max_forward_pages):
         if current_url in visited:
             errors.append("source announcement chain contains a URL cycle")
@@ -567,15 +571,26 @@ def collect_ball_set_evidence(
             expected_draw_date=expected_date if page_index == 0 else None,
             ledger_path=ledger_path, inventory=inventory, inventory_sha256=inventory_sha256,
         )
+        from .draw_results import append_draw_result
+        draw_result_result = append_draw_result(
+            fetched, parsed, manifest, inventory=inventory,
+            inventory_sha256=inventory_sha256, ledger_path=draw_result_ledger_path,
+        )
+        draw_result_results.append(draw_result_result)
         observation_results.append(result)
         fetched_pages.append({
             "draw_id": parsed.draw_id, "draw_date": parsed.draw_date,
             "url": fetched["final_url"], "body_sha256": manifest["body_sha256"],
             "status": result["status"],
+            "draw_result_status": draw_result_result["status"],
         })
         if result["status"] in fatal_statuses:
             status = "review_required"
             errors.append(f"observation {parsed.draw_id} requires review: {result['status']}")
+            break
+        if draw_result_result["status"] in fatal_draw_result_statuses:
+            status = "review_required"
+            errors.append(f"draw result {parsed.draw_id} requires review: {draw_result_result['status']}")
             break
 
         previous_id = parsed.draw_id
@@ -608,6 +623,14 @@ def collect_ball_set_evidence(
         "draw_inventory_sha256": inventory_sha256,
         "draw_inventory_rows": len(inventory_rows),
         "draw_inventory_trust_status": "candidate_unverified",
+        "draw_result_crosswalk": {
+            "inventory_matched": sum(1 for item in draw_result_results if item.get("status") == "inventory_matched"),
+            "pending_inventory": sum(1 for item in draw_result_results if item.get("status") == "pending_inventory"),
+            "draw_result_mismatches": sum(1 for item in draw_result_results if item.get("status") == "draw_result_mismatch"),
+            "draw_mismatches": sum(1 for item in draw_result_results if item.get("status") == "draw_mismatch"),
+            "missing_or_invalid": sum(1 for item in draw_result_results if item.get("status") in ("missing_draw_result", "invalid_draw_result")),
+            "review_required": sum(1 for item in draw_result_results if item.get("status") in ("source_revision_requires_review", "conflict")),
+        },
         "inventory_crosswalk": {
             "matched_draws": sum(1 for item in fetched_pages if item.get("draw_id") in inventory and inventory[item["draw_id"]]["draw_date"] == item.get("draw_date")),
             "not_in_inventory": sum(1 for item in fetched_pages if item.get("draw_id") not in inventory),
@@ -633,6 +656,7 @@ def main() -> int:
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--draw-inventory", type=Path, required=True)
+    parser.add_argument("--draw-result-ledger", type=Path, required=True)
     parser.add_argument("--delay", type=float, default=1.0)
     parser.add_argument("--max-forward-pages", type=int, default=2000)
     args = parser.parse_args()
@@ -640,6 +664,7 @@ def main() -> int:
         receipt = collect_ball_set_evidence(
             args.registry, args.archive_dir, args.ledger,
             receipt_path=args.receipt, draw_inventory_path=args.draw_inventory,
+            draw_result_ledger_path=args.draw_result_ledger,
             delay_seconds=args.delay, max_forward_pages=args.max_forward_pages,
         )
         print(json.dumps(receipt, ensure_ascii=False, indent=2))
