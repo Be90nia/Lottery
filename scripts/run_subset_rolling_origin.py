@@ -36,12 +36,14 @@ def _confirmatory_gate(
     inferential_pass: bool, *, solver_policy_approved: bool,
     multiplicity_policy_approved: bool,
     non_regression_policy_approved: bool,
+    non_regression_pass: bool,
 ) -> bool:
     return bool(
         inferential_pass
         and solver_policy_approved
         and multiplicity_policy_approved
         and non_regression_policy_approved
+        and non_regression_pass
     )
 
 
@@ -401,6 +403,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         solver_policy_approved=solver_policy_approved,
         multiplicity_policy_approved=multiplicity_policy_approved,
         non_regression_policy_approved=non_regression_policy_approved,
+        non_regression_pass=all(non_regression_pass.values()),
     )
     result = {
         "run_type": "LOT-055-equipment-blind-exact-subset-rolling-origin",
