@@ -251,7 +251,7 @@ class ImmutableSnapshotTests(unittest.TestCase):
             original = manifest.read_bytes()
             _snapshot(raw, 1, 200, "application/json", raw_dir, url, "run-two")
             self.assertEqual(manifest.read_bytes(), original)
-            self.assertEqual(len(list(raw_dir.glob("*.json"))), 1)
+            self.assertEqual(len([path for path in raw_dir.glob("*.json") if not path.name.endswith(".manifest.json")]), 1)
 
     def test_corrupted_content_addressed_snapshot_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp:
