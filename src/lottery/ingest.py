@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -97,6 +99,26 @@ def _fetch_page(
     raise IngestionError(f"page {page_no}: request failed after {retries} attempts: {last_error}")
 
 
+def _atomic_write_new(path: Path, content: bytes) -> None:
+    """Publish a complete file atomically without replacing prior evidence."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=path.name + ".", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            raise
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _snapshot(
     raw: bytes,
     page_no: int,
@@ -111,23 +133,64 @@ def _snapshot(
     retrieved_at = datetime.now(timezone.utc).isoformat()
     raw_dir.mkdir(parents=True, exist_ok=True)
     body_path = raw_dir / f"page-{page_no:05d}-{digest[:12]}.json"
-    body_path.write_bytes(raw)
+    if body_path.exists():
+        if hashlib.sha256(body_path.read_bytes()).hexdigest() != digest:
+            raise IngestionError(f"content-addressed snapshot collision or corruption: {body_path}")
+    else:
+        try:
+            _atomic_write_new(body_path, raw)
+        except FileExistsError:
+            if hashlib.sha256(body_path.read_bytes()).hexdigest() != digest:
+                raise IngestionError(f"content-addressed snapshot collision or corruption: {body_path}")
+
     manifest_path = raw_dir / f"page-{page_no:05d}-{digest[:12]}.manifest.json"
-    manifest_path.write_text(json.dumps({
-        "source": "Sporttery public historical draw API",
-        "url": url,
-        "final_url": final_url,
-        "redirect_chain": [],
-        "retrieved_at": retrieved_at,
-        "http_status": status,
-        "content_type": content_type,
-        "bytes": len(raw),
-        "sha256": digest,
-        "parser_version": PARSER_VERSION,
-        "run_id": run_id,
-        "page_no": page_no,
-        "raw_file": body_path.name,
-    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if manifest_path.exists():
+        try:
+            existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise IngestionError(f"existing snapshot manifest is corrupt: {manifest_path}") from exc
+        if (not isinstance(existing, dict)
+                or existing.get("sha256") != digest
+                or existing.get("raw_file") != body_path.name
+                or existing.get("url") != url
+                or existing.get("final_url") != final_url
+                or existing.get("redirect_chain") != []
+                or existing.get("http_status") != status):
+            raise IngestionError(f"existing immutable snapshot manifest conflicts: {manifest_path}")
+    else:
+        manifest = {
+            "source": "Sporttery public historical draw API",
+            "url": url,
+            "final_url": final_url,
+            "redirect_chain": [],
+            "retrieved_at": retrieved_at,
+            "http_status": status,
+            "content_type": content_type,
+            "bytes": len(raw),
+            "sha256": digest,
+            "parser_version": PARSER_VERSION,
+            "run_id": run_id,
+            "page_no": page_no,
+            "raw_file": body_path.name,
+        }
+        try:
+            _atomic_write_new(
+                manifest_path,
+                (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+            )
+        except FileExistsError:
+            try:
+                existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise IngestionError(f"existing snapshot manifest is corrupt: {manifest_path}") from exc
+            if (not isinstance(existing, dict)
+                    or existing.get("sha256") != digest
+                    or existing.get("raw_file") != body_path.name
+                    or existing.get("url") != url
+                    or existing.get("final_url") != final_url
+                    or existing.get("redirect_chain") != []
+                    or existing.get("http_status") != status):
+                raise IngestionError(f"existing immutable snapshot manifest conflicts: {manifest_path}")
     return digest
 
 
@@ -224,6 +287,9 @@ def ingest_snapshot_directory(
     require_manifests: bool = False,
 ) -> dict[str, Any]:
     """Rebuild normalized draws from immutable JSON response snapshots offline."""
+    output_manifest_path = output.with_suffix(output.suffix + ".manifest.json")
+    if output.exists() or output_manifest_path.exists():
+        raise IngestionError("output or output manifest already exists; refusing to overwrite prior evidence")
     if not snapshots_dir.is_dir():
         raise IngestionError(f"snapshot directory does not exist: {snapshots_dir}")
     snapshot_paths = sorted(
@@ -346,14 +412,9 @@ def ingest_snapshot_directory(
     from .validate import validate_records
     validation = validate_records([asdict(row) for row in ordered])
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    temporary.write_text(
-        "".join(json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered),
-        encoding="utf-8",
-    )
-    temporary.replace(output)
-
+    output_bytes = "".join(
+        json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered
+    ).encode("utf-8")
     manifest = {
         "source": "offline import of immutable JSON response snapshots",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -369,13 +430,14 @@ def ingest_snapshot_directory(
         "source_completeness_status": "unverified",
         "validation": validation,
         "output_file": output.name,
-        "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "output_sha256": hashlib.sha256(output_bytes).hexdigest(),
         "trust_status": "candidate_unverified" if not provenance_complete else "manifest_complete_not_officially_authenticated",
     }
-    manifest_path = output.with_suffix(output.suffix + ".manifest.json")
-    manifest_tmp = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
-    manifest_tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    manifest_tmp.replace(manifest_path)
+    _atomic_write_new(output, output_bytes)
+    _atomic_write_new(
+        output_manifest_path,
+        (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+    )
     return manifest
 
 def fetch_history(
@@ -391,7 +453,10 @@ def fetch_history(
         raise ValueError("max_pages must be at least 1")
     if delay_seconds < 0:
         raise ValueError("delay_seconds must not be negative")
+    if output.exists():
+        raise IngestionError("output already exists; refusing to overwrite prior evidence")
     run_id = uuid.uuid4().hex
+    run_raw_dir = raw_dir / run_id
     all_rows: dict[str, Draw] = {}
     page_manifests: list[dict[str, Any]] = []
     pagination_end_reason: str | None = None
@@ -405,7 +470,7 @@ def fetch_history(
         if status != 200:
             raise IngestionError(f"page {page_no}: unexpected HTTP status {status}")
         digest = _snapshot(
-            raw, page_no, status, content_type, raw_dir, url, final_url, run_id
+            raw, page_no, status, content_type, run_raw_dir, url, final_url, run_id
         )
         rows = _parse_page(raw, page_no, digest)
         page_manifests.append({"page_no": page_no, "sha256": digest, "records": len(rows), "run_id": run_id})
@@ -427,15 +492,16 @@ def fetch_history(
         if delay_seconds:
             time.sleep(delay_seconds)
     ordered = sorted(all_rows.values(), key=lambda row: (row.draw_date, row.draw_id))
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    temporary.write_text("".join(json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered), encoding="utf-8")
-    temporary.replace(output)
+    output_bytes = "".join(
+        json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered
+    ).encode("utf-8")
+    _atomic_write_new(output, output_bytes)
     return {
         "records": len(ordered),
         "first_draw": ordered[0].draw_id if ordered else None,
         "last_draw": ordered[-1].draw_id if ordered else None,
         "output": str(output),
+        "raw_dir": str(run_raw_dir),
         "pages": page_manifests,
         "parser_version": PARSER_VERSION,
         "run_id": run_id,
