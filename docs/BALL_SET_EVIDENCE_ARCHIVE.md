@@ -4,7 +4,7 @@
 
 The collector archives per-draw announcement pages from the Jiangsu Provincial Sports Lottery Management Center (A2). It extracts a ball-set index only when the page literally states `本期使用第X套摇奖球`, with X in 1..3. It does not infer a label from `lotteryEquipmentCount`, number patterns, adjacent draws, or the date.
 
-The registry starts from draw 26128 (2026-11-09) and follows the official article's newer-draw navigation link. The collector resumes from the latest archived page on later runs, so it can discover future announcements without hardcoding future page IDs. Every response is archived as exact bytes under a content-addressed SHA-256 path before parsing.
+The registry starts from draw 19101 (2019-08-31), a verified A2 announcement in the documented three-set era, and follows the official article's newer-draw navigation link through the current draw. The initial backfill is capped at 2,000 pages per run. The collector resumes from the latest archived page on later runs, so it can discover future announcements without hardcoding future page IDs. Every response is archived as exact bytes under a content-addressed SHA-256 path before parsing.
 
 Each observation stores source authority, requested/final URL, redirects, retrieval time, HTTP metadata, byte length/hash, parser version, exact matched phrase and text span, draw ID/date, reported set index, nullable regime/physical identity, status, conflict group, and superseded observation ID.
 
