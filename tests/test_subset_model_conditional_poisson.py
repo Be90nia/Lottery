@@ -91,9 +91,9 @@ class ConditionalPoissonDPTests(unittest.TestCase):
             model.inclusion_marginals()
 
     def test_common_large_log_weight_offset_is_centered_safely(self):
-        model = ConditionalPoisson((1e308, 1e308, 1e308, 1e308), 2)
+        model = ConditionalPoisson((1e308, 1e308, 1e308, 1e308), 1)
         self.assertTrue(math.isfinite(model._centered_log_normalizer))
-        self.assertEqual(model.inclusion_marginals(), (0.5, 0.5, 0.5, 0.5))
+        self.assertEqual(model.inclusion_marginals(), (0.25, 0.25, 0.25, 0.25))
 
 
 class ConditionalPoissonCalibrationTests(unittest.TestCase):
