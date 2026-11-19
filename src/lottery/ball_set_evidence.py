@@ -234,7 +234,7 @@ def _read_ledger(ledger_path: Path) -> list[dict[str, Any]]:
                     or not re.fullmatch(r"\d{5}", item["draw_id"])
                     or not isinstance(item.get("draw_date"), str)
                     or item.get("observation_status") not in allowed_statuses
-                    or item.get("reported_set_index") not in (None, 1, 2, 3)):
+                    or (item.get("reported_set_index") is not None\n                        and (type(item.get("reported_set_index")) is not int\n                             or item.get("reported_set_index") not in (1, 2, 3)))):
                 raise BallSetEvidenceError(f"observation ledger record has invalid fields at line {line_no}")
             if item.get("prev_hash") != previous_event_hash:
                 raise BallSetEvidenceError(f"observation ledger hash chain is broken at line {line_no}")
@@ -315,7 +315,28 @@ def _archive_raw_response(fetched: dict[str, Any], archive_dir: Path, authority_
         (fetched["requested_url"] + fetched["retrieved_at_utc"]).encode("utf-8")
     ).hexdigest()[:16]
     manifest_path = raw_dir / f"{digest}.{retrieval_id}.manifest.json"
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    if manifest_path.exists():
+        try:
+            existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BallSetEvidenceError(f"immutable retrieval manifest is corrupt: {manifest_path}") from exc
+        if existing_manifest != manifest:
+            raise BallSetEvidenceError(f"immutable retrieval manifest conflicts with this capture: {manifest_path}")
+    else:
+        try:
+            with manifest_path.open("xb") as handle:
+                handle.write(manifest_bytes)
+                handle.flush()
+                import os
+                os.fsync(handle.fileno())
+        except FileExistsError:
+            try:
+                existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise BallSetEvidenceError(f"immutable retrieval manifest is corrupt: {manifest_path}") from exc
+            if existing_manifest != manifest:
+                raise BallSetEvidenceError(f"immutable retrieval manifest conflicts with this capture: {manifest_path}")
     manifest["manifest_object_ref"] = str(manifest_path.relative_to(archive_dir))
     return manifest
 
