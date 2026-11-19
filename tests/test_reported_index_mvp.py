@@ -59,7 +59,7 @@ def make_inputs(root):
         "pilot_protocol_version": "reported-set-index-pilot-v1",
         "inventory_sha256": "a" * 64,
         "inventory_trust_status": "candidate_unverified",
-        "collector_receipt_status": "completed",
+        "collector_receipt_status": "captured",
         "latest_collected_draw_id": "26132",
         "observation_count": 1068,
         "out_of_inventory_observation_count": 1,
