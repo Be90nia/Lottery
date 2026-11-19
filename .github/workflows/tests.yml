@@ -16,7 +16,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Validate all workflow YAML syntax
-        run: ruby -e 'require "yaml"; Dir.glob(".github/workflows/*.yml").sort.each { |path| YAML.load_file(path, aliases: true); puts "valid: #{path}" }'
+        run: |
+          ruby -e 'require "yaml"; Dir.glob(".github/workflows/*.yml").sort.each { |path| YAML.load_file(path, aliases: true); puts "valid: #{path}" }'
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Validate imported legacy draw candidate
