@@ -171,7 +171,10 @@ def _verify_source_completeness_attestation(
         if (type(snapshot.get("page_no")) is not int or snapshot.get("page_no") != expected_page_no
                 or snapshot.get("raw_file") != raw_file
                 or snapshot.get("sha256") != digest
-                or snapshot.get("records") != records
+                or type(snapshot.get("records")) is not int or snapshot.get("records") != records
+                or type(snapshot.get("bytes")) is not int
+                or snapshot.get("sidecar_manifest") != f"{Path(raw_file).stem}.manifest.json"
+                or not isinstance(snapshot.get("run_id"), str) or not snapshot.get("run_id")
                 or snapshot.get("provenance_complete") is not True):
             raise AppendOnlyError(f"page {expected_page_no}: snapshot manifest differs from attestation")
 
