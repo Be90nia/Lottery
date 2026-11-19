@@ -39,6 +39,7 @@
 - [研究方法](docs/RESEARCH_METHODS.md)
 - [奖金规则时期](docs/PRIZE_RULE_ERAS.md)
 - [初步随机基线结果](docs/BASELINE_RESULTS.md)
+- [MVP 首轮样本外评估](docs/TICKET_MVP_RESULTS.md)
 - [任务清单](TASKS.md)
 - [测试计划](TEST_PLAN.md)
 
