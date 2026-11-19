@@ -276,7 +276,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
             root = Path(temp)
             output = root / "processed" / "draws.jsonl"
             raw_dir = root / "raw"
-            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json")):
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=1&isVerify=1&pageNo=1")):
                 with self.assertRaisesRegex(IngestionError, "potentially truncated"):
                     fetch_history(output, raw_dir, page_size=1, max_pages=1, delay_seconds=0)
             self.assertFalse(output.exists())
@@ -286,7 +286,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             output = root / "processed" / "draws.jsonl"
-            with patch("lottery.ingest._fetch_page", return_value=(self.payload([]), 200, "application/json")):
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([]), 200, "application/json", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1")):
                 with self.assertRaisesRegex(IngestionError, "no draws"):
                     fetch_history(output, root / "raw", page_size=100, delay_seconds=0)
             self.assertFalse(output.exists())
@@ -295,7 +295,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             output = root / "processed" / "draws.jsonl"
-            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json")):
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=2&isVerify=1&pageNo=1")):
                 result = fetch_history(output, root / "raw", page_size=2, delay_seconds=0)
             self.assertEqual(result["records"], 1)
             self.assertEqual(result["pagination_end_reason"], "short_page")
