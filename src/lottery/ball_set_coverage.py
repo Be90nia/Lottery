@@ -362,7 +362,7 @@ def write_ball_set_coverage_report(
         "",
         "## Training eligibility",
         "",
-        "All equipment regime and physical identity fields remain null. The two-set to three-set transition and identity continuity are unresolved. Therefore every set-conditioned target remains ineligible, regardless of label count. This report is evidence accounting, not a predictive or causal finding.",
+        "All equipment regime and physical identity fields remain null. The two-set to three-set transition and identity continuity are unresolved. Every target has exclusion reason `regime_unresolved` and remains ineligible, regardless of label count. This report is evidence accounting, not a predictive or causal finding.",
         "",
     ])
     md_bytes = ("\n".join(lines)).encode("utf-8")
