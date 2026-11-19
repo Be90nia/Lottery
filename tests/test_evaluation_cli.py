@@ -62,7 +62,7 @@ class EvaluationReceiptCliTests(unittest.TestCase):
 
             duplicate = self.run_cli(*build_args)
             self.assertEqual(duplicate.returncode, 1)
-            self.assertIn("refusing to overwrite", duplicate.stderr)
+            self.assertIn("must not overwrite", duplicate.stderr)
             self.assertEqual(output.read_bytes(), original)
 
     def test_verify_rejects_tampered_receipt(self):
