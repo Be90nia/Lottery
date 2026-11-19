@@ -341,11 +341,11 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
     back = _evaluate_zone(rows, "back", BACK_POPULATION, BACK_SELECTION, False,
                           BOOTSTRAP_SEED + 1, checkpoint_dir / "back.jsonl", digest)
     # The mathematical solver and two-hypothesis Holm policy are implemented.
-    # The non-regression margin against fixed marginal comparators is not yet
-    # numerically frozen, so confirmatory promotion remains fail-closed.
+    # Non-regression uses a conservative zero-NLL margin against both fixed
+    # marginal comparators; see the preregistration clarification.
     solver_policy_approved = True
     multiplicity_policy_approved = True
-    non_regression_policy_approved = False
+    non_regression_policy_approved = True
     descriptive_ci_pass = all(
         zone["complete_coverage"] and all(
             zone["paired_candidate_minus_baseline"][ref] is not None
@@ -382,6 +382,17 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         for zone, comparison in primary_comparisons.items()
     }
     primary_inferential_pass = all(zone_inferential_pass.values())
+    non_regression_pass = {
+        zone: (
+            (front if zone == "front" else back)["complete_coverage"]
+            and all(
+                (front if zone == "front" else back)["paired_candidate_minus_baseline"][reference] is not None
+                and (front if zone == "front" else back)["paired_candidate_minus_baseline"][reference]["ci_95_upper"] <= 0.0
+                for reference in ("expanding", "ewma")
+            )
+        )
+        for zone in ("front", "back")
+    }
     passed = _confirmatory_gate(
         primary_inferential_pass,
         solver_policy_approved=solver_policy_approved,
@@ -416,12 +427,19 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "solver_policy_approved": solver_policy_approved,
         "multiplicity_policy_approved": multiplicity_policy_approved,
         "non_regression_policy_approved": non_regression_policy_approved,
-        "non_regression_policy_note": "zero/non-inferiority margin against expanding and EWMA has not been frozen; descriptive comparator intervals are reported but cannot silently define a post-hoc gate",
+        "non_regression_policy": {
+            "approved": non_regression_policy_approved,
+            "margin_nll": 0.0,
+            "criterion": "candidate-minus-comparator 95% paired block-bootstrap CI upper <= 0 in each zone",
+            "comparators": ["expanding", "ewma"],
+            "zone_pass": non_regression_pass,
+            "all_zones_pass": bool(all(non_regression_pass.values())),
+            "multiplicity_note": "intersection-union non-regression gate; all four zone-by-comparator conditions must pass",
+        },
         "confirmatory_candidate_pass": bool(passed),
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
                         "no LOT-042 access", "no promotion or serving",
-                        "non-regression margin against fixed expanding/EWMA comparators remains unregistered",
                         "full confirmatory run remains unexecuted",
                         "Holm inference is implemented for the preregistered two-hypothesis candidate-vs-uniform family; expanding/EWMA remain non-regression comparators"],
     }
