@@ -16,12 +16,15 @@ python scripts/collect_ball_set_evidence.py \
   --archive-dir data/evidence/ball-set-archive \
   --ledger data/evidence/ball-set-observations.jsonl \
   --receipt data/evidence/ball-set-receipt.json \
-  --draw-inventory data/candidates/legacy_draws.jsonl
+  --draw-inventory data/ball_set/draw-inventory-20261118.jsonl
 ```
 
 The JSONL ledger is append-only, uses the shared OS-level ledger lock, and carries a SHA-256 event chain (`prev_hash`/`event_hash`) that is verified before every append and coverage build. Identical response bytes are idempotent. Changed bytes from the same URL always create a new immutable observation version and preserve prior bytes. If draw date and explicit set label are unchanged, the version is `source_revision_same_semantics`; if either changes, it is `source_revision_requires_review` and blocks the verified view. Disagreement between official sources creates a conflict record. Missing labels remain `missing_label`. Draw ID/date mismatches and malformed pages fail closed.
 
 The scheduled workflow carries forward the latest cumulative archive artifact, cross-checks page draw IDs/dates against the checked-in candidate draw inventory, and uploads a new 90-day artifact. The inventory is still `candidate_unverified`, so a match is an identity/date crosswalk, not independent authentication of the draw result. This is a staging archive, **not yet the permanent canonical evidence store**. LOT-065 still requires durable content-addressed storage, independent backup, and restore verification before this archive can be treated as permanent canonical evidence.
+
+
+The collector and coverage workflow use the pinned 2,949-row candidate inventory at `data/ball_set/draw-inventory-20261118.jsonl`, through draw 26131 (2026-11-16), SHA-256 `9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa`. Its trust status is `manifest_complete_not_officially_authenticated`. Newer official announcements (including draw 26132 on 2026-11-18) can be archived, but remain `official_label_pending_inventory` until the draw inventory is reconciled; they are not silently added to the verified crosswalk.
 
 ## Regime and model eligibility
 
@@ -35,7 +38,7 @@ After collection, rebuild the evidence-derived coverage report:
 
 ```bash
 python scripts/build_ball_set_coverage.py \
-  --draw-inventory data/candidates/legacy_draws.jsonl \
+  --draw-inventory data/ball_set/draw-inventory-20261118.jsonl \
   --ledger data/evidence/ball-set-archive/observations.jsonl \
   --archive-dir data/evidence/ball-set-archive \
   --output-json data/evidence/ball-set-archive/coverage/coverage.json \
