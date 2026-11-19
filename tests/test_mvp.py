@@ -64,13 +64,33 @@ class MvpOrchestratorTests(unittest.TestCase):
             dataset.write_text("".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)), encoding="utf-8")
             completed = subprocess.run(
                 [sys.executable, "scripts/run_mvp.py", "--dataset", str(dataset),
-                 "--tickets-per-strategy", "2", "--seed", "73", "--output", str(output)],
+                 "--tickets-per-strategy", "2", "--seed", "73", "--code-commit", "d" * 40,
+                 "--output", str(output)],
                 check=False, capture_output=True, text=True,
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             document = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(document["receipt"]["published_ticket_count"], 6)
             self.assertEqual(document["batch"]["total_tickets"], 6)
+
+    def test_existing_output_is_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "draws.jsonl"
+            output = root / "mvp.json"
+            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            output.write_text("prior evidence", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "already exists"):
+                run_mvp(dataset, output, code_commit="e" * 40)
+            self.assertEqual(output.read_text(encoding="utf-8"), "prior evidence")
+
+    def test_missing_code_commit_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "draws.jsonl"
+            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "code_commit is required"):
+                run_mvp(dataset, root / "out.json")
 
     def test_invalid_dataset_never_publishes_output(self):
         with tempfile.TemporaryDirectory() as temp:
