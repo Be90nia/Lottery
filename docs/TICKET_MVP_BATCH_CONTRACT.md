@@ -18,11 +18,13 @@ Every result records:
 
 Identical canonical inputs and parameters reproduce the same run ID, ticket IDs, and ticket values. The exact file SHA-256 additionally records byte-level input identity.
 
-## Sampling limitations
+## Sampling semantics and limitations
 
-The current sampler performs sequential weighted sampling without replacement inside each 5-number or 2-number subset. It is a reproducible marginal-weighted heuristic, not the exact conditional-Poisson sampler and not a calibrated joint ticket probability. The output explicitly records this limitation. No claim of predictive advantage or guaranteed result is made.
+The current implementation calibrates each lane's requested first-order inclusion marginals to an exact fixed-size conditional-Poisson (rejective) distribution, then samples subsets with the exact backward sampler. The calibration must converge and an independent marginal recomputation must meet the frozen maximum absolute residual tolerance of `1e-8`; otherwise generation fails closed.
 
-Cross-lane and within-lane duplicate tickets are preserved; no hidden deduplication or reroll is performed.
+This is a coherent joint distribution over legal fixed-size subsets, but its higher-order dependence structure is a rejective-sampling assumption. It is not evidence of the physical lottery mechanism and does not establish predictive advantage. The three lanes remain historical marginal heuristics, not physical ball-set models or three independently validated predictive models.
+
+The batch uses Python `random.Random` (MT19937) with deterministic lane seed derivation for reproducible research output. This is not a cryptographically secure randomness source and is not suitable as a security boundary. Cross-lane and within-lane duplicate tickets are preserved; no hidden deduplication or reroll is performed. No claim of predictive advantage or guaranteed result is made.
 
 
 ## One-command MVP runner
