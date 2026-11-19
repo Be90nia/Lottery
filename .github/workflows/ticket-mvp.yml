@@ -56,6 +56,8 @@ jobs:
           assert len(report["generation_run_id"]) == 64
           assert len(report["training_dataset_fingerprint"]) == 64
           ticket_ids = []
+          global_counts = {}
+          lane_presence = {}
           for lane, tickets in lanes.items():
               assert len(tickets) == 5, lane
               assert report["strategy_metadata"][lane]["ticket_count"] == 5
@@ -65,8 +67,23 @@ jobs:
                   assert all(type(n) is int and 1 <= n <= 35 for n in front)
                   assert len(back) == 2 and len(set(back)) == 2 and back == sorted(back)
                   assert all(type(n) is int and 1 <= n <= 12 for n in back)
+                  combination = (tuple(front), tuple(back))
+                  lane_counts[combination] = lane_counts.get(combination, 0) + 1
+                  global_counts[combination] = global_counts.get(combination, 0) + 1
+                  lane_presence.setdefault(combination, set()).add(lane)
                   ticket_ids.append(ticket["ticket_id"])
+              assert report["strategy_metadata"][lane]["unique_ticket_combinations"] == len(lane_counts)
+              assert report["strategy_metadata"][lane]["duplicate_ticket_count"] == sum(
+                  count - 1 for count in lane_counts.values()
+              )
           assert len(ticket_ids) == 15 and len(set(ticket_ids)) == 15
+          assert report["unique_ticket_combinations"] == len(global_counts)
+          assert report["duplicate_ticket_count"] == sum(
+              count - 1 for count in global_counts.values()
+          )
+          assert report["cross_lane_duplicate_combination_count"] == sum(
+              len(lanes) > 1 for lanes in lane_presence.values()
+          )
           print("verified 15 legal tickets across 3 provenance lanes")
           PY
       - name: Upload candidate report
