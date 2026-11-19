@@ -191,7 +191,7 @@ def reconcile_append_only(
         "validation": validation,
         "publication": "new local artifact only; no model training or promotion",
     }
-    _atomic_write(
+    _atomic_write_new(
         receipt_path,
         (json.dumps(receipt, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
     )
