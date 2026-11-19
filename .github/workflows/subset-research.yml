@@ -52,7 +52,7 @@ jobs:
           previous_sha="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["headSha"])' "$previous")"
           gh auth setup-git
           git fetch --no-tags origin "$previous_sha" --depth=1
-          if ! git diff --quiet "$previous_sha" "$RESEARCH_CODE_COMMIT" -- scripts/run_subset_rolling_origin.py src/lottery/subset_model; then
+          if ! git diff --quiet "$previous_sha" "$RESEARCH_CODE_COMMIT" -- scripts/run_subset_rolling_origin.py src/lottery/subset_model src/lottery/backtest.py .github/workflows/subset-research.yml; then
             echo "Evaluator source changed since run $previous_run; refusing checkpoint reuse."
             exit 0
           fi
