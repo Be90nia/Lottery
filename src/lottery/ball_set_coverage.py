@@ -233,22 +233,36 @@ def build_ball_set_coverage(
         if status == "primary_verified":
             verified_rows.append(row_report)
 
-    out_of_inventory_records = [
-        {
+    out_of_inventory_records = []
+    out_of_inventory_raw_verified = 0
+    out_of_inventory_raw_invalid = 0
+    for item in observations:
+        if item.get("draw_id") in inventory_by_id:
+            continue
+        evidence_status, evidence_label, evidence_url = _verify_observation(
+            item, {"draw_id": item.get("draw_id"), "draw_date": item.get("draw_date")}, archive_dir
+        )
+        if evidence_status in ("primary_verified", "missing_label", "unsupported_label"):
+            out_of_inventory_raw_verified += 1
+        elif evidence_status in ("raw_evidence_invalid", "parse_error"):
+            out_of_inventory_raw_invalid += 1
+        pending_status = "official_label_pending_inventory" if evidence_status == "primary_verified" else evidence_status
+        out_of_inventory_records.append({
             "draw_id": item.get("draw_id"),
             "draw_date": item.get("draw_date"),
-            "reported_set_index": item.get("reported_set_index"),
+            "reported_set_index": evidence_label if evidence_status == "primary_verified" else None,
             "observation_id": item.get("observation_id"),
-            "observation_status": item.get("observation_status"),
-            "source_url": item.get("source", {}).get("final_url"),
+            "observation_status": pending_status,
+            "source_url": evidence_url or item.get("source", {}).get("final_url"),
             "inventory_crosswalk_status": "not_in_inventory",
+            "raw_evidence_verified": evidence_status in (
+                "primary_verified", "missing_label", "unsupported_label"
+            ),
             "equipment_regime_id": None,
             "physical_ball_set_id": None,
             "eligible": False,
-            "exclusion_reason": "inventory_crosswalk_pending",
-        }
-        for item in observations if item.get("draw_id") not in inventory_by_id
-    ]
+            "exclusion_reason": "inventory_crosswalk_pending" if evidence_status == "primary_verified" else evidence_status,
+        })
     out_of_inventory = len(out_of_inventory_records)
     collector_receipt_path = archive_dir / "receipt.json"
     collector_receipt = None
@@ -375,6 +389,8 @@ def build_ball_set_coverage(
         "observation_count": len(observations),
         "out_of_inventory_observation_count": out_of_inventory,
         "out_of_inventory_observations": out_of_inventory_records,
+        "out_of_inventory_raw_objects_verified": out_of_inventory_raw_verified,
+        "out_of_inventory_raw_objects_invalid": out_of_inventory_raw_invalid,
         "parser_versions": sorted(parser_versions | {PARSER_VERSION}),
         "source_domains": sorted(by_source_domain),
         "summary": {
@@ -391,6 +407,8 @@ def build_ball_set_coverage(
             "set_index_counts": {str(i): per_set[str(i)]["primary_verified_draws"] for i in (1, 2, 3)},
             "raw_observation_objects_verified": raw_verified,
             "raw_observation_objects_invalid": raw_invalid,
+            "out_of_inventory_raw_objects_verified": out_of_inventory_raw_verified,
+            "out_of_inventory_raw_objects_invalid": out_of_inventory_raw_invalid,
             "regime_assignment_count": 0,
             "regime_assignment_coverage_rate": 0.0,
             "eligible_slot_targets": 0,
