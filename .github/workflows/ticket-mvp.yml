@@ -7,9 +7,11 @@ on:
       - "src/lottery/conditional_poisson.py"
       - "tests/test_tickets.py"
       - "src/lottery/mvp.py"
+      - "src/lottery/validate.py"
       - "scripts/generate_tickets.py"
       - "scripts/run_mvp.py"
       - "tests/test_mvp.py"
+      - "tests/test_validate.py"
       - "docs/TICKET_MVP_BATCH_CONTRACT.md"
       - "data/candidates/pinned-draws-20261118.jsonl"
       - "data/candidates/pinned-draws-20261118.jsonl.manifest.json"
@@ -57,6 +59,8 @@ jobs:
           assert len(receipt["dataset_manifest_sha256"]) == 64
           assert report["dataset"]["trust_status"] == "manifest_complete_not_officially_authenticated"
           assert len(report["dataset"]["manifest_sha256"]) == 64
+          assert report["dataset"]["manifest_sha256"] == receipt["dataset_manifest_sha256"]
+          assert report["dataset"]["sha256"] == receipt["dataset_sha256"]
           assert report["dataset"]["validation"]["records"] == 2949
           assert report["dataset"]["validation"]["last_draw"] == "26131"
           assert report["strategy_semantics"]["physical_ball_set_models"] == "not_implemented"
