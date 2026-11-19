@@ -73,6 +73,9 @@ def write_manifest(candidate, manifest_path, snapshots_dir):
         "run_id": "fixture-fetch-run",
         "retrieved_at": retrieved_at,
     }
+    for item in rows:
+        item["source_id"] = f"sha256:{digest}"
+    write_rows(candidate, rows)
     sidecar_name = "page-001.manifest.json"
     (snapshots_dir / sidecar_name).write_text(
         json.dumps(sidecar, sort_keys=True), encoding="utf-8"
@@ -227,8 +230,11 @@ class AppendOnlyTests(unittest.TestCase):
         rows = self.old + [row("26132", "2026-11-18")]
         self.prepare(rows)
         changed = rows[:-1] + [row("26132", "2026-11-18", [1, 2, 3, 4, 6])]
-        write_rows(self.candidate, changed)
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        source_digest = manifest["source_completeness_attestation"]["pages"][0]["sha256"]
+        for item in changed:
+            item["source_id"] = f"sha256:{source_digest}"
+        write_rows(self.candidate, changed)
         manifest["output_sha256"] = hashlib.sha256(self.candidate.read_bytes()).hexdigest()
         self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
         with self.assertRaisesRegex(AppendOnlyError, "do not exactly reconcile"):
