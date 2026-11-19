@@ -38,6 +38,7 @@ After collection, rebuild the evidence-derived coverage report:
 python scripts/build_ball_set_coverage.py \
   --draw-inventory data/candidates/legacy_draws.jsonl \
   --ledger data/evidence/ball-set-archive/observations.jsonl \
+  --draw-result-ledger data/evidence/ball-set-archive/draw-results.jsonl \
   --archive-dir data/evidence/ball-set-archive \
   --output-json data/evidence/ball-set-archive/coverage/coverage.json \
   --output-csv data/evidence/ball-set-archive/coverage/per-draw.csv \
