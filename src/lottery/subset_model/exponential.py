@@ -57,6 +57,10 @@ class FitResult:
     message: str
 
 
+PINNED_NUMPY_VERSION = "2.2.6"
+PINNED_SCIPY_VERSION = "1.15.3"
+
+
 class ExponentialFamily:
     """A normalized distribution over the complete unordered-subset support."""
 
@@ -225,12 +229,19 @@ class ExponentialFamily:
         )
 
         try:
+            import numpy
             import scipy
             from scipy.optimize import minimize
         except ImportError as exc:
             raise RuntimeError(
-                "SciPy is required for the preregistered L-BFGS-B subset-model solver"
+                "SciPy and NumPy are required for the preregistered L-BFGS-B subset-model solver"
             ) from exc
+        if numpy.__version__ != PINNED_NUMPY_VERSION or scipy.__version__ != PINNED_SCIPY_VERSION:
+            raise RuntimeError(
+                "exact-subset solver requires NumPy "
+                f"{PINNED_NUMPY_VERSION} and SciPy {PINNED_SCIPY_VERSION}; "
+                f"found NumPy {numpy.__version__} and SciPy {scipy.__version__}"
+            )
 
         def objective_and_jacobian(parameters):
             theta_values = tuple(float(value) for value in parameters)
