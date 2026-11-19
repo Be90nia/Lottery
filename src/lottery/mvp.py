@@ -91,7 +91,8 @@ def run_mvp(
             handle.write(rendered)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, output_path)
+        os.link(temporary, output_path)
+        temporary.unlink(missing_ok=True)
     except Exception:
         temporary.unlink(missing_ok=True)
         raise
