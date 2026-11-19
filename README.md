@@ -41,6 +41,7 @@
 - [初步随机基线结果](docs/BASELINE_RESULTS.md)
 - [MVP 首轮样本外评估](docs/TICKET_MVP_RESULTS.md)
 - [自动开奖同步 MVP](docs/AUTO_DRAW_SYNC_MVP.md)
+- [追加式开奖数据发布门禁](docs/APPEND_ONLY_DRAW_PUBLICATION.md)
 - [任务清单](TASKS.md)
 - [测试计划](TEST_PLAN.md)
 
