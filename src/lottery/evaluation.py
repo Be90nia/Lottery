@@ -91,11 +91,15 @@ def build_evaluation_receipt(
         raise EvaluationGateError("protocol_version must be a non-empty string")
     if scope not in ("rolling_origin", "shadow"):
         raise EvaluationGateError("scope must be rolling_origin or shadow; prospective holdout is forbidden")
-    if (type(min_targets) is not int or min_targets < 2
-            or type(replicates) is not int or replicates < 100
-            or type(block_length) is not int or block_length < 1
-            or type(seed) is not int):
-        raise EvaluationGateError("invalid frozen evaluation thresholds or seed")
+    if (type(min_targets) is not int or min_targets < 200
+            or type(replicates) is not int or replicates < 1000
+            or type(block_length) is not int or block_length < 50
+            or block_length > min_targets // 2
+            or type(seed) is not int or seed < 0):
+        raise EvaluationGateError(
+            "frozen gate requires >=200 targets, >=1000 replicates, "
+            "50<=block_length<=min_targets/2, and a non-negative integer seed"
+        )
 
     rows = list(score_rows)
     if len(rows) < min_targets:
