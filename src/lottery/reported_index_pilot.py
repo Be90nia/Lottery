@@ -80,8 +80,10 @@ def _verify_view(view_path: Path, manifest_path: Path) -> tuple[list[dict[str, A
         raise ReportedIndexPilotError("reported-index view differs from frozen pilot inventory")
     if (manifest.get("training_eligibility") != "blocked_regime_unresolved"
             or manifest.get("physical_model_eligibility") != "blocked_regime_unresolved"
-            or manifest.get("physical_identity_claim") != "none"):
-        raise ReportedIndexPilotError("view unexpectedly resolves physical identity or regime eligibility")
+            or manifest.get("physical_identity_claim") != "none"
+            or manifest.get("inventory_trust_status") != "candidate_unverified"
+            or manifest.get("model_scope") != "reported_set_index_only_not_physical_identity"):
+        raise ReportedIndexPilotError("view unexpectedly resolves physical identity, regime eligibility, or trust status")
 
     validated = _validate_rows(rows)
     if len(validated) != len(rows):
@@ -105,8 +107,14 @@ def _verify_view(view_path: Path, manifest_path: Path) -> tuple[list[dict[str, A
                 or row.get("eligible_for_physical_model") is not False
                 or row.get("training_eligibility") != "blocked_regime_unresolved"
                 or row.get("equipment_regime_id") is not None
-                or row.get("physical_ball_set_id") is not None):
-            raise ReportedIndexPilotError("view row crosses the preregistered physical-regime boundary")
+                or row.get("physical_ball_set_id") is not None
+                or row.get("evidence_status") != "primary_verified"
+                or row.get("model_scope") != "reported_set_index_only_not_physical_identity"
+                or row.get("inventory_sha256") != manifest["inventory_sha256"]
+                or row.get("coverage_report_sha256") != manifest["coverage_report_sha256"]
+                or row.get("observation_ledger_sha256") != manifest["observation_ledger_sha256"]
+                or not isinstance(row.get("source_id"), str) or not row["source_id"]):
+            raise ReportedIndexPilotError("view row crosses the preregistered physical-regime boundary or has invalid provenance")
         counts[str(index)] += 1
     if counts != PILOT_EXPECTED_SET_COUNTS:
         raise ReportedIndexPilotError("view set-index counts differ from frozen pilot counts")
