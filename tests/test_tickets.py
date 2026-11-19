@@ -26,9 +26,16 @@ class TicketCandidateTests(unittest.TestCase):
     def test_returns_three_distinct_strategy_lanes_and_legal_tickets(self):
         result = generate_ticket_candidates(self.rows, tickets_per_strategy=4)
         self.assertEqual(set(result["strategies"]), {"uniform", "expanding", "ewma"})
-        for tickets in result["strategies"].values():
+        self.assertEqual(result["total_tickets"], 12)
+        self.assertEqual(result["tickets_per_strategy"], 4)
+        self.assertEqual(len(result["generation_run_id"]), 64)
+        self.assertEqual(set(result["strategy_metadata"]), {"uniform", "expanding", "ewma"})
+        for strategy, tickets in result["strategies"].items():
+            self.assertEqual(result["strategy_metadata"][strategy]["ticket_count"], 4)
+            self.assertEqual(result["strategy_metadata"][strategy]["training_cutoff_draw_id"], self.rows[-1]["draw_id"])
             self.assertEqual(len(tickets), 4)
             for ticket in tickets:
+                self.assertEqual(len(ticket["ticket_id"]), 24)
                 self.assertEqual(len(ticket["front_numbers"]), 5)
                 self.assertEqual(len(set(ticket["front_numbers"])), 5)
                 self.assertTrue(all(1 <= n <= 35 for n in ticket["front_numbers"]))
@@ -40,6 +47,7 @@ class TicketCandidateTests(unittest.TestCase):
         first = generate_ticket_candidates(self.rows, tickets_per_strategy=3, seed=91)
         second = generate_ticket_candidates(self.rows, tickets_per_strategy=3, seed=91)
         self.assertEqual(first["strategies"], second["strategies"])
+        self.assertEqual(first["generation_run_id"], second["generation_run_id"])
 
     def test_invalid_configuration_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "positive integer"):
@@ -76,6 +84,10 @@ class TicketCandidateTests(unittest.TestCase):
             self.assertEqual(len(report["strategies"]["uniform"]), 2)
             self.assertEqual(len(report["strategies"]["expanding"]), 2)
             self.assertEqual(len(report["strategies"]["ewma"]), 2)
+
+    def test_generation_limit_is_enforced(self):
+        with self.assertRaisesRegex(ValueError, "1..100"):
+            generate_ticket_candidates(self.rows, tickets_per_strategy=101)
 
     def test_duplicate_draws_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "duplicate"):
