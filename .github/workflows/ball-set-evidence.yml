@@ -4,6 +4,29 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 16 * * *"
+  push:
+    branches:
+      - "feat/integrate-reported-set-evidence"
+    paths:
+      - ".github/workflows/ball-set-evidence.yml"
+      - "config/ball_set_source_registry.json"
+      - "src/lottery/ball_set_evidence.py"
+      - "src/lottery/ball_set_coverage.py"
+      - "src/lottery/reported_set_index.py"
+      - "src/lottery/ingest.py"
+      - "src/lottery/validate.py"
+      - "tests/test_validate.py"
+      - "tests/test_ball_set_evidence.py"
+      - "tests/test_ball_set_coverage.py"
+      - "tests/test_reported_set_index.py"
+      - "scripts/collect_ball_set_evidence.py"
+      - "scripts/build_ball_set_coverage.py"
+      - "scripts/build_reported_set_index_view.py"
+      - "docs/REPORTED_SET_INDEX_CONDITIONAL_MODEL_PREREGISTRATION.md"
+      - "docs/BALL_SET_EVIDENCE_ARCHIVE.md"
+      - "README.md"
+      - "data/ball_set/draw-inventory-20261118.jsonl"
+      - "data/ball_set/draw-inventory-20261118.jsonl.manifest.json"
   pull_request:
     paths:
       - ".github/workflows/ball-set-evidence.yml"
