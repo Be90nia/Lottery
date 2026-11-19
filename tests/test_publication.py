@@ -190,6 +190,12 @@ class AppendOnlyPublicationTests(unittest.TestCase):
         receipt = self.run_gate()
         self.assertEqual(receipt["added_draw_ids"], ["27001"])
 
+    def test_receipt_cannot_alias_output_manifest_path(self):
+        self.receipt = self.output.with_suffix(self.output.suffix + ".manifest.json")
+        with self.assertRaisesRegex(PublicationError, "paths must be distinct"):
+            self.run_gate()
+        self.assertFalse(self.output.exists())
+
     def test_existing_output_manifest_is_never_overwritten(self):
         sidecar = self.output.with_suffix(self.output.suffix + ".manifest.json")
         sidecar.write_text("prior manifest", encoding="utf-8")
