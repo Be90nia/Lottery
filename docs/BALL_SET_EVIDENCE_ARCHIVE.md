@@ -16,7 +16,8 @@ python scripts/collect_ball_set_evidence.py \
   --archive-dir data/evidence/ball-set-archive \
   --ledger data/evidence/ball-set-observations.jsonl \
   --receipt data/evidence/ball-set-receipt.json \
-  --draw-inventory data/candidates/legacy_draws.jsonl
+  --draw-inventory data/candidates/legacy_draws.jsonl \
+  --draw-result-ledger data/evidence/ball-set-archive/draw-results.jsonl
 ```
 
 The JSONL ledger is append-only, uses the shared OS-level ledger lock, and carries a SHA-256 event chain (`prev_hash`/`event_hash`) that is verified before every append and coverage build. Identical response bytes are idempotent. Changed bytes from the same URL always create a new immutable observation version and preserve prior bytes. If draw date and explicit set label are unchanged, the version is `source_revision_same_semantics`; if either changes, it is `source_revision_requires_review` and blocks the verified view. Disagreement between official sources creates a conflict record. Missing labels remain `missing_label`. Draw ID/date mismatches and malformed pages fail closed.
