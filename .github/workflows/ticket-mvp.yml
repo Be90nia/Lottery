@@ -22,18 +22,26 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
-      - name: Generate reproducible candidate tickets from the checked-in history
+      - name: Run the auditable MVP pipeline on the checked-in candidate history
         env:
           PYTHONPATH: src
         run: |
-          python scripts/generate_tickets.py data/candidates/legacy_draws.jsonl \
-            --tickets 5 --seed 20261119 --output ticket-candidates.json
+          python scripts/run_mvp.py --dataset data/candidates/legacy_draws.jsonl \
+            --tickets-per-strategy 5 --seed 20261119 --output mvp-output.json
       - name: Verify complete 3-lane batch and provenance
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          report = json.loads(Path("ticket-candidates.json").read_text(encoding="utf-8"))
+          document = json.loads(Path("mvp-output.json").read_text(encoding="utf-8"))
+          report = document["batch"]
+          receipt = document["receipt"]
+          assert receipt["status"] == "candidate_batch_generated"
+          assert receipt["published_ticket_count"] == 15
+          assert receipt["data_trust_status"] == "not_authenticated_by_this_tool"
+          assert receipt["automatic_sync_status"] == "not_attempted"
+          assert receipt["model_training_status"] == "not_performed"
+          assert receipt["model_promotion_status"] == "not_performed" 
           lanes = report["strategies"]
           assert set(lanes) == {"uniform", "expanding", "ewma"}
           assert report["tickets_per_strategy"] == 5
@@ -58,5 +66,5 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ticket-mvp-candidates
-          path: ticket-candidates.json
+          path: mvp-output.json
           retention-days: 30
