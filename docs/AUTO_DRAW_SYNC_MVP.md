@@ -10,6 +10,10 @@ The workflow is deliberately read-only with respect to the repository: it has `c
 
 The official endpoint has previously returned HTTP 567 from GitHub-hosted runners. Until an authorized source path is consistently reachable and completeness can be independently established, automatically publishing fetched rows would risk silently truncating or corrupting history. The workflow therefore archives candidate evidence only; it does not publish canonical history, write forecast/outcome ledgers, train models, promote a model, or consume the isolated LOT-042 prospective holdout. The append-only publication gate is now executed inside the workflow, but its output is still only a new artifact rather than a canonical repository update.
 
+## Independent Jiangsu A2 source path
+
+The separate [ball-set evidence workflow](BALL_SET_EVIDENCE_ARCHIVE.md) also captures Jiangsu Provincial Sports Lottery per-draw announcement pages. Those pages expose both the official front/back result and draw order, in addition to the reported set index. The workflow cross-checks all 1,067 primary-verified overlap results against the pinned inventory, rejects any historical mismatch, and appends only strictly sequential new draw IDs to a separate candidate dataset. It then runs the standard ticket MVP against that candidate. This provides an independent current-draw path when the Sporttery API is inaccessible, without bypassing its edge controls or modifying canonical data.
+
 The collector currently stops on an empty or short page. That behavior is not, by itself, proof that all historical pages were returned. A later promotion of this workflow from candidate archive to canonical sync must add and test source-side completeness reconciliation, monotonic draw-ID/date checks across the entire page set, correction/revision event handling, and an append-only canonical update transaction.
 
 ## MVP acceptance gates
