@@ -19,7 +19,7 @@ RESULT_STATUSES = {
     "inventory_matched", "pending_inventory", "draw_mismatch",
     "draw_result_mismatch", "missing_draw_result", "invalid_draw_result",
     "source_revision_same_semantics", "source_revision_requires_review",
-    "conflict", "inventory_missing_after_match",
+    "conflict", "inventory_missing_after_match", "source_authority_unverified",
 }
 
 
@@ -93,7 +93,9 @@ def append_draw_result(
     inventory: dict[str, dict[str, Any]], inventory_sha256: str, ledger_path: Path,
 ) -> dict[str, Any]:
     source_url = fetched["final_url"]
-    if parsed.draw_result_status != "parsed":
+    if not parsed.authority_footer_present:
+        status = "source_authority_unverified"
+    elif parsed.draw_result_status != "parsed":
         status = parsed.draw_result_status
     elif parsed.draw_id not in inventory:
         status = "pending_inventory"
@@ -128,6 +130,7 @@ def append_draw_result(
                 and supersedes.get("front_numbers") == list(parsed.front_numbers or ())
                 and supersedes.get("back_numbers") == list(parsed.back_numbers or ())
                 and parsed.draw_result_status == "parsed"
+                and parsed.authority_footer_present
                 and status in ("inventory_matched", "pending_inventory")
                 and supersedes.get("draw_result_status") not in (
                     "draw_result_mismatch", "draw_mismatch", "source_revision_requires_review", "conflict",
@@ -188,7 +191,7 @@ def verify_draw_result_record(
     source = record["source"]
     if record["draw_result_status"] in (
         "draw_result_mismatch", "draw_mismatch", "source_revision_requires_review",
-        "conflict", "missing_draw_result", "invalid_draw_result",
+        "conflict", "missing_draw_result", "invalid_draw_result", "source_authority_unverified",
     ):
         return {"status": record["draw_result_status"], "front_numbers": None, "back_numbers": None}
     if inventory_row is None and record.get("inventory_crosswalk_at_capture", {}).get("status") == "inventory_matched":
