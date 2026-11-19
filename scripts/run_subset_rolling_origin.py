@@ -109,8 +109,19 @@ def _checkpoint_record_hash(record: dict) -> str:
 
 def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
                                 uniform_nll: float) -> None:
-    if not isinstance(record, dict) or record.get("record_type") != "target":
+    expected_record_keys = {
+        "record_type", "target_draw_id", "training_count", "training_cutoff_draw_id",
+        "fit_statuses", "exact_set_nll", "candidate_iterations",
+        "candidate_gradient_infinity_norm", "record_sha256",
+    }
+    if (not isinstance(record, dict) or set(record) != expected_record_keys
+            or record.get("record_type") != "target"):
         raise ValueError("checkpoint target record has invalid shape")
+    if type(record.get("candidate_iterations")) is not int or record["candidate_iterations"] < 0:
+        raise ValueError("checkpoint candidate iteration count is invalid")
+    gradient = record.get("candidate_gradient_infinity_norm")
+    if type(gradient) not in (int, float) or not math.isfinite(gradient):
+        raise ValueError("checkpoint candidate gradient diagnostic is invalid")
     expected_statuses = {"candidate", "expanding", "ewma"}
     expected_scores = {"uniform", "expanding", "ewma", "exponential_family"}
     if not isinstance(record.get("fit_statuses"), dict) or set(record["fit_statuses"]) != expected_statuses:
