@@ -13,8 +13,12 @@ class CanonicalArtifactTests(unittest.TestCase):
 
     def test_ecmascript_number_formatting_golden(self):
         value = {"numbers": [333333333.33333329, 1e30, 4.5, 2e-3, 1e-27]}
-        self.assertEqual(canonicalize(value).decode("utf-8"),
+        canonical = canonicalize(value)
+        self.assertEqual(canonical.decode("utf-8"),
                          '{"numbers":[333333333.3333333,1e+30,4.5,0.002,1e-27]}')
+        import hashlib
+        self.assertEqual(hashlib.sha256(canonical).hexdigest(),
+                         "7c892d3452ad85ad65857a43e8dcac93b79475d2334fc3e85bac5c599142c158")
 
     def test_string_escaping_and_utf16_key_order(self):
         value = {"€": "€", "a": "line\\nfeed", "😀": "face"}
