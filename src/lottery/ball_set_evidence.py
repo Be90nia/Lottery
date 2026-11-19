@@ -45,15 +45,30 @@ class ParsedAnnouncement:
     authority_footer_present: bool
 
 
+@dataclass(frozen=True)
+class ParsedDrawResult:
+    front_numbers: tuple[int, ...]
+    back_numbers: tuple[int, ...]
+    front_draw_order: tuple[int, ...]
+    back_draw_order: tuple[int, ...]
+
+
 class _AnnouncementHTMLParser(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.text_parts: list[str] = []
         self.anchors: list[tuple[str, str]] = []
+        self.table_rows: list[list[str]] = []
+        self._table_row: list[str] | None = None
+        self._table_cell: list[str] | None = None
         self._anchor_href: str | None = None
         self._anchor_parts: list[str] = []
 
     def handle_starttag(self, tag, attrs):
+        if tag.lower() == "tr":
+            self._table_row = []
+        elif tag.lower() == "td" and self._table_row is not None:
+            self._table_cell = []
         if tag.lower() == "a":
             self._anchor_href = dict(attrs).get("href")
             self._anchor_parts = []
@@ -61,6 +76,12 @@ class _AnnouncementHTMLParser(HTMLParser):
             self.text_parts.append("\n")
 
     def handle_endtag(self, tag):
+        if tag.lower() == "td" and self._table_cell is not None and self._table_row is not None:
+            self._table_row.append(" ".join("".join(self._table_cell).split()))
+            self._table_cell = None
+        elif tag.lower() == "tr" and self._table_row is not None:
+            self.table_rows.append(self._table_row)
+            self._table_row = None
         if tag.lower() == "a" and self._anchor_href is not None:
             self.anchors.append((self._anchor_href, "".join(self._anchor_parts)))
             self._anchor_href = None
@@ -71,6 +92,8 @@ class _AnnouncementHTMLParser(HTMLParser):
     def handle_data(self, data):
         if data:
             self.text_parts.append(data)
+            if self._table_cell is not None:
+                self._table_cell.append(data)
             if self._anchor_href is not None:
                 self._anchor_parts.append(data)
 
@@ -97,6 +120,51 @@ def _allowed_url(url: str) -> None:
             or parsed.port not in (None, 443) or parsed.username is not None
             or parsed.password is not None or parsed.fragment):
         raise BallSetEvidenceError(f"source URL is not an approved official Jiangsu host: {url}")
+
+
+def parse_draw_result(
+    raw: bytes, source_url: str, content_type: str = "text/html; charset=utf-8"
+) -> ParsedDrawResult:
+    """Parse official front/back results and draw order from a Jiangsu announcement."""
+    _allowed_url(source_url)
+    html = _decode_html(raw, content_type)
+    parser = _AnnouncementHTMLParser()
+    parser.feed(html)
+    parser.close()
+    order_rows = [row for row in parser.table_rows if row and "本期出球顺序" in row[0]]
+    result_rows = [row for row in parser.table_rows if row and "本期开奖号码" in row[0]]
+    if len(order_rows) != 1 or len(result_rows) != 1:
+        raise BallSetEvidenceError(
+            "announcement must contain exactly one draw-order row and one draw-result row"
+        )
+    if len(order_rows[0]) < 3 or len(result_rows[0]) < 3:
+        raise BallSetEvidenceError("draw result table is missing front/back cells")
+
+    def parse_zone(cell: str, *, count: int, maximum: int, label: str) -> tuple[int, ...]:
+        values = tuple(int(value) for value in re.findall(r"\\d+", cell))
+        if (len(values) != count or len(set(values)) != count
+                or any(value < 1 or value > maximum for value in values)):
+            raise BallSetEvidenceError(
+                f"{label} must contain {count} distinct values in 1..{maximum}"
+            )
+        return values
+
+    front_order = parse_zone(order_rows[0][1], count=5, maximum=35, label="front draw order")
+    back_order = parse_zone(order_rows[0][2], count=2, maximum=12, label="back draw order")
+    front_numbers = tuple(sorted(
+        parse_zone(result_rows[0][1], count=5, maximum=35, label="front result")
+    ))
+    back_numbers = tuple(sorted(
+        parse_zone(result_rows[0][2], count=2, maximum=12, label="back result")
+    ))
+    if set(front_order) != set(front_numbers) or set(back_order) != set(back_numbers):
+        raise BallSetEvidenceError("draw order values do not match the official result numbers")
+    return ParsedDrawResult(
+        front_numbers=front_numbers,
+        back_numbers=back_numbers,
+        front_draw_order=front_order,
+        back_draw_order=back_order,
+    )
 
 
 def parse_announcement(raw: bytes, source_url: str, content_type: str = "text/html; charset=utf-8") -> ParsedAnnouncement:
