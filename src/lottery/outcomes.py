@@ -29,7 +29,16 @@ class OutcomeLedgerError(ValueError):
     """Raised when an outcome cannot safely be recorded or scored."""
 
 
+_OUTCOME_EVENT_KEYS = {
+    "event_type", "recorded_at", "target_draw_id", "forecast_event_hash",
+    "published_at", "captured_at", "source_url", "source_http_status",
+    "source_snapshot_sha256", "front_numbers", "back_numbers",
+}
+
+
 def _aware(value: str, field: str) -> datetime:
+    if not isinstance(value, str):
+        raise OutcomeLedgerError(f"{field} must be an ISO-8601 timestamp string")
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
@@ -58,9 +67,13 @@ def _read_events(path: Path) -> list[dict[str, Any]]:
 
 
 def _validate_outcome_payload(event: dict[str, Any]) -> None:
+    if not isinstance(event, dict) or set(event) != _OUTCOME_EVENT_KEYS:
+        raise OutcomeLedgerError("outcome event has an invalid schema")
+    if event.get("event_type") != "post_draw_outcome":
+        raise OutcomeLedgerError("outcome event_type must be post_draw_outcome")
     target = event.get("target_draw_id")
-    if not isinstance(target, str) or not target:
-        raise OutcomeLedgerError("outcome target_draw_id must be a non-empty string")
+    if not isinstance(target, str) or not target.strip() or target != target.strip():
+        raise OutcomeLedgerError("outcome target_draw_id must be a non-empty trimmed string")
     forecast_hash = event.get("forecast_event_hash")
     if (not isinstance(forecast_hash, str) or len(forecast_hash) != 64
             or any(c not in "0123456789abcdef" for c in forecast_hash)):
@@ -72,18 +85,25 @@ def _validate_outcome_payload(event: dict[str, Any]) -> None:
         raise OutcomeLedgerError("capture timestamp precedes publication timestamp")
     if recorded < capture:
         raise OutcomeLedgerError("recorded_at precedes capture timestamp")
-    parsed = urlparse(event.get("source_url", ""))
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or not (host == "sporttery.cn" or host.endswith(".sporttery.cn")):
-        raise OutcomeLedgerError("source URL must use HTTPS on an official sporttery.cn host")
-    if event.get("source_http_status") != 200:
-        raise OutcomeLedgerError("source HTTP status must be 200")
+    source_url = event.get("source_url")
+    if not isinstance(source_url, str):
+        raise OutcomeLedgerError("source URL must be a string")
+    parsed = urlparse(source_url)
+    query = parse_qs(parsed.query)
+    if (parsed.scheme != "https" or parsed.hostname != "webapi.sporttery.cn"
+            or parsed.path != "/gateway/lottery/getHistoryPageListV1.qry"
+            or query.get("gameNo") != ["85"]):
+        raise OutcomeLedgerError("source URL must be the official Sporttery history endpoint for gameNo=85")
+    if type(event.get("source_http_status")) is not int or event.get("source_http_status") != 200:
+        raise OutcomeLedgerError("source HTTP status must be integer 200")
     digest = event.get("source_snapshot_sha256")
     if (not isinstance(digest, str) or len(digest) != 64
             or any(c not in "0123456789abcdef" for c in digest)):
         raise OutcomeLedgerError("source snapshot SHA-256 must be 64 lowercase hex characters")
     _validate_numbers(event.get("front_numbers"), FRONT_SIZE, FRONT_PICK, "front_numbers")
     _validate_numbers(event.get("back_numbers"), BACK_SIZE, BACK_PICK, "back_numbers")
+    if event["front_numbers"] != sorted(event["front_numbers"]) or event["back_numbers"] != sorted(event["back_numbers"]):
+        raise OutcomeLedgerError("outcome number arrays must be in canonical ascending order")
 
 
 def _verify_chain(path: Path, event_type: str) -> dict[str, Any]:
@@ -96,8 +116,12 @@ def _verify_chain(path: Path, event_type: str) -> dict[str, Any]:
         if body.get("event_type") != event_type:
             raise OutcomeLedgerError(f"line {line_no}: unexpected event type")
         if event_type == "post_draw_outcome":
-            _validate_outcome_payload(body)
-        if body.get("sequence") != count + 1:
+            payload = {
+                key: value for key, value in body.items()
+                if key not in ("sequence", "previous_event_hash")
+            }
+            _validate_outcome_payload(payload)
+        if type(body.get("sequence")) is not int or body.get("sequence") != count + 1:
             raise OutcomeLedgerError(f"line {line_no}: sequence is not contiguous")
         if body.get("previous_event_hash") != previous:
             raise OutcomeLedgerError(f"line {line_no}: previous hash does not match")
@@ -111,8 +135,35 @@ def _verify_chain(path: Path, event_type: str) -> dict[str, Any]:
     return {"events": count, "last_event_hash": previous}
 
 
-def verify_outcome_ledger(path: Path) -> dict[str, Any]:
-    return _verify_chain(path, "post_draw_outcome")
+def _validate_forecast_link(event: dict[str, Any], forecasts: dict[str, dict[str, Any]]) -> None:
+    forecast = forecasts.get(event["target_draw_id"])
+    if forecast is None:
+        raise OutcomeLedgerError(
+            f"no pre-draw forecast exists for target {event['target_draw_id']}"
+        )
+    if forecast.get("event_hash") != event.get("forecast_event_hash"):
+        raise OutcomeLedgerError(
+            f"outcome {event['target_draw_id']} does not link to its forecast event"
+        )
+    if _aware(event["published_at"], "published_at") < _aware(
+        forecast["target_draw_at"], "forecast target_draw_at"
+    ):
+        raise OutcomeLedgerError(
+            f"outcome {event['target_draw_id']} was published before its target draw time"
+        )
+
+
+def verify_outcome_ledger(path: Path, forecast_path: Path | None = None) -> dict[str, Any]:
+    state = _verify_chain(path, "post_draw_outcome")
+    if forecast_path is not None:
+        forecasts = _forecast_events(forecast_path)
+        for event in _read_events(path):
+            payload = {
+                key: value for key, value in event.items()
+                if key not in ("sequence", "previous_event_hash", "event_hash")
+            }
+            _validate_forecast_link(payload, forecasts)
+    return state
 
 
 def _validate_numbers(values: list[int], size: int, pick: int, field: str) -> None:
@@ -165,6 +216,8 @@ def create_outcome_event(
         raise OutcomeLedgerError(f"no pre-draw forecast exists for target {target_draw_id}")
     publication = _aware(published_at, "published_at")
     capture = _aware(captured_at, "captured_at")
+    if recorded_at is not None and not isinstance(recorded_at, datetime):
+        raise OutcomeLedgerError("recorded_at must be a timezone-aware datetime")
     recorded = recorded_at or datetime.now(timezone.utc)
     if recorded.tzinfo is None or recorded.utcoffset() is None:
         raise OutcomeLedgerError("recorded_at must include a timezone")
@@ -175,12 +228,16 @@ def create_outcome_event(
         raise OutcomeLedgerError("capture timestamp precedes publication timestamp")
     if recorded < capture:
         raise OutcomeLedgerError("recorded_at precedes capture timestamp")
+    if not isinstance(source_url, str):
+        raise OutcomeLedgerError("source URL must be a string")
     parsed = urlparse(source_url)
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or not (host == "sporttery.cn" or host.endswith(".sporttery.cn")):
-        raise OutcomeLedgerError("source URL must use HTTPS on an official sporttery.cn host")
-    if http_status != 200:
-        raise OutcomeLedgerError("source HTTP status must be 200")
+    query = parse_qs(parsed.query)
+    if (parsed.scheme != "https" or parsed.hostname != "webapi.sporttery.cn"
+            or parsed.path != "/gateway/lottery/getHistoryPageListV1.qry"
+            or query.get("gameNo") != ["85"]):
+        raise OutcomeLedgerError("source URL must be the official Sporttery history endpoint for gameNo=85")
+    if type(http_status) is not int or http_status != 200:
+        raise OutcomeLedgerError("source HTTP status must be integer 200")
     if not isinstance(source_sha256, str) or len(source_sha256) != 64 or any(
         c not in "0123456789abcdef" for c in source_sha256
     ):
@@ -238,13 +295,17 @@ def create_outcome_event_from_snapshot(
         recorded_at=recorded_at,
     )
 
-def append_outcome(path: Path, event: dict[str, Any]) -> dict[str, Any]:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def append_outcome(
+    path: Path, event: dict[str, Any], forecast_path: Path
+) -> dict[str, Any]:
     _validate_outcome_payload(event)
+    forecasts = _forecast_events(forecast_path)
+    _validate_forecast_link(event, forecasts)
+    path.parent.mkdir(parents=True, exist_ok=True)
     # Lock before reading the chain: sequence, previous hash, duplicate check,
     # and append must be one cross-process transaction.
     with ledger_lock(path):
-        state = verify_outcome_ledger(path)
+        state = verify_outcome_ledger(path, forecast_path)
         existing = {item.get("target_draw_id") for item in _read_events(path)}
         if event["target_draw_id"] in existing:
             raise OutcomeLedgerError(f"outcome already exists for target {event['target_draw_id']}")
@@ -261,7 +322,7 @@ def append_outcome(path: Path, event: dict[str, Any]) -> dict[str, Any]:
 
 def score_ledgers(forecast_path: Path, outcome_path: Path) -> dict[str, Any]:
     forecasts = _forecast_events(forecast_path)
-    verify_outcome_ledger(outcome_path)
+    verify_outcome_ledger(outcome_path, forecast_path)
     outcomes = _read_events(outcome_path)
     scores = []
     for outcome in outcomes:
@@ -311,15 +372,16 @@ def main() -> int:
     record.add_argument("--http-status", type=int, required=True)
     record.add_argument("--front", type=_numbers, required=True)
     record.add_argument("--back", type=_numbers, required=True)
-    verify = sub.add_parser("verify", help="verify outcome ledger hash chain")
+    verify = sub.add_parser("verify", help="verify outcome ledger hash chain and optional forecast links")
     verify.add_argument("outcomes", type=Path)
+    verify.add_argument("--forecasts", type=Path)
     score = sub.add_parser("score", help="score linked forecast/outcome ledgers offline")
     score.add_argument("--forecasts", type=Path, required=True)
     score.add_argument("--outcomes", type=Path, required=True)
     args = parser.parse_args()
     try:
         if args.command == "verify":
-            result = verify_outcome_ledger(args.outcomes)
+            result = verify_outcome_ledger(args.outcomes, args.forecasts)
         elif args.command == "score":
             result = score_ledgers(args.forecasts, args.outcomes)
         else:
@@ -332,7 +394,7 @@ def main() -> int:
             )
             if sorted(args.front) != event["front_numbers"] or sorted(args.back) != event["back_numbers"]:
                 raise OutcomeLedgerError("CLI numbers do not match the selected result in the raw source snapshot")
-            result = append_outcome(args.outcomes, event)
+            result = append_outcome(args.outcomes, event, args.forecasts)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, LedgerLockError) as exc:
