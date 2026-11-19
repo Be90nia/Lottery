@@ -272,6 +272,7 @@ def ingest_snapshot_directory(
             and sidecar.get("http_status") == 200
             and sidecar.get("sha256") == digest
             and sidecar.get("raw_file") == path.name
+            and type(sidecar.get("page_no")) is int and sidecar["page_no"] >= 1
         )
         if not required_provenance:
             provenance_complete = False
