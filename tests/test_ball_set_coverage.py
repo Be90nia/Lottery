@@ -153,10 +153,10 @@ class BallSetCoverageTests(unittest.TestCase):
         third = "https://www.js-lottery.com/cms/post-148247.html"
         pages = {
             BASE: fetched(BASE, page(3).replace(
-                b"</body>", b'<a href="/cms/post-148233.html">中国体育彩票超级大乐透第26129期开奖公告</a></body>'
+                b"</body>", '<a href="/cms/post-148233.html">中国体育彩票超级大乐透第26129期开奖公告</a></body>'.encode("utf-8")
             )),
             second: fetched(second, page(2, "26129", "2026年11月11日").replace(
-                b"</body>", b'<a href="/cms/post-148247.html">中国体育彩票超级大乐透第26130期开奖公告</a></body>'
+                b"</body>", '<a href="/cms/post-148247.html">中国体育彩票超级大乐透第26130期开奖公告</a></body>'.encode("utf-8")
             )),
             third: fetched(third, page(1, "26130", "2026年11月14日")),
         }
