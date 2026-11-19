@@ -181,9 +181,16 @@ def build_ball_set_coverage(
     verified_rows: list[dict[str, Any]] = []
     raw_verified = 0
     raw_invalid = 0
+    draw_result_raw_verified = 0
+    draw_result_raw_invalid = 0
     parser_versions = set()
     source_domains = set()
     status_counts: dict[str, int] = {}
+    draw_result_status_counts: dict[str, int] = {}
+    result_grouped: dict[str, list[dict[str, Any]]] = {}
+    for record in draw_result_records:
+        result_grouped.setdefault(record["draw_id"], []).append(record)
+
     for row in inventory:
         draw_id = row["draw_id"]
         group = grouped.get(draw_id, [])
@@ -228,12 +235,60 @@ def build_ball_set_coverage(
         else:
             status, set_index = "unobserved", None
         status_counts[status] = status_counts.get(status, 0) + 1
+
+        result_group = result_grouped.get(draw_id, [])
+        result_evaluated = [
+            verify_draw_result_record(record, row, archive_dir) for record in result_group
+        ]
+        result_states = [item["status"] for item in result_evaluated]
+        valid_result_sets = {
+            (tuple(item["front_numbers"]), tuple(item["back_numbers"]))
+            for item in result_evaluated if item["status"] == "inventory_matched"
+        }
+        for result_state in result_states:
+            if result_state == "inventory_matched":
+                draw_result_raw_verified += 1
+            elif result_state == "raw_evidence_invalid":
+                draw_result_raw_invalid += 1
+        if "source_revision_requires_review" in result_states:
+            draw_result_status = "source_revision_requires_review"
+        elif "conflict" in result_states or len(valid_result_sets) > 1:
+            draw_result_status = "conflict"
+        elif "draw_result_mismatch" in result_states:
+            draw_result_status = "draw_result_mismatch"
+        elif "draw_mismatch" in result_states:
+            draw_result_status = "draw_mismatch"
+        elif "raw_evidence_invalid" in result_states:
+            draw_result_status = "raw_evidence_invalid"
+        elif valid_result_sets:
+            draw_result_status = "inventory_matched"
+        elif "missing_draw_result" in result_states:
+            draw_result_status = "missing_draw_result"
+        elif "invalid_draw_result" in result_states:
+            draw_result_status = "invalid_draw_result"
+        elif "pending_inventory" in result_states:
+            draw_result_status = "pending_inventory"
+        elif "inventory_missing_after_match" in result_states:
+            draw_result_status = "inventory_missing_after_match"
+        else:
+            draw_result_status = "unobserved"
+        draw_result_status_counts[draw_result_status] = draw_result_status_counts.get(draw_result_status, 0) + 1
+        result_numbers = next(iter(valid_result_sets)) if len(valid_result_sets) == 1 else (None, None)
+        result_urls = sorted({
+            record.get("source", {}).get("final_url") for record in result_group
+            if record.get("source", {}).get("final_url")
+        })
         source_urls = sorted({item[2] for item in evaluated if item[2]})
         row_report = {
             "draw_id": draw_id, "draw_date": row["draw_date"],
             "reported_set_index": set_index, "status": status,
             "observation_ids": sorted(item["observation_id"] for item in group),
             "source_urls": source_urls,
+            "draw_result_status": draw_result_status,
+            "front_numbers": list(result_numbers[0]) if result_numbers[0] is not None else None,
+            "back_numbers": list(result_numbers[1]) if result_numbers[1] is not None else None,
+            "draw_result_observation_ids": sorted(item["result_observation_id"] for item in result_group),
+            "draw_result_source_urls": result_urls,
             "equipment_regime_id": None, "physical_ball_set_id": None,
             "prior_same_key_verified_count": None, "eligible": False,
             "exclusion_reason": "regime_unresolved" if status == "primary_verified" else status,
