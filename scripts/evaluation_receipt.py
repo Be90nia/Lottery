@@ -30,7 +30,7 @@ def _write_new(path: Path, payload: bytes) -> None:
         try:
             os.link(temporary, path)
         except FileExistsError as exc:
-            raise EvaluationGateError(f"refusing to overwrite existing receipt: {path}") from exc
+            raise EvaluationGateError(f"output must not overwrite an existing file: {path}") from exc
     finally:
         try:
             os.unlink(temporary)
