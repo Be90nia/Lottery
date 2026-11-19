@@ -10,6 +10,7 @@ on:
       - "tests/test_mvp.py"
       - "docs/TICKET_MVP_BATCH_CONTRACT.md"
       - "data/candidates/pinned-draws-20261118.jsonl"
+      - "data/candidates/pinned-draws-20261118.jsonl.manifest.json"
       - ".github/workflows/ticket-mvp.yml"
   workflow_dispatch:
 
@@ -30,7 +31,7 @@ jobs:
         env:
           PYTHONPATH: src
         run: |
-          python scripts/run_mvp.py --dataset data/candidates/legacy_draws.jsonl \
+          python scripts/run_mvp.py --dataset data/candidates/pinned-draws-20261118.jsonl \
             --tickets-per-strategy 5 --seed 20261119 --output mvp-output.json
       - name: Verify complete 3-lane batch and provenance
         run: |
@@ -42,7 +43,10 @@ jobs:
           receipt = document["receipt"]
           assert receipt["status"] == "candidate_batch_generated"
           assert receipt["published_ticket_count"] == 15
-          assert receipt["data_trust_status"] == "not_authenticated_by_this_tool"
+          assert receipt["data_trust_status"] == "manifest_complete_not_officially_authenticated"
+          assert len(receipt["dataset_manifest_sha256"]) == 64
+          assert report["dataset"]["trust_status"] == "manifest_complete_not_officially_authenticated"
+          assert len(report["dataset"]["manifest_sha256"]) == 64
           assert receipt["automatic_sync_status"] == "not_attempted"
           assert receipt["model_training_status"] == "not_performed"
           assert receipt["model_promotion_status"] == "not_performed" 
