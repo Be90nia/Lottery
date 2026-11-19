@@ -150,6 +150,22 @@ class AppendOnlyTests(unittest.TestCase):
                 self.output, self.manifest,
             )
 
+    def test_existing_publication_is_never_overwritten(self):
+        self.prepare(self.old + [row("26132", "2026-11-18")])
+        self.output.write_text("preserve-me", encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "refusing to overwrite existing publication"):
+            self.run_gate()
+        self.assertEqual(self.output.read_text(encoding="utf-8"), "preserve-me")
+        self.assertFalse(self.receipt.exists())
+
+    def test_existing_receipt_is_never_overwritten(self):
+        self.prepare(self.old + [row("26132", "2026-11-18")])
+        self.receipt.write_text("preserve-me", encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "refusing to overwrite existing receipt"):
+            self.run_gate()
+        self.assertEqual(self.receipt.read_text(encoding="utf-8"), "preserve-me")
+        self.assertFalse(self.output.exists())
+
     def test_cli_help_imports_the_append_only_module(self):
         completed = subprocess.run(
             [sys.executable, "scripts/reconcile_draws.py", "--help"],
