@@ -46,8 +46,19 @@ jobs:
         env:
           PYTHONPATH: src
         run: |
+          RAW_DIR="$(python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("sync-run/raw").resolve()
+          summary = json.loads(Path("sync-run/fetch-output.json").read_text(encoding="utf-8"))
+          raw_dir = Path(summary["raw_dir"]).resolve()
+          if raw_dir == root or not raw_dir.is_relative_to(root) or not raw_dir.is_dir():
+              raise SystemExit("fetch receipt raw_dir is outside the isolated run root")
+          print(raw_dir)
+          PY
+          )"
           python scripts/fetch_history.py \
-            --snapshots-dir sync-run/raw \
+            --snapshots-dir "$RAW_DIR" \
             --require-manifests \
             --output sync-run/processed/candidate.jsonl
       - name: Write machine-readable sync receipt
