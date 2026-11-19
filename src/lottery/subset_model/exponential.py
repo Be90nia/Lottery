@@ -146,8 +146,8 @@ class ExponentialFamily:
             self._sampling_cache[values] = cached
         support, cumulative, total = cached
         draw = rng.random()
-        if not isinstance(draw, (int, float)) or not isfinite(float(draw)) or not 0.0 <= draw < 1.0:
-            raise ValueError("rng.random() must return a finite value in [0, 1)")
+        if type(draw) not in (int, float) or not isfinite(float(draw)) or not 0.0 <= draw < 1.0:
+            raise ValueError("rng.random() must return a finite int/float in [0, 1) (not bool)")
         index = bisect_right(cumulative, float(draw) * total)
         return support[min(index, len(support) - 1)]
 
