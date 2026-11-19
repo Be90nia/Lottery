@@ -408,8 +408,8 @@ def _archive_observation(
         if observation_id not in existing_ids:
             observation["prev_hash"] = current_ledger[-1]["event_hash"] if current_ledger else ZERO_HASH
             observation["event_hash"] = _canonical_hash(observation)
-            with ledger_path.open("a", encoding="utf-8", newline="\\n") as handle:
-                handle.write(json.dumps(observation, ensure_ascii=False, sort_keys=True) + "\\n")
+            with ledger_path.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write(json.dumps(observation, ensure_ascii=False, sort_keys=True) + "\n")
                 handle.flush()
                 import os
                 os.fsync(handle.fileno())
