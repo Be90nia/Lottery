@@ -71,3 +71,6 @@ python scripts/fetch_history.py \
 The importer reads each `*.json` response snapshot, excludes sidecar files, recomputes SHA-256 from exact bytes, checks any matching `<snapshot-stem>.manifest.json`, rejects hash mismatches and conflicting duplicate draw IDs, validates the combined chronological dataset, and writes an output JSONL plus an output manifest containing input hashes and the output hash. Raw inputs are never modified.
 
 A complete sidecar must identify `Sporttery public historical draw API`, use the exact HTTPS API host/path with `gameNo=85`, include a timezone-aware ISO `retrieved_at`, `http_status=200`, the matching `sha256`, and the matching `raw_file`. `--require-manifests` rejects missing or incomplete sidecars; without it, the import may proceed but is explicitly marked `candidate_unverified`. Even a complete sidecar is not a cryptographic signature or proof that the endpoint is authoritative. It does not establish the physical meaning of `lotteryUnsortDrawresult` or `lotteryEquipmentCount`.
+
+
+Snapshot archives are content-addressed. Re-fetching identical page bytes reuses the original sidecar manifest without rewriting its first-retrieval metadata; an existing content-addressed object or sidecar that conflicts with its digest/source identity is treated as corruption and fails closed.
