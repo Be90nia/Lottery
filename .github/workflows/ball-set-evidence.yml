@@ -100,6 +100,7 @@ jobs:
           python scripts/build_ball_set_coverage.py \
             --draw-inventory data/candidates/legacy_draws.jsonl \
             --ledger evidence-archive/observations.jsonl \
+            --draw-result-ledger evidence-archive/draw-results.jsonl \
             --archive-dir evidence-archive \
             --output-json evidence-archive/coverage/coverage.json \
             --output-csv evidence-archive/coverage/per-draw.csv \
