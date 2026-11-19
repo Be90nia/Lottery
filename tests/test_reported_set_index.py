@@ -30,17 +30,17 @@ def inventory_rows():
         {
             "draw_id": "26001", "draw_date": "2026-01-01",
             "front_numbers": [1, 2, 3, 4, 5], "back_numbers": [1, 2],
-            "source_id": "sha256:inventory-1",
+            "source_id": "sha256:inventory-1", "source_unsort_drawresult": None, "source_equipment_count": None,
         },
         {
             "draw_id": "26002", "draw_date": "2026-01-02",
             "front_numbers": [2, 3, 4, 5, 6], "back_numbers": [2, 3],
-            "source_id": "sha256:inventory-2",
+            "source_id": "sha256:inventory-2", "source_unsort_drawresult": None, "source_equipment_count": None,
         },
         {
             "draw_id": "26003", "draw_date": "2026-01-03",
             "front_numbers": [3, 4, 5, 6, 7], "back_numbers": [3, 4],
-            "source_id": "sha256:inventory-3",
+            "source_id": "sha256:inventory-3", "source_unsort_drawresult": None, "source_equipment_count": None,
         },
     ]
 
