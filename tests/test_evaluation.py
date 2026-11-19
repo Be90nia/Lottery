@@ -1,5 +1,10 @@
 import copy
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from lottery.evaluation import (
     EvaluationGateError,
@@ -88,6 +93,22 @@ class EvaluationGateTests(unittest.TestCase):
     def test_non_integer_bootstrap_seed_rejected(self):
         with self.assertRaisesRegex(EvaluationGateError, "thresholds or seed"):
             self.build(seed="7")
+
+    def test_cli_refuses_to_overwrite_score_input(self):
+        with tempfile.TemporaryDirectory() as temp:
+            scores_path = Path(temp) / "scores.json"
+            original = json.dumps({"score_rows": rows()}, separators=(",", ":"))
+            scores_path.write_text(original, encoding="utf-8")
+            completed = subprocess.run(
+                [sys.executable, "scripts/evaluation_receipt.py", "build", str(scores_path),
+                 "--candidate-model-id", "candidate-v2", "--champion-model-id", "champion-v1",
+                 "--dataset-sha256", "a" * 64, "--code-commit", "b" * 40,
+                 "--protocol-version", "frozen-v1", "--output", str(scores_path)],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(completed.returncode, 1)
+            self.assertIn("must not overwrite", completed.stderr)
+            self.assertEqual(scores_path.read_text(encoding="utf-8"), original)
 
 
 if __name__ == "__main__":
