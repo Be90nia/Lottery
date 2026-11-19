@@ -57,8 +57,8 @@ def _hash(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _atomic_write(path: Path, content: bytes) -> None:
-    """Write and fsync a unique sibling staging file before atomic replacement."""
+def _atomic_write_new(path: Path, content: bytes) -> None:
+    """Publish a fully fsynced file atomically without replacing an existing path."""
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=path.name + ".", suffix=".tmp", dir=path.parent
@@ -69,10 +69,14 @@ def _atomic_write(path: Path, content: bytes) -> None:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    except Exception:
+        # A hard link publishes the completed inode atomically and, unlike
+        # os.replace(), fails if another writer already created the destination.
+        try:
+            os.link(temporary, path)
+        except FileExistsError as exc:
+            raise AppendOnlyError(f"refusing to overwrite existing artifact: {path}") from exc
+    finally:
         temporary.unlink(missing_ok=True)
-        raise
 
 
 def reconcile_append_only(
@@ -162,7 +166,7 @@ def reconcile_append_only(
             json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
             for row in merged
         ).encode("utf-8")
-        _atomic_write(output_path, rendered)
+        _atomic_write_new(output_path, rendered)
         status = "appended"
         output_sha = _hash(output_path)
     else:
