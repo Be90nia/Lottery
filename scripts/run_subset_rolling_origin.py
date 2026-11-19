@@ -12,12 +12,14 @@ import math
 import random
 from pathlib import Path
 
+from lottery.backtest import _probabilities
 from lottery.subset_model import (
     BACK_POPULATION,
     BACK_SELECTION,
     FRONT_POPULATION,
     FRONT_SELECTION,
     ExponentialFamily,
+    ConditionalPoisson,
     build_uniform_feature_table,
 )
 
@@ -53,28 +55,15 @@ def _moving_block_bootstrap(values: list[float], seed: int) -> dict:
             sample.extend(values[start:start + BOOTSTRAP_BLOCK])
         means.append(sum(sample[:n]) / n)
     observed = sum(values) / n
-    p_value = (1 + sum(value >= 0.0 for value in means)) / (BOOTSTRAP_REPLICATES + 1)
     return {
-        "observed_mean_delta_candidate_minus_uniform": observed,
+        "observed_mean_delta_candidate_minus_reference": observed,
         "ci_95_lower": _percentile(means, 0.025),
         "ci_95_upper": _percentile(means, 0.975),
-        "one_sided_bootstrap_p_value": p_value,
         "replicates": BOOTSTRAP_REPLICATES,
         "block_length_draws": BOOTSTRAP_BLOCK,
         "seed": seed,
-        "method": "non-circular moving-block bootstrap on chronological paired differences",
+        "method": "paired non-circular moving-block bootstrap on chronological score differences",
     }
-
-
-def _holm_adjust(p_values: dict[str, float]) -> dict[str, float]:
-    ordered = sorted(p_values.items(), key=lambda item: item[1])
-    adjusted = {}
-    running = 0.0
-    count = len(ordered)
-    for index, (name, value) in enumerate(ordered):
-        running = max(running, min(1.0, (count - index) * value))
-        adjusted[name] = running
-    return adjusted
 
 
 def _load_and_validate(path: Path) -> tuple[list[dict], str]:
@@ -110,136 +99,158 @@ def _load_and_validate(path: Path) -> tuple[list[dict], str]:
     return rows, digest
 
 
-def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: bool, seed: int) -> dict:
+def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: bool,
+                   seed: int, checkpoint_path: Path, snapshot_digest: str) -> dict:
     table = build_uniform_feature_table(m, k, include_gap_variance=include_gap)
     model = ExponentialFamily(table)
-    observations = [tuple(row[f"{zone}_numbers"]) for row in rows]
+    field = f"{zone}_numbers"
+    observations = [tuple(row[field]) for row in rows]
     uniform_nll = math.log(math.comb(m, k))
+    expected = len(rows) - MIN_TRAIN
+    header = {
+        "record_type": "header", "schema": "lot-055-checkpoint-v1",
+        "snapshot_sha256": snapshot_digest, "zone": zone,
+        "minimum_training_rows": MIN_TRAIN, "first_target": rows[MIN_TRAIN]["draw_id"],
+        "last_target": rows[-1]["draw_id"], "models": ["uniform", "expanding", "ewma", "exponential_family"],
+        "alpha": 100.0, "ewma_half_life": 100.0,
+    }
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     records = []
-    differences = []
-    statuses: dict[str, int] = {}
+    if checkpoint_path.exists():
+        lines = checkpoint_path.read_text(encoding="utf-8").splitlines()
+        if not lines or json.loads(lines[0]) != header:
+            raise ValueError(f"checkpoint header mismatch: {checkpoint_path}")
+        if len(lines) - 1 > expected:
+            raise ValueError(f"checkpoint has too many records: {checkpoint_path}")
+        for offset, line in enumerate(lines[1:]):
+            record = json.loads(line)
+            idx = MIN_TRAIN + offset
+            if (record.get("target_draw_id") != rows[idx]["draw_id"]
+                    or record.get("training_count") != idx
+                    or record.get("training_cutoff_draw_id") != rows[idx - 1]["draw_id"]):
+                raise ValueError(f"checkpoint order/cutoff mismatch at target index {idx}")
+            records.append(record)
+    else:
+        with checkpoint_path.open("x", encoding="utf-8") as handle:
+            handle.write(json.dumps(header, sort_keys=True) + "\n")
+            handle.flush()
+            import os
+            os.fsync(handle.fileno())
 
-    for target_index in range(MIN_TRAIN, len(rows)):
-        training = observations[:target_index]
-        target = observations[target_index]
-        fit = model.fit(training)
-        statuses[fit.terminal_status] = statuses.get(fit.terminal_status, 0) + 1
-        record = {
-            "target_draw_id": rows[target_index]["draw_id"],
-            "training_count": target_index,
-            "training_cutoff_draw_id": rows[target_index - 1]["draw_id"],
-            "fit_status": fit.terminal_status,
-            "iterations": fit.iterations,
-            "gradient_infinity_norm": fit.gradient_infinity_norm,
-            "candidate_exact_set_nll": None,
-            "candidate_minus_uniform_nll": None,
-        }
-        if fit.converged:
-            candidate_nll = -model.log_probability(target, fit.theta)
-            delta = candidate_nll - uniform_nll
-            record["candidate_exact_set_nll"] = candidate_nll
-            record["candidate_minus_uniform_nll"] = delta
-            differences.append(delta)
-        records.append(record)
+    status_counts = {name: {} for name in ("candidate", "expanding", "ewma")}
+    def count_status(record):
+        for name, status in record["fit_statuses"].items():
+            bucket = status_counts[name]
+            bucket[status] = bucket.get(status, 0) + 1
+    for record in records:
+        count_status(record)
 
-    expected_targets = len(rows) - MIN_TRAIN
-    scored_targets = len(differences)
-    complete = len(records) == expected_targets and scored_targets == expected_targets
-    result = {
-        "zone": zone,
-        "population_size": m,
-        "selection_size": k,
-        "target_count": expected_targets,
-        "scored_target_count": scored_targets,
-        "fit_status_counts": statuses,
-        "complete_coverage": complete,
-        "uniform_exact_set_nll": uniform_nll,
-        "candidate_mean_exact_set_nll_scored_only": (
-            sum(record["candidate_exact_set_nll"] for record in records
-                if record["candidate_exact_set_nll"] is not None) / scored_targets
-            if scored_targets else None
-        ),
-        "candidate_minus_uniform_mean_nll_scored_only": (
-            sum(differences) / scored_targets if scored_targets else None
-        ),
-        "bootstrap": _moving_block_bootstrap(differences, seed) if complete else None,
-        "target_records": records,
+    with checkpoint_path.open("a", encoding="utf-8") as checkpoint:
+        for idx in range(MIN_TRAIN + len(records), len(rows)):
+            training = rows[:idx]
+            target = observations[idx]
+            fit = model.fit(observations[:idx])
+            statuses = {"candidate": fit.terminal_status}
+            scores = {"uniform": uniform_nll}
+            candidate = -model.log_probability(target, fit.theta) if fit.converged else None
+            for baseline in ("expanding", "ewma"):
+                try:
+                    marginals = _probabilities(training, field, m, k, model=baseline,
+                                               alpha=100.0, half_life=100.0)
+                    calibration = ConditionalPoisson.calibrate(marginals, k)
+                    statuses[baseline] = calibration.terminal_status
+                    scores[baseline] = (-ConditionalPoisson(
+                        calibration.centered_log_weights, k
+                    ).log_probability(target)) if calibration.converged else None
+                except (ValueError, ArithmeticError, OverflowError) as exc:
+                    statuses[baseline] = "failed:" + type(exc).__name__
+                    scores[baseline] = None
+            scores["exponential_family"] = candidate
+            record = {
+                "record_type": "target", "target_draw_id": rows[idx]["draw_id"],
+                "training_count": idx, "training_cutoff_draw_id": rows[idx - 1]["draw_id"],
+                "fit_statuses": statuses, "exact_set_nll": scores,
+                "candidate_iterations": fit.iterations,
+                "candidate_gradient_infinity_norm": fit.gradient_infinity_norm,
+            }
+            checkpoint.write(json.dumps(record, sort_keys=True, allow_nan=False) + "\n")
+            checkpoint.flush()
+            import os
+            os.fsync(checkpoint.fileno())
+            records.append(record)
+            count_status(record)
+
+    references = ("uniform", "expanding", "ewma")
+    deltas = {name: [] for name in references}
+    scored = {name: 0 for name in ("uniform", "expanding", "ewma", "exponential_family")}
+    sums = {name: 0.0 for name in scored}
+    for record in records:
+        for name, value in record["exact_set_nll"].items():
+            if value is not None:
+                scored[name] += 1
+                sums[name] += value
+        candidate = record["exact_set_nll"]["exponential_family"]
+        if candidate is not None:
+            for name in references:
+                baseline = record["exact_set_nll"][name]
+                if baseline is not None:
+                    deltas[name].append(candidate - baseline)
+    complete = (len(records) == expected and all(v == expected for v in scored.values())
+                and all(len(v) == expected for v in deltas.values()))
+    comparisons = {
+        name: _moving_block_bootstrap(values, seed + index)
+        if len(values) == expected else None
+        for index, (name, values) in enumerate(deltas.items())
     }
-    return result
+    return {
+        "zone": zone, "population_size": m, "selection_size": k,
+        "target_count": expected, "scored_target_counts": scored,
+        "fit_status_counts": status_counts, "complete_coverage": complete,
+        "mean_exact_set_nll": {name: sums[name] / scored[name] if scored[name] else None for name in sums},
+        "paired_candidate_minus_baseline": comparisons,
+        "target_records": records, "checkpoint_path": str(checkpoint_path),
+    }
 
 
-def run(snapshot_path: Path, output_path: Path) -> dict:
+def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = None) -> dict:
     rows, digest = _load_and_validate(snapshot_path)
-    front = _evaluate_zone(
-        rows, "front", FRONT_POPULATION, FRONT_SELECTION, True, BOOTSTRAP_SEED
-    )
-    back = _evaluate_zone(
-        rows, "back", BACK_POPULATION, BACK_SELECTION, False, BOOTSTRAP_SEED + 1
-    )
-    p_values = {}
-    if front["complete_coverage"]:
-        p_values["front"] = front["bootstrap"]["one_sided_bootstrap_p_value"]
-    if back["complete_coverage"]:
-        p_values["back"] = back["bootstrap"]["one_sided_bootstrap_p_value"]
-    holm = _holm_adjust(p_values) if len(p_values) == 2 else {}
-    for zone in (front, back):
-        zone["holm_adjusted_p_value"] = holm.get(zone["zone"])
-        zone["co_primary_pass"] = bool(
-            zone["complete_coverage"]
-            and zone["bootstrap"] is not None
-            and zone["bootstrap"]["ci_95_upper"] < 0.0
-            and zone["holm_adjusted_p_value"] is not None
-            and zone["holm_adjusted_p_value"] < 0.05
-        )
+    checkpoint_dir = checkpoint_dir or output_path.parent / "subset-model-checkpoints"
+    front = _evaluate_zone(rows, "front", FRONT_POPULATION, FRONT_SELECTION, True,
+                           BOOTSTRAP_SEED, checkpoint_dir / "front.jsonl", digest)
+    back = _evaluate_zone(rows, "back", BACK_POPULATION, BACK_SELECTION, False,
+                          BOOTSTRAP_SEED + 1, checkpoint_dir / "back.jsonl", digest)
+    passed = all(
+        zone["complete_coverage"] and all(
+            zone["paired_candidate_minus_baseline"][ref] is not None
+            and zone["paired_candidate_minus_baseline"][ref]["ci_95_upper"] < 0.0
+            for ref in ("uniform", "expanding", "ewma"))
+        for zone in (front, back))
     result = {
-        "run_type": "LOT-055-equipment-blind-exact-subset-rolling-origin-implementation-evaluation",
-        "snapshot_sha256": digest,
-        "snapshot_rows": len(rows),
-        "snapshot_first_draw": rows[0]["draw_id"],
-        "snapshot_last_draw": rows[-1]["draw_id"],
-        "first_target_draw": rows[MIN_TRAIN]["draw_id"],
-        "last_target_draw": rows[-1]["draw_id"],
-        "target_count_per_zone": len(rows) - MIN_TRAIN,
-        "minimum_training_rows": MIN_TRAIN,
-        "model_family": "regularized_complete_unordered_subset_exponential_family",
-        "objective_scale": "mean_nll",
-        "regularization_lambda": 1.0,
+        "run_type": "LOT-055-equipment-blind-exact-subset-rolling-origin",
+        "snapshot_sha256": digest, "snapshot_rows": len(rows),
+        "snapshot_first_draw": rows[0]["draw_id"], "snapshot_last_draw": rows[-1]["draw_id"],
+        "first_target_draw": rows[MIN_TRAIN]["draw_id"], "last_target_draw": rows[-1]["draw_id"],
+        "target_count_per_zone": len(rows) - MIN_TRAIN, "minimum_training_rows": MIN_TRAIN,
+        "model_comparison": ["uniform", "expanding", "ewma", "exponential_family"],
+        "objective_scale": "mean_nll", "regularization_lambda": 1.0,
         "solver": "deterministic_unbounded_lbfgs_armijo_v1",
-        "solver_policy_note": "Implementation solver differs from initial L-BFGS-B proposal; this run is diagnostic and not a frozen confirmatory acceptance until solver policy is formally reviewed.",
-        "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "block_length": BOOTSTRAP_BLOCK, "seed": BOOTSTRAP_SEED},
-        "holm_adjusted_p_values": holm,
-        "front": front,
-        "back": back,
-        "confirmatory_candidate_pass": bool(front["co_primary_pass"] and back["co_primary_pass"]),
+        "solver_policy_note": "Solver differs from initial L-BFGS-B proposal; diagnostic pending policy review.",
+        "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "block_length": BOOTSTRAP_BLOCK,
+                      "seed": BOOTSTRAP_SEED, "method": "paired non-circular moving-block percentile CI"},
+        "front": front, "back": back, "confirmatory_candidate_pass": bool(passed),
         "production_ready": False,
-        "limitations": [
-            "equipment-blind pooled model only",
-            "no ball-set labels or set-conditioned slots",
-            "no LOT-042 holdout access",
-            "no Champion promotion or user-facing service",
-            "one frozen snapshot and preregistered targets only",
-            "solver implementation policy requires review before confirmatory acceptance",
-        ],
+        "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
+                        "no LOT-042 access", "no promotion or serving", "solver policy review outstanding"],
     }
-    output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    summary = {
-        "snapshot_sha256": digest,
-        "target_count_per_zone": result["target_count_per_zone"],
-        "front": {key: front[key] for key in (
-            "scored_target_count", "complete_coverage", "candidate_mean_exact_set_nll_scored_only",
-            "uniform_exact_set_nll", "candidate_minus_uniform_mean_nll_scored_only",
-            "bootstrap", "holm_adjusted_p_value", "co_primary_pass",
-        )},
-        "back": {key: back[key] for key in (
-            "scored_target_count", "complete_coverage", "candidate_mean_exact_set_nll_scored_only",
-            "uniform_exact_set_nll", "candidate_minus_uniform_mean_nll_scored_only",
-            "bootstrap", "holm_adjusted_p_value", "co_primary_pass",
-        )},
-        "confirmatory_candidate_pass": result["confirmatory_candidate_pass"],
-        "production_ready": False,
-        "output_path": str(output_path),
-    }
-    print("SUBSET_MODEL_ROLLING_ORIGIN_RESULT=" + json.dumps(summary, sort_keys=True))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+                           encoding="utf-8")
+    print("SUBSET_MODEL_ROLLING_ORIGIN_RESULT=" + json.dumps({
+        "snapshot_sha256": digest, "target_count_per_zone": result["target_count_per_zone"],
+        "front_complete": front["complete_coverage"], "back_complete": back["complete_coverage"],
+        "front_scores": front["mean_exact_set_nll"], "back_scores": back["mean_exact_set_nll"],
+        "confirmatory_candidate_pass": result["confirmatory_candidate_pass"], "production_ready": False,
+    }, sort_keys=True))
     return result
 
 
@@ -247,8 +258,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--checkpoint-dir", type=Path)
     args = parser.parse_args()
-    run(args.snapshot, args.output)
+    run(args.snapshot, args.output, args.checkpoint_dir)
     return 0
 
 
