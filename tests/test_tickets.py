@@ -56,13 +56,17 @@ class TicketCandidateTests(unittest.TestCase):
 
         with patch("lottery.tickets._weighted_sample_without_replacement", side_effect=repeated_sample):
             result = generate_ticket_candidates(self.rows, tickets_per_strategy=3)
-        for tickets in result["strategies"].values():
+        for strategy, tickets in result["strategies"].items():
             self.assertEqual(len(tickets), 3)
             self.assertEqual(
                 len({(tuple(t["front_numbers"]), tuple(t["back_numbers"])) for t in tickets}),
                 1,
             )
             self.assertEqual(len({t["ticket_id"] for t in tickets}), 3)
+            self.assertEqual(result["strategy_metadata"][strategy]["duplicate_ticket_count"], 2)
+        self.assertEqual(result["unique_ticket_combinations"], 1)
+        self.assertEqual(result["duplicate_ticket_count"], 8)
+        self.assertEqual(result["cross_lane_duplicate_combination_count"], 1)
 
     def test_invalid_configuration_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "positive integer"):
