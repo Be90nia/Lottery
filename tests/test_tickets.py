@@ -1,4 +1,10 @@
+import hashlib
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
 from lottery.tickets import generate_ticket_candidates
 
@@ -42,6 +48,34 @@ class TicketCandidateTests(unittest.TestCase):
             generate_ticket_candidates(self.rows, alpha=float("nan"))
         with self.assertRaisesRegex(ValueError, "finite and positive"):
             generate_ticket_candidates(self.rows, half_life=0)
+
+
+    def test_cli_reads_dataset_and_writes_auditable_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "draws.jsonl"
+            output = root / "tickets.json"
+            dataset.write_text(
+                "".join(json.dumps(row) + "\\n" for row in self.rows),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    sys.executable, "scripts/generate_tickets.py", str(dataset),
+                    "--tickets", "2", "--seed", "77", "--output", str(output),
+                ],
+                check=False, capture_output=True, text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(report["dataset"]["trust_status"], "not_authenticated_by_this_tool")
+            self.assertEqual(
+                report["dataset"]["sha256"],
+                hashlib.sha256(dataset.read_bytes()).hexdigest(),
+            )
+            self.assertEqual(len(report["strategies"]["uniform"]), 2)
+            self.assertEqual(len(report["strategies"]["expanding"]), 2)
+            self.assertEqual(len(report["strategies"]["ewma"]), 2)
 
     def test_duplicate_draws_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "duplicate"):
