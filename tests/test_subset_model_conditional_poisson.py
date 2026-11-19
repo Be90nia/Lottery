@@ -103,6 +103,14 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ConditionalPoisson.calibrate((0.2, 0.2, 0.2), 2)
 
+    def test_calibration_rejects_boolean_and_string_numeric_inputs(self):
+        for target in ((True, 0.4, 0.6, 1.0), ("0.3", 0.4, 0.5, 0.8)):
+            with self.subTest(target=target):
+                with self.assertRaisesRegex(ValueError, "int/float"):
+                    ConditionalPoisson.calibrate(target, 2)
+        with self.assertRaisesRegex(ValueError, "tolerance"):
+            ConditionalPoisson.calibrate((0.3, 0.4, 0.5, 0.8), 2, tolerance=True)
+
     def test_calibration_rejects_invalid_history_size(self):
         for history_size in (0, -1, 1.5, True):
             with self.subTest(history_size=history_size):
@@ -110,6 +118,20 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
                     ConditionalPoisson.calibrate(
                         (0.3, 0.4, 0.5, 0.8), 2, history_size=history_size
                     )
+
+    def test_backward_sampler_rejects_invalid_rng_values(self):
+        class InvalidRng:
+            def __init__(self, value):
+                self.value = value
+
+            def random(self):
+                return self.value
+
+        model = ConditionalPoisson((0.3, -0.2, 0.7, -0.4, 0.1), 2)
+        for value in (False, True, -0.1, 1.0, float("nan"), "0.5"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "rng.random"):
+                    model.sample(InvalidRng(value))
 
     def test_backward_sampler_returns_distinct_legal_items_and_replays(self):
         model = ConditionalPoisson((0.3, -0.2, 0.7, -0.4, 0.1, 0.8), 3)

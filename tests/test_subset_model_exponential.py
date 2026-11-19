@@ -58,6 +58,38 @@ class ExponentialFamilyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.model.log_partition((float("nan"),) * self.model.dimension)
 
+    def test_numeric_vectors_reject_booleans_and_numeric_strings(self):
+        with self.assertRaisesRegex(ValueError, "int/float"):
+            self.model.log_partition((True,) + (0.0,) * (self.model.dimension - 1))
+        with self.assertRaisesRegex(ValueError, "int/float"):
+            self.model.log_partition(("0.0",) + (0.0,) * (self.model.dimension - 1))
+        with self.assertRaisesRegex(ValueError, "int/float"):
+            self.model.objective_and_gradient(
+                (0.0,) * self.model.dimension,
+                (0.0,) * self.model.dimension,
+                regularization_lambda=True,
+            )
+
+    def test_fit_rejects_boolean_solver_controls(self):
+        observations = [(1, 2, 3), (1, 2, 4), (2, 4, 6)]
+        with self.assertRaisesRegex(ValueError, "gradient_tolerance"):
+            self.model.fit(observations, gradient_tolerance=True)
+        with self.assertRaisesRegex(ValueError, "regularization_lambda"):
+            self.model.fit(observations, regularization_lambda=True)
+
+    def test_sampler_rejects_invalid_rng_values(self):
+        class InvalidRng:
+            def __init__(self, value):
+                self.value = value
+
+            def random(self):
+                return self.value
+
+        for value in (False, True, -0.1, 1.0, float("nan"), "0.5"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "rng.random"):
+                    self.model.sample((0.0,) * self.model.dimension, InvalidRng(value))
+
     def test_sampler_moves_to_next_cell_at_exact_cdf_boundary(self):
         class BoundaryRng:
             def random(self):
