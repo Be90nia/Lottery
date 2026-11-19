@@ -13,15 +13,18 @@ on:
       - "src/lottery/ball_set_evidence.py"
       - "src/lottery/ball_set_coverage.py"
       - "src/lottery/reported_set_index.py"
+      - "src/lottery/reported_index_pilot.py"
       - "src/lottery/ingest.py"
       - "src/lottery/validate.py"
       - "tests/test_validate.py"
       - "tests/test_ball_set_evidence.py"
       - "tests/test_ball_set_coverage.py"
       - "tests/test_reported_set_index.py"
+      - "tests/test_reported_index_pilot.py"
       - "scripts/collect_ball_set_evidence.py"
       - "scripts/build_ball_set_coverage.py"
       - "scripts/build_reported_set_index_view.py"
+      - "scripts/run_reported_set_index_pilot.py"
       - "docs/REPORTED_SET_INDEX_CONDITIONAL_MODEL_PREREGISTRATION.md"
       - "docs/BALL_SET_EVIDENCE_ARCHIVE.md"
       - "README.md"
@@ -174,6 +177,19 @@ jobs:
             --archive-dir evidence-archive \
             --output-dir evidence-archive/coverage/reported-set-index
 
+      - name: Run preregistered reported-index rolling-origin pilot
+        id: pilot
+        if: steps.reported_view.outcome == 'success'
+        continue-on-error: true
+        run: |
+          REPORT_SHA="$(python -c 'import json; print(json.load(open("evidence-archive/coverage/coverage.json", encoding="utf-8"))["report_sha256"])')"
+          VIEW_STEM="reported-set-index-${REPORT_SHA:0:16}"
+          python scripts/run_reported_set_index_pilot.py \
+            --view "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.jsonl" \
+            --manifest "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.manifest.json" \
+            --code-commit "$GITHUB_SHA" \
+            --output-dir evidence-archive/coverage/reported-set-index-pilot
+
       - name: Upload cumulative evidence archive
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -184,7 +200,7 @@ jobs:
           retention-days: 90
 
       - name: Fail visibly when evidence needs intervention
-        if: steps.collect.outcome == 'failure' || steps.coverage.outcome == 'failure' || steps.reported_view.outcome == 'failure'
+        if: steps.collect.outcome == 'failure' || steps.coverage.outcome == 'failure' || steps.reported_view.outcome == 'failure' || steps.pilot.outcome == 'failure'
         run: |
           echo "Ball-set evidence collection or coverage verification failed. The previous and newly captured evidence artifact was uploaded."
           exit 1
