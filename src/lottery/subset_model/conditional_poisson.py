@@ -188,7 +188,12 @@ class ConditionalPoisson:
         history_size: int = 10,
     ) -> CalibrationResult:
         """Fit centered log-weights to interior fixed-size inclusion marginals."""
-        target = tuple(float(value) for value in target_marginals)
+        if isinstance(target_marginals, (str, bytes, bytearray)):
+            raise ValueError("target_marginals must be a numeric sequence")
+        raw_target = tuple(target_marginals)
+        if any(type(value) not in (int, float) for value in raw_target):
+            raise ValueError("target_marginals must contain only int/float values (booleans and strings are invalid)")
+        target = tuple(float(value) for value in raw_target)
         m = len(target)
         if type(k) is not int or not 1 <= k <= m:
             raise ValueError("k must be an integer in 1..len(target_marginals)")
@@ -198,8 +203,8 @@ class ConditionalPoisson:
             raise ValueError("target marginals must be strictly interior (0, 1)")
         if abs(sum(target) - k) > 1e-10:
             raise ValueError("target marginals must sum to k; no silent renormalization")
-        if not isfinite(tolerance) or tolerance <= 0:
-            raise ValueError("tolerance must be finite and positive")
+        if type(tolerance) not in (int, float) or not isfinite(tolerance) or tolerance <= 0:
+            raise ValueError("tolerance must be a finite positive int/float (not bool)")
         if type(max_iterations) is not int or max_iterations < 1:
             raise ValueError("max_iterations must be a positive integer")
         if type(history_size) is not int or history_size < 1:
