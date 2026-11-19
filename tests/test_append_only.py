@@ -253,6 +253,16 @@ class AppendOnlyTests(unittest.TestCase):
         with self.assertRaisesRegex(AppendOnlyError, "official-source sidecar provenance is invalid"):
             self.run_gate()
 
+        metadata["redirect_chain"] = []
+        metadata["url"] = metadata["url"].replace(
+            "https://webapi.sporttery.cn/",
+            "https://webapi.sporttery.cn:444/",
+        )
+        metadata["final_url"] = metadata["url"]
+        sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "official-source sidecar provenance is invalid"):
+            self.run_gate()
+
     def test_source_pagination_metadata_is_rechecked_from_raw_page(self):
         self.prepare(self.old + [row("26132", "2026-11-18")])
         manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
