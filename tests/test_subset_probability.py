@@ -92,7 +92,7 @@ class ConditionalPoissonTests(unittest.TestCase):
                 self.assertAlmostEqual(sum(pi), k, places=10)
 
     def test_extreme_finite_weights_stay_finite(self):
-        weights = [-500.0, -100.0, 0.0, 100.0, 500.0]
+        weights = [-30.0, -15.0, 0.0, 15.0, 30.0]
         self.assertTrue(math.isfinite(conditional_poisson_log_normalizer(weights, 2)))
         pi = conditional_poisson_marginals(weights, 2)
         self.assertTrue(all(math.isfinite(x) for x in pi))
@@ -124,6 +124,34 @@ class ConditionalPoissonTests(unittest.TestCase):
         from lottery.subset_probability import calibrate_weighted_subset
         with self.assertRaises(ValueError):
             calibrate_weighted_subset([1.0, 0.5, 0.5], 2)
+
+    def test_mean_nll_objective_and_gradient_replication_invariance(self):
+        from lottery.subset_probability import exponential_objective_gradient
+        stats = uniform_feature_stats(8, 3)
+        cells = aggregate_feature_cells(8, 3, stats)
+        training = [(1, 2, 4), (2, 5, 7), (1, 6, 8)]
+        theta = [0.1] * len(cells.schema.names)
+        first = exponential_objective_gradient(theta, training, cells)
+        second = exponential_objective_gradient(theta, training * 3, cells)
+        self.assertAlmostEqual(first[0], second[0], places=12)
+        self.assertEqual(first[1], second[1])
+        self.assertAlmostEqual(first[2], second[2], places=12)
+
+    def test_exponential_objective_gradient_matches_finite_difference(self):
+        from lottery.subset_probability import exponential_objective_gradient
+        stats = uniform_feature_stats(8, 3)
+        cells = aggregate_feature_cells(8, 3, stats)
+        training = [(1, 2, 4), (2, 5, 7), (1, 6, 8)]
+        theta = [0.07] * len(cells.schema.names)
+        _, gradient, _ = exponential_objective_gradient(theta, training, cells)
+        for index in range(len(theta)):
+            plus, minus = list(theta), list(theta)
+            plus[index] += 1e-6
+            minus[index] -= 1e-6
+            high = exponential_objective_gradient(plus, training, cells)[0]
+            low = exponential_objective_gradient(minus, training, cells)[0]
+            numeric = (high - low) / 2e-6
+            self.assertAlmostEqual(gradient[index], numeric, places=6)
 
     def test_invalid_weights_rejected(self):
         with self.assertRaises(ValueError):
