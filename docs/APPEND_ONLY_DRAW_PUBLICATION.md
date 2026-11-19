@@ -11,7 +11,7 @@ python scripts/fetch_history.py \
   --output sync-run/candidate.jsonl
 ```
 
-Strict import writes `sync-run/candidate.jsonl.manifest.json`. Internally complete provenance metadata is not a cryptographic source signature or independent proof of authenticity.
+Strict import writes `sync-run/candidate.jsonl.manifest.json`. The manifest distinguishes complete per-page provenance from source-pagination completeness: the current importer explicitly emits `source_completeness_verified: false`. Complete page hashes do not prove that no page or newer draw was omitted.
 
 ## Reconcile
 
@@ -24,8 +24,8 @@ python scripts/reconcile_draws.py \
   --receipt sync-run/reconciliation-receipt.json
 ```
 
-Both files are validated. The candidate must contain every existing draw, and all existing draw semantics (date, selected numbers, draw order, equipment metadata) must match. Only strictly later chronological draws may be appended. Missing history, corrections, incomplete provenance, and chronology regressions fail closed.
+Both files are validated. The candidate must contain every existing draw, and all existing draw semantics (date, selected numbers, draw order, equipment metadata) must match. The publication gate additionally requires `source_completeness_verified: true`; it refuses the current collector output until upstream pagination totals/page inventory can be independently reconciled. Only then may strictly later chronological draws be appended. Missing history, unverified completeness, corrections, incomplete provenance, and chronology regressions fail closed.
 
 No-new-draw runs emit a `no_new_draws` receipt and do not write the output. Appends write a new file atomically without overwriting the input. Review the receipt and explicitly promote the output in a separate controlled operation.
 
-Corrections require a preserved raw snapshot, an incident, and a separately reviewed correction event. This tool does not update forecast/outcome ledgers, train/promote models, or access LOT-042. Trust remains `manifest_complete_not_officially_authenticated`.
+Corrections require a preserved raw snapshot, an incident, and a separately reviewed correction event. This tool does not update forecast/outcome ledgers, train/promote models, or access LOT-042. Trust remains `manifest_complete_not_officially_authenticated`. The completeness flag is a separate gate, not implied by provenance completeness; no current ingestion path sets it to true.
