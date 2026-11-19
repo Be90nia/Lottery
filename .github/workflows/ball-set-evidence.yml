@@ -13,6 +13,10 @@ on:
       - "tests/test_validate.py"
       - "scripts/collect_ball_set_evidence.py"
       - "scripts/build_ball_set_coverage.py"
+      - "scripts/build_reported_set_index_view.py"
+      - "src/lottery/reported_set_index.py"
+      - "tests/test_reported_set_index.py"
+      - "docs/REPORTED_SET_INDEX_CONDITIONAL_MODEL_PREREGISTRATION.md"
       - "data/ball_set/draw-inventory-20261118.jsonl"
       - "data/ball_set/draw-inventory-20261118.jsonl.manifest.json"
 
@@ -118,6 +122,18 @@ jobs:
             --output-markdown evidence-archive/coverage/coverage.md \
             --code-commit "${GITHUB_SHA}"
 
+      - name: Build immutable reported set-index evidence view
+        id: reported_view
+        if: steps.coverage.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python scripts/build_reported_set_index_view.py \
+            --inventory data/ball_set/draw-inventory-20261118.jsonl \
+            --coverage-json evidence-archive/coverage/coverage.json \
+            --ledger evidence-archive/observations.jsonl \
+            --archive-dir evidence-archive \
+            --output-dir evidence-archive/coverage/reported-set-index
+
       - name: Upload cumulative evidence archive
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -128,7 +144,7 @@ jobs:
           retention-days: 90
 
       - name: Fail visibly when evidence needs intervention
-        if: steps.collect.outcome == 'failure' || steps.coverage.outcome == 'failure'
+        if: steps.collect.outcome == 'failure' || steps.coverage.outcome == 'failure' || steps.reported_view.outcome == 'failure'
         run: |
           echo "Ball-set evidence collection or coverage verification failed. The previous and newly captured evidence artifact was uploaded."
           exit 1
