@@ -47,6 +47,19 @@
 - [x] LOT-048 Serialize forecast/outcome ledger appends across processes with POSIX `flock` and Windows `msvcrt.locking`; lock the full verify/dedupe/append/fsync transaction, use bounded acquisition timeouts, retain lock files, and test duplicate/distinct concurrent writes plus timeout/crash release. Linux and Windows CI passed in [run 44226365462](https://github.com/Be90nia/Lottery/actions/runs/44226365462); CLI timeout reporting also passed in [run 44226591924](https://github.com/Be90nia/Lottery/actions/runs/44226591924).
 - [ ] LOT-049 Replace lossy legacy prize transformation with source-preserving official prize ingestion. Preserve complete raw `prizeLevelList` objects, source snapshot hash, draw linkage, all optional identifiers/award-type fields, and quarantine ambiguous identities. Legacy cleaner audit: [LEGACY_PRIZE_TRANSFORM_AUDIT.md](docs/LEGACY_PRIZE_TRANSFORM_AUDIT.md). Do not promote existing candidate prize rows.
 
+
+## P3 — Exact-subset model implementation and release controls
+
+- [ ] LOT-054 / Issue #17: implement the exact unordered-subset probability engine and family-specific baselines; keep marginal legacy code isolated.
+- [ ] LOT-068 / Issue #31: first implementation slice for exact exponential-family normalization, conditional-Poisson DP/calibration/backward sampling, mean-NLL fitting, RFC 8785 artifacts, and property/golden-vector tests.
+- [ ] LOT-055 / Issue #18: frozen 2,649-target exact-set NLL evaluation contract.
+- [ ] LOT-069 / Issue #35: implement the separate exact-set NLL rolling-origin evaluator, complete terminal ledger, fixed 50-draw bootstrap and Holm correction; current marginal backtest is exploratory only.
+- [ ] LOT-056–059 / Issues #19–22: reconstruct regime-aware official ball-set evidence and prospective evidence capture.
+- [ ] LOT-060–064 / Issues #23–27: implement Champion lifecycle, staged orchestration, three-slot serving, feedback ledger, and experiment governance.
+- [ ] LOT-065–067 / Issues #28–30: implement durable storage/recovery, supply-chain security, and end-to-end readiness/fault-injection gates.
+
+**Implementation boundary:** existing `src/lottery/backtest.py` scores marginal inclusion probabilities; existing `src/lottery/forecast.py` records those legacy marginal models for LOT-042. Neither is the exact-set engine or the future three-slot service. Do not silently repurpose either. Existing CI is `.github/workflows/tests.yml`; it currently runs exploratory diagnostics against the unverified legacy candidate dataset and is not the LOT-055 confirmatory evaluation.
+
 ## Acceptance criteria
 
 A task is complete only when code, tests, provenance, and documentation are updated together. Research claims require reproducible evidence and an explicit limitations section.
