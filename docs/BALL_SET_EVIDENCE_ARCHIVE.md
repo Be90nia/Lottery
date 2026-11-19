@@ -28,3 +28,19 @@ The scheduled workflow carries forward the latest cumulative archive artifact, c
 `reported_set_index`, `equipment_regime_id`, and `physical_ball_set_id` remain separate. This collector deliberately writes null regime and physical identity fields. The two-set launch-era / three-set-era transition and physical identity continuity are not inferred. No training view or 3N model slot is activated by collection alone.
 
 A draw with an A2 primary label but unresolved regime remains archival evidence, not eligible for regime-scoped model training. Coverage reports and official regime adjudication remain separate gates. The collector never reads LOT-042 and never trains or promotes a model.
+
+## Coverage report
+
+After collection, rebuild the evidence-derived coverage report:
+
+```bash
+python scripts/build_ball_set_coverage.py \
+  --draw-inventory data/candidates/legacy_draws.jsonl \
+  --ledger data/evidence/ball-set-archive/observations.jsonl \
+  --archive-dir data/evidence/ball-set-archive \
+  --output-json data/evidence/ball-set-archive/coverage/coverage.json \
+  --output-csv data/evidence/ball-set-archive/coverage/per-draw.csv \
+  --output-markdown data/evidence/ball-set-archive/coverage/coverage.md
+```
+
+The report re-hashes every raw object, verifies its retrieval manifest and observation identity, re-runs the parser, and cross-checks draw ID/date against the supplied inventory. It reports verified counts by set and year, missing/unobserved/conflicting records, first/last draw and largest gaps. Because the supplied inventory is still an unverified candidate and the equipment-regime boundary/physical identities are unresolved, the report keeps every target ineligible and does not compute a training denominator or promote a 3N model.
