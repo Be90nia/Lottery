@@ -29,6 +29,22 @@ class OutcomeLedgerError(ValueError):
     """Raised when an outcome cannot safely be recorded or scored."""
 
 
+def _validate_sporttery_history_url(value: str) -> None:
+    if not isinstance(value, str):
+        raise OutcomeLedgerError("source URL must be a string")
+    parsed = urlparse(value)
+    query = parse_qs(parsed.query)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "webapi.sporttery.cn"
+        or parsed.path != "/gateway/lottery/getHistoryPageListV1.qry"
+        or query.get("gameNo") != ["85"]
+    ):
+        raise OutcomeLedgerError(
+            "source URL must be the exact HTTPS Sporttery history endpoint for gameNo=85"
+        )
+
+
 def _aware(value: str, field: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -72,10 +88,7 @@ def _validate_outcome_payload(event: dict[str, Any]) -> None:
         raise OutcomeLedgerError("capture timestamp precedes publication timestamp")
     if recorded < capture:
         raise OutcomeLedgerError("recorded_at precedes capture timestamp")
-    parsed = urlparse(event.get("source_url", ""))
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or not (host == "sporttery.cn" or host.endswith(".sporttery.cn")):
-        raise OutcomeLedgerError("source URL must use HTTPS on an official sporttery.cn host")
+    _validate_sporttery_history_url(event.get("source_url"))
     if event.get("source_http_status") != 200:
         raise OutcomeLedgerError("source HTTP status must be 200")
     digest = event.get("source_snapshot_sha256")
@@ -172,10 +185,7 @@ def create_outcome_event(
         raise OutcomeLedgerError("capture timestamp precedes publication timestamp")
     if recorded < capture:
         raise OutcomeLedgerError("recorded_at precedes capture timestamp")
-    parsed = urlparse(source_url)
-    host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or not (host == "sporttery.cn" or host.endswith(".sporttery.cn")):
-        raise OutcomeLedgerError("source URL must use HTTPS on an official sporttery.cn host")
+    _validate_sporttery_history_url(source_url)
     if http_status != 200:
         raise OutcomeLedgerError("source HTTP status must be 200")
     if not isinstance(source_sha256, str) or len(source_sha256) != 64 or any(
@@ -208,12 +218,7 @@ def create_outcome_event_from_snapshot(
     """Build an outcome only when the exact official response contains that draw."""
     if http_status != 200:
         raise OutcomeLedgerError("source HTTP status must be 200")
-    parsed = urlparse(source_url)
-    query = parse_qs(parsed.query)
-    if (parsed.scheme != "https" or parsed.hostname != "webapi.sporttery.cn"
-            or parsed.path != "/gateway/lottery/getHistoryPageListV1.qry"
-            or query.get("gameNo") != ["85"]):
-        raise OutcomeLedgerError("source URL must be the official Sporttery history endpoint for gameNo=85")
+    _validate_sporttery_history_url(source_url)
     raw = snapshot_path.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
     try:
