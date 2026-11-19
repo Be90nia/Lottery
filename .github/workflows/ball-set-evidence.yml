@@ -93,6 +93,20 @@ jobs:
               }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           PY
 
+      - name: Build reproducible evidence coverage report
+        id: coverage
+        if: always()
+        continue-on-error: true
+        run: |
+          python scripts/build_ball_set_coverage.py \
+            --draw-inventory data/candidates/legacy_draws.jsonl \
+            --ledger evidence-archive/observations.jsonl \
+            --archive-dir evidence-archive \
+            --output-json evidence-archive/coverage/coverage.json \
+            --output-csv evidence-archive/coverage/per-draw.csv \
+            --output-markdown evidence-archive/coverage/coverage.md \
+            --code-commit "${GITHUB_SHA}"
+
       - name: Upload cumulative evidence archive
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -103,7 +117,7 @@ jobs:
           retention-days: 90
 
       - name: Fail visibly when evidence needs intervention
-        if: steps.collect.outcome == 'failure'
+        if: steps.collect.outcome == 'failure' || steps.coverage.outcome == 'failure'
         run: |
-          echo "Ball-set evidence collection failed or requires human review. The previous and newly captured evidence artifact was uploaded."
+          echo "Ball-set evidence collection or coverage verification failed. The previous and newly captured evidence artifact was uploaded."
           exit 1
