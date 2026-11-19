@@ -14,7 +14,7 @@ import math
 from pathlib import Path
 import sys
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from .backtest import _scores, FRONT_SIZE, FRONT_PICK, BACK_SIZE, BACK_PICK
 from .ledger_lock import LedgerLockError, ledger_lock
@@ -209,15 +209,17 @@ def create_outcome_event_from_snapshot(
     if http_status != 200:
         raise OutcomeLedgerError("source HTTP status must be 200")
     parsed = urlparse(source_url)
+    query = parse_qs(parsed.query)
     if (parsed.scheme != "https" or parsed.hostname != "webapi.sporttery.cn"
-            or parsed.path != "/gateway/lottery/getHistoryPageListV1.qry"):
-        raise OutcomeLedgerError("source URL must be the official Sporttery history endpoint")
+            or parsed.path != "/gateway/lottery/getHistoryPageListV1.qry"
+            or query.get("gameNo") != ["85"]):
+        raise OutcomeLedgerError("source URL must be the official Sporttery history endpoint for gameNo=85")
     raw = snapshot_path.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
     try:
-        from .ingest import _parse_page
+        from .ingest import IngestionError, _parse_page
         rows = _parse_page(raw, 1, f"sha256:{digest}")
-    except (OSError, ValueError) as exc:
+    except (IngestionError, ValueError) as exc:
         raise OutcomeLedgerError(f"official source snapshot failed parsing: {exc}") from exc
     matches = [row for row in rows if row.draw_id == target_draw_id]
     if len(matches) != 1:
