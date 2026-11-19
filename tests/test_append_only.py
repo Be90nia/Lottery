@@ -281,6 +281,15 @@ class AppendOnlyTests(unittest.TestCase):
         ]
         self.assertEqual(published[0]["source_id"], "sha256:fixture")
 
+    def test_publication_must_not_write_into_immutable_raw_snapshot_directory(self):
+        self.prepare(self.old + [row("26132", "2026-11-18")])
+        with self.assertRaisesRegex(AppendOnlyError, "inside the raw snapshot directory"):
+            reconcile_append_only(
+                self.current, self.candidate, self.manifest,
+                self.snapshots_dir / "published.jsonl",
+                self.receipt, self.snapshots_dir,
+            )
+
     def test_output_must_not_overwrite_current_dataset(self):
         self.prepare(self.old + [row("26132", "2026-11-18")])
         with self.assertRaisesRegex(AppendOnlyError, "paths must be distinct"):
