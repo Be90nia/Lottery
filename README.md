@@ -117,10 +117,12 @@ predictions with demonstrated advantage. See the output's limitations field.
 
 After a result is officially published and its raw response snapshot is
 captured, `scripts/outcome_ledger.py` can append a separately hash-chained
-outcome event linked to the pre-draw forecast event. It checks the submitted
-official-domain URL, HTTP status, timestamp ordering, result number ranges,
-and hashes the exact snapshot bytes. It never fetches results itself and never
-modifies the forecast ledger.
+outcome event linked to the pre-draw forecast event. It requires the exact HTTPS Sporttery history endpoint with `gameNo=85`,
+parses the raw response, derives the selected numbers from the unique matching
+target draw, and rejects any CLI-supplied numbers that disagree with the
+snapshot. It also checks HTTP status and timestamp ordering and hashes the
+exact source bytes. It never fetches results itself and never modifies the
+forecast ledger.
 
 ```bash
 python scripts/outcome_ledger.py record --forecasts data/holdout/forecast-ledger.jsonl \
