@@ -14,7 +14,7 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from .validate import validate_jsonl, validate_records
+from .validate import validate_records
 
 
 class PublicationError(ValueError):
@@ -27,11 +27,12 @@ SEMANTIC_FIELDS = (
 )
 
 
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+def _read_jsonl(path: Path) -> tuple[list[dict[str, Any]], bytes, dict[str, Any]]:
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        raise
+        raw = path.read_bytes()
+        lines = raw.decode("utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise PublicationError(f"{path}: cannot read UTF-8 JSONL: {exc}") from exc
     rows = []
     for number, line in enumerate(lines, 1):
         if not line.strip():
@@ -43,8 +44,11 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
         if not isinstance(row, dict):
             raise PublicationError(f"{path}: line {number} must be an object")
         rows.append(row)
-    return rows
-
+    try:
+        validation = validate_records(rows)
+    except ValueError as exc:
+        raise PublicationError(f"{path}: dataset validation failed: {exc}") from exc
+    return rows, raw, validation
 
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -86,18 +90,18 @@ def reconcile_append_only(
         raise PublicationError("current, candidate, manifest, output, and receipt paths must be distinct")
     if not current_path.is_file() or not candidate_path.is_file():
         raise PublicationError("current and candidate JSONL files must both exist")
+    if receipt_path.exists():
+        raise PublicationError("receipt_path already exists; refusing to overwrite prior evidence")
 
-    current_validation = validate_jsonl(current_path)
-    candidate_validation = validate_jsonl(candidate_path)
-    current = _read_jsonl(current_path)
-    candidate = _read_jsonl(candidate_path)
+    current, current_raw, current_validation = _read_jsonl(current_path)
+    candidate, candidate_raw, candidate_validation = _read_jsonl(candidate_path)
     try:
         manifest = json.loads(candidate_manifest_path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise PublicationError("candidate manifest is missing or invalid JSON") from exc
     if not isinstance(manifest, dict):
         raise PublicationError("candidate manifest must be an object")
-    if manifest.get("output_sha256") != _sha(candidate_path):
+    if manifest.get("output_sha256") != hashlib.sha256(candidate_raw).hexdigest():
         raise PublicationError("candidate manifest output_sha256 does not match candidate bytes")
     if manifest.get("validation") != candidate_validation:
         raise PublicationError("candidate manifest validation summary does not match candidate")
@@ -143,13 +147,13 @@ def reconcile_append_only(
                 f"new draw {row['draw_id']} is not strictly later than current history"
             )
 
-    # Preserve current rows byte-semantically (including their original source_id)
+    # Preserve current rows semantically (including their original source_id)
     # and append only genuinely new candidate rows.
     additions.sort(key=lambda row: (row["draw_date"], row["draw_id"]))
     merged = current + additions
     merged_validation = validate_records(merged)
-    current_sha = _sha(current_path)
-    candidate_sha = _sha(candidate_path)
+    current_sha = hashlib.sha256(current_raw).hexdigest()
+    candidate_sha = hashlib.sha256(candidate_raw).hexdigest()
     if not additions:
         receipt = {
             "schema_version": 1,
