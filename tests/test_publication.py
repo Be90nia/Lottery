@@ -92,6 +92,34 @@ class AppendOnlyPublicationTests(unittest.TestCase):
             self.snapshots_dir
         )
 
+    def test_tampered_raw_page_bytes_rejected(self):
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        raw_path = self.snapshots_dir / manifest["snapshots"][0]["raw_file"]
+        raw_path.write_bytes(raw_path.read_bytes() + b" ")
+        with self.assertRaisesRegex(PublicationError, "hash/size mismatch"):
+            self.run_gate()
+        self.assertFalse(self.output.exists())
+
+    def test_sidecar_url_mismatch_rejected(self):
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        sidecar_path = self.snapshots_dir / manifest["snapshots"][0]["sidecar_manifest"]
+        sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        sidecar["url"] = "https://evil.example/collect"
+        sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+        with self.assertRaisesRegex(PublicationError, "sidecar does not match|approved page request"):
+            self.run_gate()
+
+    def test_candidate_must_reconstruct_from_raw_page(self):
+        changed = [*self.new[:-1], draw("26003", "2026-01-03", source="sha256:" + "b" * 64, front=[6, 7, 8, 9, 10])]
+        self.write_rows(self.candidate, changed)
+        from lottery.validate import validate_jsonl
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        manifest["output_sha256"] = hashlib.sha256(self.candidate.read_bytes()).hexdigest()
+        manifest["validation"] = validate_jsonl(self.candidate)
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(PublicationError, "does not match archived raw snapshot"):
+            self.run_gate()
+
     def test_append_preserves_existing_rows_and_adds_only_new_draws(self):
         receipt = self.run_gate()
         self.assertEqual(receipt["status"], "append_candidate_created")
