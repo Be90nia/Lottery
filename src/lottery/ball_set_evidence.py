@@ -339,7 +339,11 @@ def _archive_observation(
         same_semantics = (
             supersedes.get("draw_date") == parsed.draw_date
             and supersedes.get("reported_set_index") == parsed.reported_set_index
-            and prior_status not in ("conflict", "source_revision_requires_review", "draw_mismatch")
+            and parsed.authority_footer_present
+            and prior_status not in (
+                "conflict", "source_revision_requires_review", "draw_mismatch",
+                "source_authority_unverified",
+            )
         )
         status = "source_revision_same_semantics" if same_semantics else "source_revision_requires_review"
     elif status == "primary_verified":
