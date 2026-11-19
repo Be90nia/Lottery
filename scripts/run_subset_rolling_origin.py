@@ -225,7 +225,6 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
         "solver": "scipy.optimize.L-BFGS-B",
         "solver_version": scipy.__version__,
         "numpy_version": numpy.__version__,
-        "python_version": sys.version.split()[0],
         "solver_options": {
             "max_iterations": CANDIDATE_MAX_ITERATIONS,
             "max_function_evaluations": CANDIDATE_MAX_ITERATIONS * 100,
