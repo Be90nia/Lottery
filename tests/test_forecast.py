@@ -8,6 +8,7 @@ import unittest
 
 from lottery.forecast import (
     ForecastLedgerError,
+    _event_hash,
     append_forecast,
     create_forecast_event,
     verify_ledger,
