@@ -104,10 +104,12 @@ python scripts/generate_tickets.py data/candidates/legacy_draws.jsonl \
   --tickets 5 --seed 20261119 --output ticket-candidates.json
 ```
 
-The command emits five tickets in each of three explicitly separate strategy
-lanes: legal uniform sampling, expanding-frequency weights, and EWMA weights.
-Every zone is sampled without replacement. The seed makes a run reproducible;
-the output records the input SHA-256 and validation summary. The tool does not
+The command emits N tickets in each of three explicitly separate strategy
+lanes: legal uniform sampling, expanding-frequency weights, and EWMA weights
+(3N tickets total; N is limited to 1..100 per lane). Every zone is sampled
+without replacement. The output records the exact input SHA-256, canonical
+training fingerprint, deterministic run/ticket IDs, master and lane seeds,
+training cutoff, and per-lane counts. The tool does not
 authenticate the input dataset: the checked-in legacy history remains an
 unverified candidate. These marginal-weighted tickets are exploratory
 combinations, not a calibrated joint model, physical ball-set labels, or
