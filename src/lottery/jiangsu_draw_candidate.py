@@ -72,6 +72,15 @@ def _write_immutable(path: Path, content: bytes) -> None:
             raise JiangsuDrawCandidateError(f"immutable source candidate artifact conflicts: {path}")
 
 
+def _write_pair_immutable(artifacts: tuple[tuple[Path, bytes], ...]) -> None:
+    for path, content in artifacts:
+        if path.exists() and path.read_bytes() != content:
+            raise JiangsuDrawCandidateError(f"immutable source candidate artifact conflicts: {path}")
+    for path, content in artifacts:
+        if not path.exists():
+            _write_immutable(path, content)
+
+
 def build_jiangsu_draw_candidate(
     inventory_path: Path,
     inventory_manifest_path: Path,
@@ -348,8 +357,10 @@ def build_jiangsu_draw_candidate(
     candidate_manifest_bytes = (json.dumps(
         candidate_manifest, ensure_ascii=False, sort_keys=True, indent=2
     ) + "\n").encode("utf-8")
-    _write_immutable(candidate_path, candidate_bytes)
-    _write_immutable(candidate_manifest_path, candidate_manifest_bytes)
+    _write_pair_immutable((
+        (candidate_path, candidate_bytes),
+        (candidate_manifest_path, candidate_manifest_bytes),
+    ))
 
     live_rows.sort(key=lambda row: (row["draw_date"], row["draw_id"]))
     live_rows.extend(new_live_rows)
@@ -393,8 +404,10 @@ def build_jiangsu_draw_candidate(
     live_manifest_bytes = (json.dumps(
         live_manifest, ensure_ascii=False, sort_keys=True, indent=2
     ) + "\n").encode("utf-8")
-    _write_immutable(live_path, live_bytes)
-    _write_immutable(live_manifest_path, live_manifest_bytes)
+    _write_pair_immutable((
+        (live_path, live_bytes),
+        (live_manifest_path, live_manifest_bytes),
+    ))
 
     body = {
         "schema_version": "lottery.jiangsu-draw-candidate-receipt/v1",
