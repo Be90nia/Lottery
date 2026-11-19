@@ -9,7 +9,7 @@ import unittest
 from lottery.forecast import append_forecast, create_forecast_event, _event_hash
 from lottery.outcomes import (
     OutcomeLedgerError, append_outcome, create_outcome_event,
-    score_ledgers, verify_outcome_ledger,
+    create_outcome_event_from_snapshot, main, score_ledgers, verify_outcome_ledger,
 )
 
 
@@ -214,3 +214,78 @@ class OutcomeLedgerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class OutcomeSnapshotBindingTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.forecasts = self.root / "forecasts.jsonl"
+        append_forecast(self.forecasts, create_forecast_event(
+            [draw(1), draw(2), draw(3)],
+            target_draw_id="2604",
+            target_draw_at="2026-02-02T20:00:00+08:00",
+            training_sha256=hashlib.sha256(b"training").hexdigest(),
+            code_commit="c" * 40,
+            generated_at=datetime(2026, 2, 1, 10, 0, tzinfo=timezone.utc),
+        ))
+        row = {
+            "lotteryDrawNum": "2604",
+            "lotteryDrawTime": "2026-02-02",
+            "lotteryDrawResult": "02 08 12 19 31 03 09",
+        }
+        self.snapshot = self.root / "page.json"
+        self.snapshot.write_text(json.dumps({"success": True, "value": {"list": [row]}}), encoding="utf-8")
+        self.kwargs = {
+            "target_draw_id": "2604",
+            "published_at": "2026-02-02T20:30:00+08:00",
+            "captured_at": "2026-02-02T20:31:00+08:00",
+            "source_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1",
+            "snapshot_path": self.snapshot,
+            "http_status": 200,
+        }
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_outcome_numbers_are_derived_from_exact_raw_snapshot(self):
+        event = create_outcome_event_from_snapshot(self.forecasts, **self.kwargs)
+        self.assertEqual(event["front_numbers"], [2, 8, 12, 19, 31])
+        self.assertEqual(event["back_numbers"], [3, 9])
+        self.assertEqual(event["source_snapshot_sha256"], hashlib.sha256(self.snapshot.read_bytes()).hexdigest())
+
+    def test_snapshot_must_contain_exactly_one_matching_draw(self):
+        kwargs = dict(self.kwargs, target_draw_id="not-in-snapshot")
+        with self.assertRaisesRegex(OutcomeLedgerError, "exactly one record"):
+            create_outcome_event_from_snapshot(self.forecasts, **kwargs)
+
+    def test_snapshot_source_url_must_identify_dlt_endpoint(self):
+        kwargs = dict(self.kwargs, source_url="https://webapi.sporttery.cn/other?gameNo=85")
+        with self.assertRaisesRegex(OutcomeLedgerError, "official Sporttery history endpoint"):
+            create_outcome_event_from_snapshot(self.forecasts, **kwargs)
+
+    def test_snapshot_source_url_must_bind_game_number(self):
+        kwargs = dict(self.kwargs, source_url="https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=86")
+        with self.assertRaisesRegex(OutcomeLedgerError, "gameNo=85"):
+            create_outcome_event_from_snapshot(self.forecasts, **kwargs)
+
+    def test_cli_rejects_manual_numbers_that_disagree_with_snapshot(self):
+        outcomes = self.root / "outcomes.jsonl"
+        argv = [
+            "outcome_ledger.py", "record",
+            "--forecasts", str(self.forecasts),
+            "--outcomes", str(outcomes),
+            "--target-draw-id", "2604",
+            "--published-at", "2026-02-02T20:30:00+08:00",
+            "--captured-at", "2026-02-02T20:31:00+08:00",
+            "--source-url", self.kwargs["source_url"],
+            "--snapshot", str(self.snapshot),
+            "--http-status", "200",
+            "--front", "1,2,3,4,5",
+            "--back", "1,2",
+        ]
+        from unittest.mock import patch
+        with patch("sys.argv", argv):
+            self.assertEqual(main(), 1)
+        self.assertFalse(outcomes.exists())
