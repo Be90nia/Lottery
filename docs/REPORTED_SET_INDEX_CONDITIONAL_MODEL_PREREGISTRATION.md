@@ -65,8 +65,9 @@ No hyperparameter search, feature search, or strategy selection is permitted on 
 
 - LOT-042's 500-draw holdout is sealed: no reads, training, tuning, selection, ranking, cumulative p-values, or feedback.
 - This pilot is development-only and cannot promote a model, alter a champion, or claim predictive efficacy.
-- A reported-index candidate may be emitted for inspection only if its receipt preserves all input hashes, per-index training counts, target windows, sampler calibration, and the unresolved physical-regime status.
-- A non-significant or adverse result means retain uniform as the statistical baseline; do not cherry-pick one index, one zone, or one time window.
+- After the pilot completes, the candidate emitter may produce 5 tickets per estimator lane (uniform / expanding / EWMA) for each reported index: 3 indices × 3 estimators × 5 tickets = 45 exploratory candidates. It must emit every lane; it may not select a "winner" from these same evaluation results.
+- The receipt must preserve all input hashes, per-index training counts, target windows, sampler calibration, pilot report hash, and unresolved physical-regime status.
+- A non-significant or adverse result means retain uniform as the statistical baseline; do not cherry-pick one index, one zone, or one time window. All candidates remain exploratory and no model is promoted.
 - Any future claim about stable physical ball identity requires a separate authoritative regime/replacement chronology and a new preregistration.
 
 ## 7. Required fail-closed conditions
