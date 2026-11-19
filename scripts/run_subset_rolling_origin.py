@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import random
 from pathlib import Path
 
@@ -99,6 +100,51 @@ def _load_and_validate(path: Path) -> tuple[list[dict], str]:
     return rows, digest
 
 
+
+def _checkpoint_record_hash(record: dict) -> str:
+    body = {key: value for key, value in record.items() if key != "record_sha256"}
+    encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
+                                uniform_nll: float) -> None:
+    if not isinstance(record, dict) or record.get("record_type") != "target":
+        raise ValueError("checkpoint target record has invalid shape")
+    expected_statuses = {"candidate", "expanding", "ewma"}
+    expected_scores = {"uniform", "expanding", "ewma", "exponential_family"}
+    if not isinstance(record.get("fit_statuses"), dict) or set(record["fit_statuses"]) != expected_statuses:
+        raise ValueError("checkpoint fit_statuses schema mismatch")
+    if not isinstance(record.get("exact_set_nll"), dict) or set(record["exact_set_nll"]) != expected_scores:
+        raise ValueError("checkpoint exact_set_nll schema mismatch")
+    if (record.get("target_draw_id") != row["draw_id"]
+            or record.get("training_count") != training_count):
+        raise ValueError("checkpoint target order/training count mismatch")
+    if not isinstance(record.get("training_cutoff_draw_id"), str) or not record["training_cutoff_draw_id"]:
+        raise ValueError("checkpoint training cutoff is missing")
+    if any(not isinstance(status, str) or not status for status in record["fit_statuses"].values()):
+        raise ValueError("checkpoint fit status must be a non-empty string")
+    scores = record["exact_set_nll"]
+    if type(scores["uniform"]) not in (int, float) or not math.isfinite(scores["uniform"]):
+        raise ValueError("checkpoint uniform NLL must be finite")
+    if abs(scores["uniform"] - uniform_nll) > 1e-10:
+        raise ValueError("checkpoint uniform NLL does not match legal support")
+    for status_key, score_key in (
+        ("candidate", "exponential_family"),
+        ("expanding", "expanding"),
+        ("ewma", "ewma"),
+    ):
+        score = scores[score_key]
+        if record["fit_statuses"][status_key] == "converged":
+            if type(score) not in (int, float) or not math.isfinite(score) or score < -1e-10:
+                raise ValueError(f"checkpoint {score_key} NLL invalid for converged fit")
+        elif score is not None:
+            raise ValueError(f"checkpoint {score_key} score must be null when fit did not converge")
+    supplied_hash = record.get("record_sha256")
+    if not isinstance(supplied_hash, str) or supplied_hash != _checkpoint_record_hash(record):
+        raise ValueError("checkpoint target record SHA-256 mismatch")
+
+
 def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: bool,
                    seed: int, checkpoint_path: Path, snapshot_digest: str) -> dict:
     table = build_uniform_feature_table(m, k, include_gap_variance=include_gap)
@@ -108,8 +154,9 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     uniform_nll = math.log(math.comb(m, k))
     expected = len(rows) - MIN_TRAIN
     header = {
-        "record_type": "header", "schema": "lot-055-checkpoint-v1",
-        "snapshot_sha256": snapshot_digest, "zone": zone,
+        "record_type": "header", "schema": "lot-055-checkpoint-v2",
+        "snapshot_sha256": snapshot_digest, "code_commit": os.environ.get("GITHUB_SHA", "local"),
+        "zone": zone,
         "minimum_training_rows": MIN_TRAIN, "first_target": rows[MIN_TRAIN]["draw_id"],
         "last_target": rows[-1]["draw_id"], "models": ["uniform", "expanding", "ewma", "exponential_family"],
         "alpha": 100.0, "ewma_half_life": 100.0,
@@ -125,10 +172,12 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
         for offset, line in enumerate(lines[1:]):
             record = json.loads(line)
             idx = MIN_TRAIN + offset
-            if (record.get("target_draw_id") != rows[idx]["draw_id"]
-                    or record.get("training_count") != idx
-                    or record.get("training_cutoff_draw_id") != rows[idx - 1]["draw_id"]):
-                raise ValueError(f"checkpoint order/cutoff mismatch at target index {idx}")
+            _validate_checkpoint_record(
+                record, row=rows[idx], training_count=idx,
+                uniform_nll=uniform_nll,
+            )
+            if record.get("training_cutoff_draw_id") != rows[idx - 1]["draw_id"]:
+                raise ValueError(f"checkpoint cutoff mismatch at target index {idx}")
             records.append(record)
     else:
         with checkpoint_path.open("x", encoding="utf-8") as handle:
@@ -173,12 +222,19 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                 "candidate_iterations": fit.iterations,
                 "candidate_gradient_infinity_norm": fit.gradient_infinity_norm,
             }
+            record["record_sha256"] = _checkpoint_record_hash(record)
             checkpoint.write(json.dumps(record, sort_keys=True, allow_nan=False) + "\n")
             checkpoint.flush()
-            import os
             os.fsync(checkpoint.fileno())
+            _validate_checkpoint_record(
+                record, row=rows[idx], training_count=idx,
+                uniform_nll=uniform_nll,
+            )
             records.append(record)
             count_status(record)
+            completed = idx - MIN_TRAIN + 1
+            if completed % 50 == 0 or completed == expected:
+                print(f"EXACT_SUBSET_PROGRESS zone={zone} completed={completed}/{expected}", flush=True)
 
     references = ("uniform", "expanding", "ewma")
     deltas = {name: [] for name in references}
@@ -228,6 +284,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
     result = {
         "run_type": "LOT-055-equipment-blind-exact-subset-rolling-origin",
         "snapshot_sha256": digest, "snapshot_rows": len(rows),
+        "code_commit": os.environ.get("GITHUB_SHA", "local"),
         "snapshot_first_draw": rows[0]["draw_id"], "snapshot_last_draw": rows[-1]["draw_id"],
         "first_target_draw": rows[MIN_TRAIN]["draw_id"], "last_target_draw": rows[-1]["draw_id"],
         "target_count_per_zone": len(rows) - MIN_TRAIN, "minimum_training_rows": MIN_TRAIN,
