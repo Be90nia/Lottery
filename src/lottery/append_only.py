@@ -207,6 +207,8 @@ def _verify_source_completeness_attestation(
                 or sidecar.get("raw_file") != raw_file
                 or sidecar.get("sha256") != digest
                 or type(sidecar.get("bytes")) is not int or sidecar.get("bytes") != len(raw)
+                or snapshot.get("bytes") != len(raw)
+                or snapshot.get("run_id") != sidecar.get("run_id")
                 or type(sidecar.get("http_status")) is not int or sidecar.get("http_status") != 200
                 or type(sidecar.get("page_no")) is not int or sidecar.get("page_no") != expected_page_no
                 or not isinstance(sidecar.get("run_id"), str) or not sidecar.get("run_id")
