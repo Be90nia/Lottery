@@ -24,6 +24,7 @@ python scripts/reconcile_draws.py \
   --current data/canonical/draws.jsonl \
   --candidate sync-run/candidate.jsonl \
   --candidate-manifest sync-run/candidate.jsonl.manifest.json \
+  --snapshots-dir "$RAW_DIR" \
   --output data/canonical/draws.next.jsonl \
   --receipt sync-run/reconciliation-receipt.json
 ```
