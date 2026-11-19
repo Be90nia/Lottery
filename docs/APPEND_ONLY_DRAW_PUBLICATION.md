@@ -24,7 +24,7 @@ python scripts/reconcile_draws.py \
   --receipt sync-run/reconciliation-receipt.json
 ```
 
-Both files are validated. The candidate must contain every existing draw, and all existing draw semantics (date, selected numbers, draw order, equipment metadata) must match. The publication gate additionally requires `source_completeness_verified: true`; it refuses the current collector output until upstream pagination totals/page inventory can be independently reconciled. Only then may strictly later chronological draws be appended. Missing history, unverified completeness, corrections, incomplete provenance, and chronology regressions fail closed.
+Both files are validated. The candidate must contain every existing draw, and all existing draw semantics (date, selected numbers, draw order, equipment metadata) must match. The publication gate additionally requires a sidecar whose final URL exactly equals the requested Sporttery endpoint and whose redirect chain is empty; redirected responses are rejected by the live collector and cannot pass strict import or publication. It also requires `source_completeness_verified: true`; it refuses the current collector output until upstream pagination totals/page inventory can be independently reconciled. Only then may strictly later chronological draws be appended. Missing history, unverified completeness, corrections, incomplete provenance, and chronology regressions fail closed.
 
 No-new-draw runs emit a `no_new_draws` receipt and do not write the output. Appends write a new file atomically without overwriting the input. Review the receipt and explicitly promote the output in a separate controlled operation.
 
