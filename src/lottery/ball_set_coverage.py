@@ -278,12 +278,30 @@ def build_ball_set_coverage(
 
     per_set: dict[str, Any] = {}
     inventory_positions = {row["draw_id"]: i for i, row in enumerate(inventory)}
+    observed_positions = [
+        inventory_positions[row["draw_id"]] for row in inventory if grouped.get(row["draw_id"])
+    ]
+    window_start = min(observed_positions) if observed_positions else None
+    window_end = max(observed_positions) if observed_positions else None
+    window_length = window_end - window_start + 1 if window_start is not None else 0
+    coverage_window = {
+        "first_draw_id": inventory[window_start]["draw_id"] if window_start is not None else None,
+        "first_draw_date": inventory[window_start]["draw_date"] if window_start is not None else None,
+        "last_draw_id": inventory[window_end]["draw_id"] if window_end is not None else None,
+        "last_draw_date": inventory[window_end]["draw_date"] if window_end is not None else None,
+        "inventory_positions": window_length,
+        "basis": "first_to_last draw with an archived official observation",
+    }
     for set_index in (1, 2, 3):
         matched = [row for row in verified_rows if row["reported_set_index"] == set_index]
         positions = sorted(inventory_positions[row["draw_id"]] for row in matched)
         gaps = [right - left for left, right in zip(positions, positions[1:])]
-        leading_missing = positions[0] if positions else None
-        trailing_missing = len(inventory) - 1 - positions[-1] if positions else None
+        leading_missing = positions[0] - window_start if positions and window_start is not None else (
+            window_length if window_start is not None else None
+        )
+        trailing_missing = window_end - positions[-1] if positions and window_end is not None else (
+            window_length if window_end is not None else None
+        )
         missing_runs = [gap - 1 for gap in gaps]
         if leading_missing is not None:
             missing_runs.append(leading_missing)
@@ -308,6 +326,8 @@ def build_ball_set_coverage(
             "largest_gap_elapsed_days": max(date_gaps) if date_gaps else None,
             "expected_draws": None,
             "coverage_rate": None,
+            "coverage_window_start_draw_id": coverage_window["first_draw_id"],
+            "coverage_window_end_draw_id": coverage_window["last_draw_id"],
             "denominator_status": "unknown_regime_boundary",
             "eligible_rolling_origin_targets": 0,
         }
@@ -362,6 +382,11 @@ def build_ball_set_coverage(
             "observed_draws": sum(1 for row in per_draw if row["status"] != "unobserved"),
             "primary_verified_draws": len(verified_rows),
             "primary_verified_coverage_rate": len(verified_rows) / len(inventory),
+            "observed_window_draws": window_length,
+            "observed_window_coverage_rate": (
+                len([row for row in verified_rows if window_start <= inventory_positions[row["draw_id"]] <= window_end]) / window_length
+                if window_length else 0.0
+            ),
             "status_counts": status_counts,
             "set_index_counts": {str(i): per_set[str(i)]["primary_verified_draws"] for i in (1, 2, 3)},
             "raw_observation_objects_verified": raw_verified,
@@ -371,6 +396,7 @@ def build_ball_set_coverage(
             "eligible_slot_targets": 0,
             "training_eligibility": "blocked_regime_unresolved",
         },
+        "coverage_window": coverage_window,
         "per_set": per_set,
         "by_year": [years[key] for key in sorted(years)],
         "by_source_domain": [by_source_domain[key] for key in sorted(by_source_domain)],
@@ -456,6 +482,8 @@ def write_ball_set_coverage_report(
         "",
         f"- Inventory draws: {summary['inventory_draws']}",
         f"- Observed draws: {summary['observed_draws']}",
+        f"- Evidence coverage window: {report['coverage_window']['first_draw_id']}–{report['coverage_window']['last_draw_id']} ({report['coverage_window']['inventory_positions']} inventory positions)",
+        f"- Verified coverage inside window: {summary['observed_window_coverage_rate']:.2%}",
         f"- Primary-verified labels: {summary['primary_verified_draws']} ({summary['primary_verified_coverage_rate']:.2%})",
         f"- Per-set counts: {summary['set_index_counts']}",
         f"- Out-of-inventory observations: {report['out_of_inventory_observation_count']}",
