@@ -14,7 +14,7 @@
 - CI run: [44437002993](https://github.com/Be90nia/Lottery/actions/runs/44437002993)
 - Artifact: `lottery-research-reports`, containing `rolling-origin-benchmark.json`
 
-The score is mean marginal Bernoulli log loss per number, not a joint 7-number ticket NLL. Lower is better.
+The score is mean marginal Bernoulli log loss per number, not a joint 7-number ticket NLL. Lower is better. The ticket generator now maps these marginal probabilities to a conditional-Poisson joint distribution for fixed-size sampling; that sampler does not retroactively change this historical scoring metric or validate the assumed joint dependence.
 
 ## Mean scores
 
@@ -50,6 +50,6 @@ Negative means the candidate model is better; positive means worse.
 
 - The 2,901-row input is still an unverified candidate; its checksum establishes byte identity, not official authenticity.
 - This comparison does not correct for all prior model/parameter exploration and must not be treated as a preregistered confirmatory test.
-- The marginal Bernoulli score is not a calibrated joint probability for a complete 5+2 ticket.
+- The reported marginal Bernoulli score is not a joint 5+2 ticket NLL. The later conditional-Poisson sampler provides a coherent fixed-size joint distribution matching first-order marginals, but that joint family has not been validated as the physical draw mechanism.
 - Do not access or tune against the isolated prospective 500-draw holdout.
 - Before model promotion: authenticate the dataset; freeze model and evaluation protocol; complete the dedicated #41 comparison and checkpoint/resume work; require robust improvement over uniform on both zones or a preregistered, explicitly scoped claim; and retain the full score ledger and uncertainty report.
