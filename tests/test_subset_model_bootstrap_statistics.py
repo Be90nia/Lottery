@@ -1,4 +1,9 @@
+import sys
 import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 
 from run_subset_rolling_origin import _holm_adjust, _moving_block_bootstrap
 
