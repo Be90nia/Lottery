@@ -361,7 +361,7 @@ def _archive_raw_response(fetched: dict[str, Any], archive_dir: Path, authority_
 def _archive_observation(
     fetched: dict[str, Any], parsed: ParsedAnnouncement, manifest: dict[str, Any], *,
     expected_draw_id: str | None, expected_draw_date: str | None,
-    ledger_path: Path, inventory: dict[str, str], inventory_sha256: str,
+    ledger_path: Path, inventory: dict[str, dict[str, Any]], inventory_sha256: str,
 ) -> dict[str, Any]:
     digest = manifest["body_sha256"]
     source_url = fetched["final_url"]
@@ -374,7 +374,7 @@ def _archive_observation(
     elif parsed.observation_status == "primary_verified":
         if parsed.draw_id not in inventory:
             status = "official_label_pending_inventory"
-        elif inventory[parsed.draw_id] != parsed.draw_date:
+        elif inventory[parsed.draw_id]["draw_date"] != parsed.draw_date:
             status = "draw_mismatch"
         else:
             status = "primary_verified"
@@ -438,7 +438,7 @@ def _archive_observation(
         "reported_set_index": parsed.reported_set_index,
         "inventory_crosswalk_at_capture": {
             "status": "not_in_inventory" if parsed.draw_id not in inventory else (
-                "matched" if inventory[parsed.draw_id] == parsed.draw_date else "date_mismatch"
+                "matched" if inventory[parsed.draw_id]["draw_date"] == parsed.draw_date else "date_mismatch"
             ),
             "inventory_sha256": inventory_sha256,
             "inventory_trust_status": "candidate_unverified",
@@ -484,7 +484,7 @@ def collect_ball_set_evidence(
         validate_records(inventory_rows)
     except (UnicodeDecodeError, json.JSONDecodeError, DatasetValidationError) as exc:
         raise BallSetEvidenceError(f"draw inventory is invalid: {exc}") from exc
-    inventory = {row["draw_id"]: row["draw_date"] for row in inventory_rows}
+    inventory = {row["draw_id"]: row for row in inventory_rows}
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     if not isinstance(registry, dict) or registry.get("schema_version") != 1:
         raise BallSetEvidenceError("unsupported source registry schema")
@@ -609,9 +609,9 @@ def collect_ball_set_evidence(
         "draw_inventory_rows": len(inventory_rows),
         "draw_inventory_trust_status": "candidate_unverified",
         "inventory_crosswalk": {
-            "matched_draws": sum(1 for item in fetched_pages if item.get("draw_id") in inventory and inventory[item["draw_id"]] == item.get("draw_date")),
+            "matched_draws": sum(1 for item in fetched_pages if item.get("draw_id") in inventory and inventory[item["draw_id"]]["draw_date"] == item.get("draw_date")),
             "not_in_inventory": sum(1 for item in fetched_pages if item.get("draw_id") not in inventory),
-            "date_mismatches": sum(1 for item in fetched_pages if item.get("draw_id") in inventory and inventory[item["draw_id"]] != item.get("draw_date")),
+            "date_mismatches": sum(1 for item in fetched_pages if item.get("draw_id") in inventory and inventory[item["draw_id"]]["draw_date"] != item.get("draw_date")),
         },
         "errors": errors,
         "source_completeness_verified": False,
