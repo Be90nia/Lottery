@@ -39,39 +39,61 @@ jobs:
           rc=$?
           printf '%s\n' "$rc" > sync-run/exit-code.txt
           exit "$rc"
+      - name: Strictly validate archived snapshots and build candidate dataset
+        id: validate_candidate
+        if: steps.fetch.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+        run: |
+          python scripts/fetch_history.py \
+            --snapshots-dir sync-run/raw \
+            --require-manifests \
+            --output sync-run/processed/candidate.jsonl
       - name: Write machine-readable sync receipt
         if: always()
         env:
           FETCH_OUTCOME: ${{ steps.fetch.outcome }}
+          VALIDATION_OUTCOME: ${{ steps.validate_candidate.outcome }}
           GIT_SHA: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           python - <<'PY'
-          import json, os
+          import hashlib, json, os
           from datetime import datetime, timezone
           from pathlib import Path
           root = Path("sync-run")
           code_path = root / "exit-code.txt"
           code = int(code_path.read_text().strip()) if code_path.exists() else None
-          output_path = root / "fetch-output.json"
-          summary = None
-          if output_path.exists():
+          def read_json(path):
               try:
-                  summary = json.loads(output_path.read_text(encoding="utf-8"))
+                  return json.loads(path.read_text(encoding="utf-8"))
               except (OSError, json.JSONDecodeError):
-                  summary = None
+                  return None
+          summary = read_json(root / "fetch-output.json")
+          manifest_path = root / "processed/candidate.jsonl.manifest.json"
+          manifest = read_json(manifest_path)
+          candidate_path = root / "processed/candidate.jsonl"
+          candidate_sha = hashlib.sha256(candidate_path.read_bytes()).hexdigest() if candidate_path.exists() else None
+          ready = os.environ["FETCH_OUTCOME"] == "success" and os.environ["VALIDATION_OUTCOME"] == "success" and code == 0 and manifest is not None
           receipt = {
-              "schema_version": 1,
-              "status": "fetch_completed_untrusted" if os.environ["FETCH_OUTCOME"] == "success" and code == 0 else "source_unavailable_or_validation_failed",
+              "schema_version": 2,
+              "status": "candidate_archived_untrusted" if ready else "source_unavailable_or_validation_failed",
               "fetch_step_outcome": os.environ["FETCH_OUTCOME"],
-              "exit_code": code,
+              "snapshot_validation_outcome": os.environ["VALIDATION_OUTCOME"],
+              "fetch_exit_code": code,
               "created_at": datetime.now(timezone.utc).isoformat(),
               "workflow_event": os.environ["EVENT_NAME"],
               "code_commit": os.environ["GIT_SHA"],
               "fetch_summary": summary,
-              "trust_status": "not_officially_authenticated",
+              "candidate_records": manifest.get("validation", {}).get("records") if manifest else None,
+              "candidate_sha256": candidate_sha,
+              "candidate_manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest() if manifest_path.exists() else None,
+              "trust_status": manifest.get("trust_status") if manifest else "unverified",
+              "pagination_completeness_verified": False,
               "canonical_dataset_modified": False,
-              "model_training_or_promotion": False
+              "model_training_or_promotion": False,
+              "holdout_accessed": False
           }
           root.mkdir(exist_ok=True)
           (root / "sync-receipt.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -85,7 +107,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Fail visibly when the source fetch or validation failed
-        if: steps.fetch.outcome == 'failure'
+        if: steps.fetch.outcome == 'failure' || steps.validate_candidate.outcome == 'failure'
         run: |
-          echo "Official source fetch/validation failed. Evidence was uploaded; canonical data was not changed."
+          echo "Official source fetch or strict snapshot validation failed. Evidence was uploaded; canonical data was not changed."
           exit 1
