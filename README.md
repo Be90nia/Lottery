@@ -62,7 +62,7 @@ python scripts/fetch_history.py --snapshots-dir data/raw/user-supplied --require
 python scripts/validate_dataset.py
 python scripts/validate_legacy_prizes.py
 python scripts/reconcile_sources.py
-python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl --simulations 999 --seed 20261118
+python scripts/analyze_baseline.py data/candidates/pinned-draws-20261118.jsonl --simulations 999 --seed 20261118
 python -m unittest discover -s tests -v
 ```
 
