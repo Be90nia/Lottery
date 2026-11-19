@@ -128,12 +128,15 @@ class ReportedSetIndexViewTests(unittest.TestCase):
         rows, manifest = self.build()
         self.assertEqual(len(rows), 2)
         self.assertEqual([row["reported_set_index"] for row in rows], [1, 2])
+        self.assertTrue(all(row["eligible_for_reported_index_pilot"] is True for row in rows))
         self.assertTrue(all(row["eligible_for_physical_model"] is False for row in rows))
         self.assertTrue(all(row["equipment_regime_id"] is None for row in rows))
         self.assertTrue(all(row["physical_ball_set_id"] is None for row in rows))
         self.assertTrue(all(row["training_eligibility"] == "blocked_regime_unresolved" for row in rows))
         self.assertEqual(manifest["set_index_counts"], {"1": 1, "2": 1, "3": 0})
         self.assertEqual(manifest["training_eligibility"], "blocked_regime_unresolved")
+        self.assertEqual(manifest["reported_index_pilot_status"], "preregistered_research_only")
+        self.assertEqual(manifest["physical_model_eligibility"], "blocked_regime_unresolved")
         self.assertEqual(manifest["physical_identity_claim"], "none")
 
     def test_versioned_artifact_is_write_once_and_idempotent(self):
