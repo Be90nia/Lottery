@@ -2,7 +2,9 @@
 import math
 import unittest
 
-from lottery.exact_backtest import holm_adjust, moving_block_bootstrap_ci, uniform_exact_nll, evaluate_rolling_origin
+from lottery.exact_backtest import (holm_adjust, moving_block_bootstrap_ci, uniform_exact_nll,
+                                    evaluate_rolling_origin, verify_frozen_snapshot,
+                                    verify_target_manifest)
 
 
 def draw(index, front, back):
@@ -30,6 +32,32 @@ class ExactBacktestPrimitiveTests(unittest.TestCase):
 
     def test_uniform_exact_set_score(self):
         self.assertAlmostEqual(uniform_exact_nll(35, 5), math.log(math.comb(35, 5)), places=12)
+
+    def test_target_manifest_hash_and_unique_ids(self):
+        import hashlib
+        raw = b'{"target_draw_ids":["00002","00003"]}'
+        digest = hashlib.sha256(raw).hexdigest()
+        self.assertEqual(verify_target_manifest(raw, expected_sha256=digest), ("00002", "00003"))
+        with self.assertRaises(ValueError):
+            verify_target_manifest(raw, expected_sha256="0" * 64)
+
+    def test_snapshot_preflight_rejects_hash_and_checks_exact_targets(self):
+        import hashlib
+        rows = [
+            draw(1, [1, 2, 3, 4, 5], [1, 2]),
+            draw(2, [2, 3, 4, 5, 6], [2, 3]),
+        ]
+        import json
+        raw = ("\\n".join(json.dumps(row, separators=(",", ":")) for row in rows) + "\\n").encode()
+        digest = hashlib.sha256(raw).hexdigest()
+        checked = verify_frozen_snapshot(raw, expected_sha256=digest,
+                                          expected_row_count=2, expected_target_ids=("00002",),
+                                          min_train=1)
+        self.assertEqual(len(checked), 2)
+        with self.assertRaises(ValueError):
+            verify_frozen_snapshot(raw, expected_sha256="0" * 64,
+                                   expected_row_count=2, expected_target_ids=("00002",),
+                                   min_train=1)
 
     def test_terminal_ledger_keeps_failed_targets(self):
         rows = [draw(1, [1, 2, 3, 4, 5], [1, 2]),
