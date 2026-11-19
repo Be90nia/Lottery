@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lottery.append_only import AppendOnlyError, reconcile_append_only
+from lottery.append_only import AppendOnlyError, _atomic_write_new, reconcile_append_only
 
 
 def row(draw_id, draw_date, front=None):
@@ -35,6 +35,7 @@ def write_manifest(candidate, manifest_path):
         "output_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
         "trust_status": "manifest_complete_not_officially_authenticated",
         "provenance_complete": True,
+        "source_completeness_verified": True,
         "snapshot_count": 1,
         "validation": {"records": len(candidate.read_text().splitlines())},
     }), encoding="utf-8")
@@ -124,6 +125,14 @@ class AppendOnlyTests(unittest.TestCase):
         with self.assertRaisesRegex(AppendOnlyError, "complete official-source"):
             self.run_gate()
 
+    def test_unverified_source_pagination_is_rejected_even_with_complete_page_manifests(self):
+        self.prepare(self.old + [row("26132", "2026-11-18")])
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        manifest["source_completeness_verified"] = False
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "pagination completeness is not independently verified"):
+            self.run_gate()
+
     def test_source_reference_change_is_not_a_result_correction(self):
         revised = [dict(item, source_id="sha256:new") for item in self.old]
         self.prepare(revised + [row("26132", "2026-11-18")])
@@ -149,6 +158,40 @@ class AppendOnlyTests(unittest.TestCase):
                 self.current, self.candidate, self.manifest,
                 self.output, self.manifest,
             )
+
+    def test_unverified_source_completeness_cannot_claim_no_new_draws(self):
+        self.prepare(self.old)
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        manifest["source_completeness_verified"] = False
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "pagination completeness is not independently verified"):
+            self.run_gate()
+        self.assertFalse(self.output.exists())
+        self.assertFalse(self.receipt.exists())
+
+    def test_atomic_publication_primitive_never_clobbers_existing_path(self):
+        target = self.root / "atomic.json"
+        _atomic_write_new(target, b"first")
+        with self.assertRaisesRegex(AppendOnlyError, "refusing to overwrite existing artifact"):
+            _atomic_write_new(target, b"second")
+        self.assertEqual(target.read_bytes(), b"first")
+        self.assertEqual(list(self.root.glob("atomic.json.*.tmp")), [])
+
+    def test_existing_publication_is_never_overwritten(self):
+        self.prepare(self.old + [row("26132", "2026-11-18")])
+        self.output.write_text("preserve-me", encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "refusing to overwrite existing publication"):
+            self.run_gate()
+        self.assertEqual(self.output.read_text(encoding="utf-8"), "preserve-me")
+        self.assertFalse(self.receipt.exists())
+
+    def test_existing_receipt_is_never_overwritten(self):
+        self.prepare(self.old + [row("26132", "2026-11-18")])
+        self.receipt.write_text("preserve-me", encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "refusing to overwrite existing receipt"):
+            self.run_gate()
+        self.assertEqual(self.receipt.read_text(encoding="utf-8"), "preserve-me")
+        self.assertFalse(self.output.exists())
 
     def test_cli_help_imports_the_append_only_module(self):
         completed = subprocess.run(
