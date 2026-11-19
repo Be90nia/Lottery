@@ -1,7 +1,7 @@
 """Exact complete-subset exponential-family probabilities and fitting."""
 from __future__ import annotations
 
-from bisect import bisect_left
+from bisect import bisect_right
 from dataclasses import dataclass
 from math import exp, isfinite, log
 from typing import Sequence
@@ -142,7 +142,7 @@ class ExponentialFamily:
         draw = rng.random()
         if not isinstance(draw, (int, float)) or not isfinite(float(draw)) or not 0.0 <= draw < 1.0:
             raise ValueError("rng.random() must return a finite value in [0, 1)")
-        index = bisect_left(cumulative, float(draw) * total)
+        index = bisect_right(cumulative, float(draw) * total)
         return support[min(index, len(support) - 1)]
 
     def sample_many(self, count: int, theta: Sequence[float], rng) -> tuple[tuple[int, ...], ...]:
