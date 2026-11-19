@@ -30,15 +30,23 @@ def write_rows(path, rows):
     )
 
 
-def write_manifest(candidate, manifest_path, snapshots_dir):
+def write_manifest(candidate, manifest_path, snapshots_dir, page_size=100):
     rows = [
         json.loads(line)
         for line in candidate.read_text(encoding="utf-8").splitlines()
     ]
     snapshots_dir.mkdir(parents=True, exist_ok=True)
-    items = []
-    for item in rows:
-        items.append({
+    total_pages = (len(rows) + page_size - 1) // page_size
+    run_id = "fixture-fetch-run"
+    snapshots = []
+    pages = []
+    source_ids = {}
+    snapshot_hashes = []
+    retrieved_at = "2026-11-19T15:00:00+00:00"
+
+    for page_no in range(1, total_pages + 1):
+        page_rows = rows[(page_no - 1) * page_size:page_no * page_size]
+        items = [{
             "lotteryDrawNum": item["draw_id"],
             "lotteryDrawTime": item["draw_date"],
             "lotteryDrawResult": " ".join(
@@ -46,64 +54,72 @@ def write_manifest(candidate, manifest_path, snapshots_dir):
             ),
             "lotteryUnsortDrawresult": item.get("source_unsort_drawresult"),
             "lotteryEquipmentCount": item.get("source_equipment_count"),
+        } for item in page_rows]
+        raw_payload = {
+            "success": True,
+            "value": {
+                "list": items,
+                "total": len(rows),
+                "totalPage": total_pages,
+            },
+        }
+        raw = json.dumps(raw_payload, sort_keys=True).encode("utf-8")
+        raw_file = f"page-{page_no:03d}.json"
+        raw_path = snapshots_dir / raw_file
+        raw_path.write_bytes(raw)
+        digest = hashlib.sha256(raw).hexdigest()
+        source_ids.update({item["draw_id"]: f"sha256:{digest}" for item in page_rows})
+        source_url = (
+            "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry"
+            f"?gameNo=85&provinceId=0&pageSize={page_size}&isVerify=1&pageNo={page_no}"
+        )
+        sidecar_name = f"{Path(raw_file).stem}.manifest.json"
+        sidecar = {
+            "source": "Sporttery public historical draw API",
+            "url": source_url,
+            "http_status": 200,
+            "content_type": "application/json",
+            "sha256": digest,
+            "bytes": len(raw),
+            "raw_file": raw_file,
+            "page_no": page_no,
+            "run_id": run_id,
+            "retrieved_at": retrieved_at,
+        }
+        (snapshots_dir / sidecar_name).write_text(
+            json.dumps(sidecar, sort_keys=True), encoding="utf-8"
+        )
+        records = len(page_rows)
+        snapshots.append({
+            "raw_file": raw_file,
+            "sha256": digest,
+            "bytes": len(raw),
+            "records": records,
+            "page_no": page_no,
+            "run_id": run_id,
+            "sidecar_manifest": sidecar_name,
+            "provenance_complete": True,
         })
-    raw_payload = {
-        "success": True,
-        "value": {"list": items, "total": len(rows), "totalPage": 1},
-    }
-    raw = json.dumps(raw_payload, sort_keys=True).encode("utf-8")
-    raw_file = "page-001.json"
-    raw_path = snapshots_dir / raw_file
-    raw_path.write_bytes(raw)
-    digest = hashlib.sha256(raw).hexdigest()
-    retrieved_at = "2026-11-19T15:00:00+00:00"
-    source_url = (
-        "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry"
-        "?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1"
-    )
-    sidecar = {
-        "source": "Sporttery public historical draw API",
-        "url": source_url,
-        "http_status": 200,
-        "content_type": "application/json",
-        "sha256": digest,
-        "bytes": len(raw),
-        "raw_file": raw_file,
-        "page_no": 1,
-        "run_id": "fixture-fetch-run",
-        "retrieved_at": retrieved_at,
-    }
+        pages.append({
+            "page_no": page_no,
+            "raw_file": raw_file,
+            "sha256": digest,
+            "records": records,
+        })
+        snapshot_hashes.append(digest)
+
     for item in rows:
-        item["source_id"] = f"sha256:{digest}"
+        item["source_id"] = source_ids[item["draw_id"]]
     write_rows(candidate, rows)
-    sidecar_name = "page-001.manifest.json"
-    (snapshots_dir / sidecar_name).write_text(
-        json.dumps(sidecar, sort_keys=True), encoding="utf-8"
-    )
-    snapshot = {
-        "raw_file": raw_file,
-        "sha256": digest,
-        "bytes": len(raw),
-        "records": len(rows),
-        "page_no": 1,
-        "run_id": "fixture-fetch-run",
-        "sidecar_manifest": sidecar_name,
-        "provenance_complete": True,
-    }
     attestation = {
         "schema": "sporttery-pagination-attestation-v1",
         "source_total_records": len(rows),
-        "source_total_pages": 1,
-        "page_size": 100,
+        "source_total_pages": total_pages,
+        "page_size": page_size,
         "metadata_page_no": 1,
         "total_records_pointer": "/value/total",
         "total_pages_pointer": "/value/totalPage",
-        "pages": [{
-            "page_no": 1,
-            "raw_file": raw_file,
-            "sha256": digest,
-            "records": len(rows),
-        }],
+        "pages": pages,
     }
     manifest_path.write_text(json.dumps({
         "output_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
@@ -111,9 +127,9 @@ def write_manifest(candidate, manifest_path, snapshots_dir):
         "provenance_complete": True,
         "source_completeness_verified": True,
         "source_completeness_attestation": attestation,
-        "snapshot_count": 1,
-        "snapshot_sha256": [digest],
-        "snapshots": [snapshot],
+        "snapshot_count": total_pages,
+        "snapshot_sha256": snapshot_hashes,
+        "snapshots": snapshots,
         "validation": {"records": len(rows)},
     }), encoding="utf-8")
 
@@ -137,15 +153,22 @@ class AppendOnlyTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def prepare(self, rows):
+    def prepare(self, rows, page_size=100):
         write_rows(self.candidate, rows)
-        write_manifest(self.candidate, self.manifest, self.snapshots_dir)
+        write_manifest(self.candidate, self.manifest, self.snapshots_dir, page_size)
 
     def run_gate(self):
         return reconcile_append_only(
             self.current, self.candidate, self.manifest,
             self.output, self.receipt, self.snapshots_dir,
         )
+
+    def test_multi_page_attestation_checks_full_and_terminal_page_counts(self):
+        self.prepare(self.old + [row("26132", "2026-11-18")], page_size=2)
+        receipt = self.run_gate()
+        self.assertEqual(receipt["status"], "appended")
+        self.assertEqual(receipt["source_completeness_attestation"]["source_total_pages"], 2)
+        self.assertEqual(len(receipt["source_completeness_attestation"]["verified_page_sha256"]), 2)
 
     def test_append_and_hash_receipt(self):
         self.prepare(self.old + [row("26132", "2026-11-18")])
