@@ -349,8 +349,10 @@ def write_ball_set_coverage_report(
 ) -> None:
     outputs = [output_json, output_csv, output_markdown]
     resolved = [path.resolve() for path in outputs]
-    if len(set(resolved)) != len(resolved) or any(path in protected_paths for path in resolved):
-        raise BallSetCoverageError("coverage output paths must be distinct from each other and all inputs")
+    if len(set(resolved)) != len(resolved):
+        raise BallSetCoverageError("coverage output paths must be distinct from each other")
+    if any(path in protected_paths for path in resolved):
+        raise BallSetCoverageError("coverage output path would overwrite an input")
     json_bytes = (json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
     columns = [
         "draw_id", "draw_date", "reported_set_index", "status", "observation_ids",
