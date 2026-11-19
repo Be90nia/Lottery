@@ -50,11 +50,8 @@ def _read_jsonl(path: Path) -> tuple[list[dict[str, Any]], bytes, dict[str, Any]
         raise PublicationError(f"{path}: dataset validation failed: {exc}") from exc
     return rows, raw, validation
 
-def _sha(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _atomic_write(path: Path, content: bytes) -> None:
+def _atomic_write_new(path: Path, content: bytes) -> None:
+    """Atomically create a new evidence file without ever replacing an existing path."""
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
     temp = Path(name)
@@ -63,10 +60,12 @@ def _atomic_write(path: Path, content: bytes) -> None:
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temp, path)
+        # A same-directory hard link is an atomic no-replace publish operation.
+        os.link(temp, path)
     except Exception:
         temp.unlink(missing_ok=True)
         raise
+    temp.unlink(missing_ok=True)
 
 
 def _canonical_rows(rows: list[dict[str, Any]]) -> bytes:
@@ -171,7 +170,7 @@ def reconcile_append_only(
         if output_path.exists():
             raise PublicationError("output_path already exists; refusing to overwrite a prior candidate")
         payload = _canonical_rows(merged)
-        _atomic_write(output_path, payload)
+        _atomic_write_new(output_path, payload)
         output_sha = hashlib.sha256(payload).hexdigest()
         receipt = {
             "schema_version": 1,
@@ -200,11 +199,11 @@ def reconcile_append_only(
             "trust_status": "manifest_complete_not_officially_authenticated",
             "promotion_authorized": False,
         }
-        _atomic_write(
+        _atomic_write_new(
             output_path.with_suffix(output_path.suffix + ".manifest.json"),
             (json.dumps(output_manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8"),
         )
-    _atomic_write(
+    _atomic_write_new(
         receipt_path,
         (json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8"),
     )
