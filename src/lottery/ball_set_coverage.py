@@ -12,7 +12,7 @@ from typing import Any
 
 from .ball_set_evidence import (
     ALLOWED_HOSTS, OBSERVATION_SCHEMA, PARSER_VERSION, BallSetEvidenceError,
-    parse_announcement,
+    parse_announcement, _read_ledger,
 )
 from .ledger_lock import ledger_lock
 from .validate import DatasetValidationError, validate_records
@@ -148,7 +148,8 @@ def build_ball_set_coverage(
         raise BallSetCoverageError(f"draw inventory is invalid: {exc}") from exc
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     with ledger_lock(ledger_path):
-        observations, ledger_raw = _read_jsonl(ledger_path, optional=True)
+        observations = _read_ledger(ledger_path)
+        ledger_raw = ledger_path.read_bytes() if ledger_path.exists() else b""
     if any(not isinstance(item, dict) or item.get("schema_version") != OBSERVATION_SCHEMA for item in observations):
         raise BallSetCoverageError("observation ledger contains an unsupported record")
     observation_ids = [item.get("observation_id") for item in observations]
