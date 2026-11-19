@@ -346,7 +346,7 @@ def ingest_snapshot_directory(
         "completeness_evidence": None,
         "validation": validation,
         "output_file": output.name,
-        "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "output_sha256": None,
         "trust_status": "candidate_unverified" if not provenance_complete else "manifest_complete_not_officially_authenticated",
     }
     output_bytes = "".join(
