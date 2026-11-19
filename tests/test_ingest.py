@@ -100,7 +100,9 @@ class ParsePageTests(unittest.TestCase):
             (raw_dir / f"page-00001-{digest[:12]}.manifest.json").write_text(
                 json.dumps({
                     "source": "Sporttery public historical draw API",
-                    "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85",
+                    "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1",
+                    "page_no": 1,
+                    "run_id": "fixture-run",
                     "retrieved_at": "2026-11-18T00:00:00+00:00",
                     "http_status": 200,
                     "sha256": digest,
@@ -118,6 +120,47 @@ class ParsePageTests(unittest.TestCase):
             row = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(row["source_unsort_drawresult"], "03 01 05 02 04 02 01")
             self.assertTrue(output.with_suffix(".jsonl.manifest.json").exists())
+
+    def test_strict_offline_import_rejects_noncontiguous_page_inventory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_dir = root / "raw"
+            raw_dir.mkdir()
+            for page_no, draw_id, draw_date in (
+                (1, "26131", "2026-11-16"),
+                (3, "26129", "2026-11-12"),
+            ):
+                payload = json.dumps({
+                    "success": True,
+                    "value": {"list": [{
+                        "lotteryDrawNum": draw_id,
+                        "lotteryDrawTime": draw_date,
+                        "lotteryDrawResult": "01 02 03 04 05 01 02",
+                    }]},
+                }).encode("utf-8")
+                digest = hashlib.sha256(payload).hexdigest()
+                name = f"page-{page_no:05d}-{digest[:12]}.json"
+                (raw_dir / name).write_bytes(payload)
+                (raw_dir / f"page-{page_no:05d}-{digest[:12]}.manifest.json").write_text(
+                    json.dumps({
+                        "source": "Sporttery public historical draw API",
+                        "url": (
+                            "https://webapi.sporttery.cn/gateway/lottery/"
+                            f"getHistoryPageListV1.qry?gameNo=85&pageNo={page_no}"
+                        ),
+                        "page_no": page_no,
+                        "run_id": "same-fetch-run",
+                        "retrieved_at": "2026-11-18T00:00:00+00:00",
+                        "http_status": 200,
+                        "sha256": digest,
+                        "raw_file": name,
+                    }),
+                    encoding="utf-8",
+                )
+            with self.assertRaisesRegex(IngestionError, "page inventory is not contiguous"):
+                ingest_snapshot_directory(
+                    raw_dir, root / "strict.jsonl", require_manifests=True
+                )
 
     def test_offline_snapshot_import_rejects_tampered_manifest_hash(self):
         with tempfile.TemporaryDirectory() as temp:
