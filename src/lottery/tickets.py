@@ -1,8 +1,10 @@
 """Small, reproducible MVP for generating legal DLT ticket candidates.
 
 The three strategies are uniform, expanding-frequency, and EWMA marginal
-weights. Weighted sampling is a diversification heuristic, not a joint model
-or evidence of predictive advantage. No physical ball-set identity is inferred.
+models. Each marginal vector is calibrated to an exact conditional-Poisson
+fixed-size joint distribution before sampling. The rejective dependence
+structure is a modeling assumption, not evidence of predictive advantage.
+No physical ball-set identity is inferred.
 """
 from __future__ import annotations
 
