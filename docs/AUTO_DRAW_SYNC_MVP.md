@@ -15,7 +15,7 @@ The collector currently stops on an empty or short page. That behavior is not, b
 ## MVP acceptance gates
 
 1. Daily and manual runs are deterministic in scope and non-overlapping.
-2. Every received page is preserved with its exact response bytes, source URL, HTTP status, retrieval timestamp, parser version, and SHA-256.
+2. Every received page is preserved with its exact response bytes, requested and final URL, HTTP status, retrieval timestamp, parser version, and SHA-256. HTTP redirects are rejected before following; strict import and append-only publication require the final URL to equal the exact requested Sporttery endpoint and the redirect chain to be empty.
 3. Any request, HTTP, schema, duplicate-conflict, or number-range error fails closed and retains diagnostics.
 4. The receipt states fetch and strict-import outcomes, candidate and manifest hashes, pagination-completeness status, code commit, and that canonical data/model state was not modified.
 5. No source response is treated as official authentication merely because it came from the configured endpoint or has a matching hash.
