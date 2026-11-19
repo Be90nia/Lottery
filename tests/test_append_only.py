@@ -35,10 +35,10 @@ class AppendOnlyTests(unittest.TestCase):
   with self.assertRaisesRegex(AppendOnlyError,"historical correction"): self.run_gate()
   self.assertFalse(self.out.exists())
  def test_chronology_regression_rejected(self):
-  self.prep(self.old+[row("26129","2026-11-15")])
+  self.prep([self.old[0],row("26129","2026-11-15"),self.old[1]])
   with self.assertRaisesRegex(AppendOnlyError,"not strictly after"): self.run_gate()
  def test_candidate_hash_mismatch_rejected(self):
-  self.prep(self.old); self.can.write_text(self.can.read_text()+" ")
+  self.prep(self.old); self.can.write_text(self.can.read_text().rstrip("\\n")+" ")
   with self.assertRaisesRegex(AppendOnlyError,"output_sha256"): self.run_gate()
  def test_incomplete_source_manifest_rejected(self):
   self.prep(self.old+[row("26132","2026-11-18")]); x=json.loads(self.man.read_text()); x["trust_status"]="candidate_unverified"; self.man.write_text(json.dumps(x))
