@@ -64,9 +64,9 @@ def generate_ticket_candidates(
     if type(seed) is not int:
         raise ValueError("seed must be an integer")
     if type(alpha) not in (int, float) or not math.isfinite(alpha) or alpha <= 0:
-        raise ValueError("alpha must be a finite positive non-boolean number")
+        raise ValueError("alpha must be finite and positive (non-boolean numeric value)")
     if type(half_life) not in (int, float) or not math.isfinite(half_life) or half_life <= 0:
-        raise ValueError("half_life must be a finite positive non-boolean number")
+        raise ValueError("half_life must be finite and positive (non-boolean numeric value)")
     if code_commit is not None and (
         not isinstance(code_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", code_commit)
     ):
