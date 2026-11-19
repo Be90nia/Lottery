@@ -30,6 +30,8 @@ MIN_TRAIN = 300
 BOOTSTRAP_REPLICATES = 1000
 BOOTSTRAP_BLOCK = 50
 BOOTSTRAP_SEED = 20261118
+CANDIDATE_MAX_ITERATIONS = 5000
+CANDIDATE_GRADIENT_TOLERANCE = 1e-8
 
 
 def _percentile(values: list[float], probability: float) -> float:
@@ -120,7 +122,8 @@ def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
     supplied_hash = record.get("record_sha256")
     if not isinstance(supplied_hash, str) or supplied_hash != _checkpoint_record_hash(record):
         raise ValueError("checkpoint target record SHA-256 mismatch")
-    if type(record.get("candidate_iterations")) is not int or record["candidate_iterations"] < 0:
+    if (type(record.get("candidate_iterations")) is not int
+            or not 0 <= record["candidate_iterations"] <= CANDIDATE_MAX_ITERATIONS):
         raise ValueError("checkpoint candidate iteration count is invalid")
     gradient = record.get("candidate_gradient_infinity_norm")
     if type(gradient) not in (int, float) or not math.isfinite(gradient) or gradient < 0:
@@ -138,6 +141,9 @@ def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
         raise ValueError("checkpoint training cutoff is missing")
     if any(not isinstance(status, str) or not status for status in record["fit_statuses"].values()):
         raise ValueError("checkpoint fit status must be a non-empty string")
+    if (record["fit_statuses"]["candidate"] == "converged"
+            and gradient > CANDIDATE_GRADIENT_TOLERANCE):
+        raise ValueError("checkpoint candidate gradient exceeds the convergence tolerance")
     scores = record["exact_set_nll"]
     if type(scores["uniform"]) not in (int, float) or not math.isfinite(scores["uniform"]):
         raise ValueError("checkpoint uniform NLL must be finite")
@@ -208,7 +214,11 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
         for idx in range(MIN_TRAIN + len(records), len(rows)):
             training = rows[:idx]
             target = observations[idx]
-            fit = model.fit(observations[:idx])
+            fit = model.fit(
+                observations[:idx],
+                max_iterations=CANDIDATE_MAX_ITERATIONS,
+                gradient_tolerance=CANDIDATE_GRADIENT_TOLERANCE,
+            )
             statuses = {"candidate": fit.terminal_status}
             scores = {"uniform": uniform_nll}
             candidate = -model.log_probability(target, fit.theta) if fit.converged else None
@@ -285,7 +295,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
                            BOOTSTRAP_SEED, checkpoint_dir / "front.jsonl", digest)
     back = _evaluate_zone(rows, "back", BACK_POPULATION, BACK_SELECTION, False,
                           BOOTSTRAP_SEED + 1, checkpoint_dir / "back.jsonl", digest)
-    passed = all(
+    diagnostic_pass = all(
         zone["complete_coverage"] and all(
             zone["paired_candidate_minus_baseline"][ref] is not None
             and zone["paired_candidate_minus_baseline"][ref]["ci_95_upper"] < 0.0
@@ -302,9 +312,13 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "objective_scale": "mean_nll", "regularization_lambda": 1.0,
         "solver": "deterministic_unbounded_lbfgs_armijo_v1",
         "solver_policy_note": "Solver differs from initial L-BFGS-B proposal; diagnostic pending policy review.",
+        "diagnostic_candidate_pass": bool(diagnostic_pass),
+        "confirmatory_candidate_pass": False,
+        "confirmatory_status": "blocked_solver_policy_review",
+        "confirmatory_block_reason": "The implemented solver has not been approved against the frozen L-BFGS-B protocol.",
         "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "block_length": BOOTSTRAP_BLOCK,
                       "seed": BOOTSTRAP_SEED, "method": "paired non-circular moving-block percentile CI"},
-        "front": front, "back": back, "confirmatory_candidate_pass": bool(passed),
+        "front": front, "back": back,
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
                         "no LOT-042 access", "no promotion or serving", "solver policy review outstanding"],
@@ -316,7 +330,9 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "snapshot_sha256": digest, "target_count_per_zone": result["target_count_per_zone"],
         "front_complete": front["complete_coverage"], "back_complete": back["complete_coverage"],
         "front_scores": front["mean_exact_set_nll"], "back_scores": back["mean_exact_set_nll"],
-        "confirmatory_candidate_pass": result["confirmatory_candidate_pass"], "production_ready": False,
+        "diagnostic_candidate_pass": result["diagnostic_candidate_pass"],
+        "confirmatory_candidate_pass": result["confirmatory_candidate_pass"],
+        "confirmatory_status": result["confirmatory_status"], "production_ready": False,
     }, sort_keys=True))
     return result
 
