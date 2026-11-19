@@ -268,6 +268,12 @@ def ingest_snapshot_directory(
             and parsed_url.hostname == "webapi.sporttery.cn"
             and parsed_url.path == "/gateway/lottery/getHistoryPageListV1.qry"
             and query.get("gameNo") == ["85"]
+            and query.get("provinceId") == ["0"]
+            and query.get("isVerify") == ["1"]
+            and query.get("pageNo") == [str(sidecar.get("page_no"))]
+            and len(query.get("pageSize", [])) == 1
+            and query["pageSize"][0].isdigit()
+            and 1 <= int(query["pageSize"][0]) <= 100
             and timestamp_valid
             and sidecar.get("http_status") == 200
             and sidecar.get("sha256") == digest
