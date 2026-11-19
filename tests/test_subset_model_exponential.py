@@ -77,6 +77,19 @@ class ExponentialFamilyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "regularization_lambda"):
             self.model.fit(observations, regularization_lambda=True)
 
+    def test_sampler_rejects_invalid_rng_values(self):
+        class InvalidRng:
+            def __init__(self, value):
+                self.value = value
+
+            def random(self):
+                return self.value
+
+        for value in (False, True, -0.1, 1.0, float("nan"), "0.5"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "rng.random"):
+                    self.model.sample((0.0,) * self.model.dimension, InvalidRng(value))
+
     def test_sampler_moves_to_next_cell_at_exact_cdf_boundary(self):
         class BoundaryRng:
             def random(self):
