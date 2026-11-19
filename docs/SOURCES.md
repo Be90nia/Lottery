@@ -36,8 +36,8 @@ the JSON Pointer paths must resolve in the actual page-1 response):
 ```json
 {
   "schema": "sporttery-pagination-attestation-v1",
-  "source_total_records": 2949,
-  "source_total_pages": 30,
+  "source_total_records": 3,
+  "source_total_pages": 1,
   "page_size": 100,
   "metadata_page_no": 1,
   "total_records_pointer": "/value/total",
@@ -47,7 +47,7 @@ the JSON Pointer paths must resolve in the actual page-1 response):
       "page_no": 1,
       "raw_file": "page-00001-<sha-prefix>.json",
       "sha256": "<64 lowercase hex characters>",
-      "records": 100
+      "records": 3
     }
   ]
 }
