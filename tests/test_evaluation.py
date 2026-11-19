@@ -76,7 +76,7 @@ class EvaluationGateTests(unittest.TestCase):
 
     def test_out_of_order_targets_rejected(self):
         data = rows()
-        data[100]["target_draw_id"] = "26001"
+        data[100]["target_draw_id"] = "26000"
         with self.assertRaisesRegex(EvaluationGateError, "strictly increasing"):
             self.build(data)
 
