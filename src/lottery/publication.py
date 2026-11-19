@@ -132,7 +132,9 @@ def reconcile_append_only(
                 or len(item["sha256"]) != 64
                 or any(ch not in "0123456789abcdef" for ch in item["sha256"])
                 or not isinstance(item.get("raw_file"), str)
-                or not item["raw_file"]):
+                or not item["raw_file"]
+                or type(item.get("page_no")) is not int or item["page_no"] < 1
+                or type(item.get("records")) is not int or item["records"] < 0):
             raise PublicationError("candidate manifest contains an invalid snapshot entry")
     observed_pages = [item.get("page_no") for item in snapshots]
     expected_pages = list(range(1, len(snapshots) + 1))
