@@ -16,6 +16,7 @@ from .ball_set_evidence import (
     parse_announcement, _read_ledger,
 )
 from .ledger_lock import ledger_lock
+from .draw_results import DrawResultLedgerError, read_draw_result_ledger, verify_draw_result_record
 from .validate import DatasetValidationError, validate_records
 
 
@@ -143,8 +144,8 @@ def _atomic_write(path: Path, data: bytes, protected: set[Path]) -> None:
 
 
 def build_ball_set_coverage(
-    draw_inventory_path: Path, ledger_path: Path, archive_dir: Path, *,
-    code_commit: str = "local",
+    draw_inventory_path: Path, ledger_path: Path, draw_result_ledger_path: Path,
+    archive_dir: Path, *, code_commit: str = "local",
 ) -> dict[str, Any]:
     inventory, inventory_raw = _read_jsonl(draw_inventory_path)
     try:
@@ -158,6 +159,14 @@ def build_ball_set_coverage(
         except BallSetEvidenceError as exc:
             raise BallSetCoverageError(f"observation ledger failed integrity validation: {exc}") from exc
         ledger_raw = ledger_path.read_bytes() if ledger_path.exists() else b""
+    with ledger_lock(draw_result_ledger_path):
+        try:
+            draw_result_records = read_draw_result_ledger(draw_result_ledger_path)
+        except DrawResultLedgerError as exc:
+            raise BallSetCoverageError(f"draw-result ledger failed integrity validation: {exc}") from exc
+        draw_result_ledger_raw = (
+            draw_result_ledger_path.read_bytes() if draw_result_ledger_path.exists() else b""
+        )
     if any(not isinstance(item, dict) or item.get("schema_version") != OBSERVATION_SCHEMA for item in observations):
         raise BallSetCoverageError("observation ledger contains an unsupported record")
     observation_ids = [item.get("observation_id") for item in observations]
