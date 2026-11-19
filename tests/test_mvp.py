@@ -75,6 +75,49 @@ class MvpOrchestratorTests(unittest.TestCase):
             self.assertEqual(document["receipt"]["published_ticket_count"], 6)
             self.assertEqual(document["batch"]["total_tickets"], 6)
 
+    def test_pinned_dataset_manifest_trust_is_carried_into_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "draws.jsonl"
+            output = root / "mvp.json"
+            raw = "".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)).encode()
+            dataset.write_bytes(raw)
+            from lottery.validate import validate_records
+            rows = [json.loads(line) for line in raw.decode().splitlines()]
+            manifest = {
+                "output_sha256": hashlib.sha256(raw).hexdigest(),
+                "validation": validate_records(rows),
+                "provenance_complete": True,
+                "trust_status": "manifest_complete_not_officially_authenticated",
+            }
+            manifest_path = dataset.with_suffix(dataset.suffix + ".manifest.json")
+            manifest_bytes = json.dumps(manifest).encode()
+            manifest_path.write_bytes(manifest_bytes)
+            document = run_mvp(dataset, output, code_commit="f" * 40)
+            expected_manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+            self.assertEqual(document["batch"]["dataset"]["trust_status"], "manifest_complete_not_officially_authenticated")
+            self.assertEqual(document["batch"]["dataset"]["manifest_sha256"], expected_manifest_sha)
+            self.assertEqual(document["receipt"]["data_trust_status"], "manifest_complete_not_officially_authenticated")
+            self.assertEqual(document["receipt"]["dataset_manifest_sha256"], expected_manifest_sha)
+
+    def test_invalid_adjacent_dataset_manifest_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "draws.jsonl"
+            output = root / "mvp.json"
+            raw = "".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)).encode()
+            dataset.write_bytes(raw)
+            manifest_path = dataset.with_suffix(dataset.suffix + ".manifest.json")
+            manifest_path.write_text(json.dumps({
+                "output_sha256": "0" * 64,
+                "validation": {},
+                "provenance_complete": True,
+                "trust_status": "manifest_complete_not_officially_authenticated",
+            }), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "does not verify"):
+                run_mvp(dataset, output, code_commit="f" * 40)
+            self.assertFalse(output.exists())
+
     def test_existing_output_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
