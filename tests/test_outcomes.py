@@ -212,9 +212,6 @@ class OutcomeLedgerTests(unittest.TestCase):
 
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 
 class OutcomeSnapshotBindingTests(unittest.TestCase):
@@ -289,3 +286,6 @@ class OutcomeSnapshotBindingTests(unittest.TestCase):
         with patch("sys.argv", argv):
             self.assertEqual(main(), 1)
         self.assertFalse(outcomes.exists())
+
+if __name__ == "__main__":
+    unittest.main()
