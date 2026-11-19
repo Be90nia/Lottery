@@ -280,6 +280,7 @@ def ingest_snapshot_directory(
                     f"{sidecar_path}: manifest lacks complete official-source provenance"
                 )
         snapshot_reports.append({
+            "page_no": sidecar.get("page_no") if isinstance(sidecar, dict) else None,
             "raw_file": path.name,
             "sha256": digest,
             "bytes": len(raw),
@@ -308,6 +309,10 @@ def ingest_snapshot_directory(
         "snapshot_sha256": [item["sha256"] for item in snapshot_reports],
         "snapshots": snapshot_reports,
         "provenance_complete": provenance_complete,
+        # The current endpoint parser does not verify authoritative total-page/record metadata.
+        # Therefore this import is never append-eligible until that contract is implemented.
+        "source_completeness_verified": False,
+        "completeness_evidence": None,
         "validation": validation,
         "output_file": output.name,
         "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
