@@ -85,6 +85,14 @@ class BallSetArchiveTests(unittest.TestCase):
             "seed_draw_id": "26128", "seed_draw_date": "2026-11-09",
             "seed_url": BASE,
         }), encoding="utf-8")
+        self.inventory = self.root / "draw-inventory.jsonl"
+        inventory_rows = [
+            {"draw_id": "26128", "draw_date": "2026-11-09", "front_numbers": [3, 13, 20, 25, 34],
+             "back_numbers": [9, 12], "source_id": "sha256:fixture-26128"},
+            {"draw_id": "26129", "draw_date": "2026-11-11", "front_numbers": [2, 12, 14, 17, 33],
+             "back_numbers": [7, 8], "source_id": "sha256:fixture-26129"},
+        ]
+        self.inventory.write_text("".join(json.dumps(row) + "\\n" for row in inventory_rows), encoding="utf-8")
         self.archive = self.root / "archive"
         self.ledger = self.root / "observations.jsonl"
         self.receipt = self.root / "receipt.json"
@@ -96,7 +104,8 @@ class BallSetArchiveTests(unittest.TestCase):
         with patch("lottery.ball_set_evidence.fetch_announcement", side_effect=fake_fetch):
             return collect_ball_set_evidence(
                 self.registry, self.archive, self.ledger,
-                receipt_path=self.receipt, delay_seconds=0, max_forward_pages=max_pages,
+                receipt_path=self.receipt, draw_inventory_path=self.inventory,
+                delay_seconds=0, max_forward_pages=max_pages,
             )
 
     def test_walks_newer_chain_and_archives_raw_bytes_before_parse(self):
