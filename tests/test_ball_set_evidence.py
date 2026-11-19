@@ -226,6 +226,17 @@ class BallSetArchiveTests(unittest.TestCase):
         self.assertEqual(receipt["status"], "review_required")
         self.assertEqual(receipt["observation_results"][-1]["status"], "draw_mismatch")
 
+    def test_observation_ledger_hash_chain_detects_tampering(self):
+        self.collect(lambda url: fetched(url, page()))
+        records = self.ledger.read_text(encoding="utf-8").splitlines()
+        record = json.loads(records[0])
+        self.assertEqual(record["prev_hash"], "0" * 64)
+        record["reported_set_index"] = 2
+        records[0] = json.dumps(record)
+        self.ledger.write_text("\n".join(records) + "\n", encoding="utf-8")
+        with self.assertRaisesRegex(BallSetEvidenceError, "event hash mismatch"):
+            self.collect(lambda url: fetched(url, page()))
+
 
 if __name__ == "__main__":
     unittest.main()
