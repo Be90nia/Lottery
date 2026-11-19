@@ -101,6 +101,8 @@ class ParsePageTests(unittest.TestCase):
                 json.dumps({
                     "source": "Sporttery public historical draw API",
                     "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1",
+                    "final_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1",
+                    "redirect_chain": [],
                     "page_no": 1,
                     "run_id": "fixture-run",
                     "retrieved_at": "2026-11-18T00:00:00+00:00",
@@ -149,6 +151,11 @@ class ParsePageTests(unittest.TestCase):
                             "https://webapi.sporttery.cn/gateway/lottery/"
                             f"getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo={page_no}"
                         ),
+                        "final_url": (
+                            "https://webapi.sporttery.cn/gateway/lottery/"
+                            f"getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo={page_no}"
+                        ),
+                        "redirect_chain": [],
                         "page_no": page_no,
                         "run_id": "same-fetch-run",
                         "retrieved_at": "2026-11-18T00:00:00+00:00",
