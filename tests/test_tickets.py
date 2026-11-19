@@ -144,7 +144,7 @@ class TicketCandidateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             dataset = Path(temp) / "draws.jsonl"
             dataset.write_text(
-                "".join(json.dumps(row) + "\\n" for row in self.rows),
+                "".join(json.dumps(row) + "\n" for row in self.rows),
                 encoding="utf-8",
             )
             original_read_bytes = Path.read_bytes
