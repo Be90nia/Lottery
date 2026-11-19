@@ -48,7 +48,7 @@ class ExactBacktestPrimitiveTests(unittest.TestCase):
             draw(2, [2, 3, 4, 5, 6], [2, 3]),
         ]
         import json
-        raw = ("\\n".join(json.dumps(row, separators=(",", ":")) for row in rows) + "\\n").encode()
+        raw = ("\n".join(json.dumps(row, separators=(",", ":")) for row in rows) + "\n").encode()
         digest = hashlib.sha256(raw).hexdigest()
         checked = verify_frozen_snapshot(raw, expected_sha256=digest,
                                           expected_row_count=2, expected_target_ids=("00002",),
