@@ -83,7 +83,7 @@ def generate_ticket_candidates(
         "half_life": half_life,
         "code_commit": code_commit,
         "strategies": STRATEGIES,
-        "sampler_version": "sequential-weighted-without-replacement-v1",
+        "sampler_version": "sequential-weighted-without-replacement-unique-v2",
     }
     generation_run_id = hashlib.sha256(
         json.dumps(run_identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -102,9 +102,22 @@ def generate_ticket_candidates(
         slot_seed = seed + strategy_index * SLOT_SEED_STRIDE
         rng = random.Random(slot_seed)
         tickets = []
-        for ticket_index in range(tickets_per_strategy):
+        seen_combinations: set[tuple[tuple[int, ...], tuple[int, ...]]] = set()
+        attempts = 0
+        max_attempts = max(1_000, tickets_per_strategy * 1_000)
+        while len(tickets) < tickets_per_strategy:
+            if attempts >= max_attempts:
+                raise RuntimeError(
+                    f"{strategy} sampler could not produce {tickets_per_strategy} unique tickets"
+                )
+            attempts += 1
             front = _weighted_sample_without_replacement(front_weights, FRONT_PICK, rng)
             back = _weighted_sample_without_replacement(back_weights, BACK_PICK, rng)
+            combination = (tuple(front), tuple(back))
+            if combination in seen_combinations:
+                continue
+            seen_combinations.add(combination)
+            ticket_index = len(tickets)
             ticket_id = hashlib.sha256(
                 f"{generation_run_id}:{strategy}:{ticket_index + 1}".encode("utf-8")
             ).hexdigest()[:24]
