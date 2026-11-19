@@ -135,7 +135,11 @@ def make_inputs(root):
         "observation_ledger_sha256": "d" * 64,
         "verified_overlap_draw_count": 3,
         "appended_draw_ids": ["26132"],
+        "appended_record_count": 1,
+        "output_file": "candidate.jsonl",
+        "output_bytes": len(candidate_raw),
     }
+    candidate_manifest["manifest_sha256"] = sha(canonical(candidate_manifest))
     candidate_manifest_path = root / "candidate.jsonl.manifest.json"
     candidate_manifest_raw = (json.dumps(candidate_manifest, sort_keys=True) + "\n").encode()
     candidate_manifest_path.write_bytes(candidate_manifest_raw)
@@ -322,6 +326,11 @@ class LiveReportedIndexMVPTests(unittest.TestCase):
         from lottery.validate import validate_records
         candidate_manifest["validation"] = validate_records(candidate_rows)
         candidate_manifest["appended_draw_ids"] = ["26133"]
+        candidate_manifest["appended_record_count"] = 1
+        candidate_manifest["output_file"] = self.candidate.name
+        candidate_manifest["output_bytes"] = len(candidate_raw)
+        candidate_manifest.pop("manifest_sha256", None)
+        candidate_manifest["manifest_sha256"] = sha(canonical(candidate_manifest))
         candidate_manifest_raw = (json.dumps(candidate_manifest, sort_keys=True) + "\n").encode()
         self.candidate_manifest.write_bytes(candidate_manifest_raw)
 
