@@ -20,3 +20,8 @@ data/processed/*
 artifacts/
 reports/generated/
 *.log
+
+# Local MVP outputs and atomic staging files
+mvp-output.json
+ticket-candidates.json
+*.tmp
