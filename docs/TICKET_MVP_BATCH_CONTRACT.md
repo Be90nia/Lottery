@@ -9,11 +9,12 @@ These are three computational strategies, **not three physical ball-set identiti
 ## Provenance
 
 Every result records:
-- deterministic generation run ID derived from canonical training rows, seed, N, alpha, half-life, strategy order, and sampler version;
+- deterministic generation run ID derived from canonical training rows, seed, N, alpha, half-life, strategy order, sampler version, and code commit;
 - canonical training-data fingerprint and exact file SHA-256 in the CLI dataset block;
 - master seed, algorithm identifier, and deterministic slot-seed derivation;
-- per-strategy slot seed, model label, ticket count, training cutoff draw ID, and sampling method;
-- stable ticket IDs derived from the run ID, strategy label, and within-lane ticket index.
+- per-strategy slot seed, model label, ticket count, training cutoff draw ID, sampling method, unique-combination count, and duplicate-ticket count;
+- batch-wide unique-combination, duplicate-ticket, and cross-lane duplicate-combination counts;
+- stable ticket IDs derived from the code-addressed run ID, strategy label, and within-lane ticket index.
 
 Identical canonical inputs and parameters reproduce the same run ID, ticket IDs, and ticket values. The exact file SHA-256 additionally records byte-level input identity.
 
@@ -26,4 +27,4 @@ Cross-lane and within-lane duplicate tickets are preserved; no hidden deduplicat
 
 ## One-command MVP runner
 
-Use `python scripts/run_mvp.py --dataset PATH --tickets-per-strategy N --seed S --output mvp-output.json` to execute validation and candidate generation as one atomic output operation. The JSON document contains the batch and a receipt binding the exact input file SHA-256, deterministic generation run ID, batch SHA-256, code commit when available, timestamp, and published count. The receipt explicitly records that automatic source sync, model training, and model promotion were not performed. Invalid input or generation failure leaves no published output file.
+Use `python scripts/run_mvp.py --dataset PATH --tickets-per-strategy N --seed S --code-commit SHA --output mvp-output.json` to execute validation and candidate generation as one atomic output operation. A full code commit is required (or supplied by GitHub Actions as `GITHUB_SHA`) and is bound into the generation run ID and ticket IDs. The JSON document contains the batch and a receipt binding the exact input file SHA-256, deterministic generation run ID, batch SHA-256, code commit, timestamp, and published count. The receipt explicitly records that automatic source sync, model training, and model promotion were not performed. Existing output paths are never overwritten; invalid input or generation failure leaves no published output file.

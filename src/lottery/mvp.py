@@ -29,6 +29,11 @@ def run_mvp(
     """Validate one historical input and atomically publish a candidate batch receipt."""
     if dataset_path.resolve() == output_path.resolve():
         raise ValueError("output_path must not overwrite the input dataset")
+    if output_path.exists():
+        raise FileExistsError(f"refusing to overwrite existing MVP batch: {output_path}")
+    commit = code_commit or os.environ.get("GITHUB_SHA")
+    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("code_commit must be supplied or available as a full GITHUB_SHA")
     validation = validate_jsonl(dataset_path)
     raw = dataset_path.read_bytes()
     rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
@@ -38,11 +43,9 @@ def run_mvp(
         seed=seed,
         alpha=alpha,
         half_life=half_life,
+        code_commit=commit,
     )
     dataset_sha256 = hashlib.sha256(raw).hexdigest()
-    commit = code_commit or os.environ.get("GITHUB_SHA")
-    if commit is not None and not re.fullmatch(r"[0-9a-f]{40}", commit):
-        raise ValueError("code_commit must be a full 40-character lowercase Git SHA")
 
     batch["dataset"] = {
         "path": str(dataset_path),
@@ -81,10 +84,14 @@ def run_mvp(
             handle.write(rendered)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, output_path)
-    except Exception:
+        try:
+            os.link(temporary, output_path)
+        except FileExistsError as exc:
+            raise FileExistsError(
+                f"refusing to overwrite existing MVP batch: {output_path}"
+            ) from exc
+    finally:
         temporary.unlink(missing_ok=True)
-        raise
     return document
 
 

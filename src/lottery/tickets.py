@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import random
+import re
 from pathlib import Path
 import sys
 from typing import Any, Iterable
@@ -56,16 +57,20 @@ def _weighted_sample_without_replacement(
 def generate_ticket_candidates(
     rows: Iterable[dict[str, Any]], *, tickets_per_strategy: int = 1,
     seed: int = 20261119, alpha: float = DEFAULT_ALPHA,
-    half_life: float = 100.0,
+    half_life: float = 100.0, code_commit: str | None = None,
 ) -> dict[str, Any]:
     if type(tickets_per_strategy) is not int or not 1 <= tickets_per_strategy <= MAX_TICKETS_PER_STRATEGY:
         raise ValueError(f"tickets_per_strategy must be a positive integer in 1..{MAX_TICKETS_PER_STRATEGY}")
     if type(seed) is not int:
         raise ValueError("seed must be an integer")
-    if not math.isfinite(alpha) or alpha <= 0:
-        raise ValueError("alpha must be finite and positive")
-    if not math.isfinite(half_life) or half_life <= 0:
-        raise ValueError("half_life must be finite and positive")
+    if type(alpha) not in (int, float) or not math.isfinite(alpha) or alpha <= 0:
+        raise ValueError("alpha must be finite and positive (non-boolean numeric value)")
+    if type(half_life) not in (int, float) or not math.isfinite(half_life) or half_life <= 0:
+        raise ValueError("half_life must be finite and positive (non-boolean numeric value)")
+    if code_commit is not None and (
+        not isinstance(code_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", code_commit)
+    ):
+        raise ValueError("code_commit must be a full 40-character lowercase Git SHA or None")
 
     records = _validate_rows(rows)
     canonical_rows = json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -76,6 +81,7 @@ def generate_ticket_candidates(
         "tickets_per_strategy": tickets_per_strategy,
         "alpha": alpha,
         "half_life": half_life,
+        "code_commit": code_commit,
         "strategies": STRATEGIES,
         "sampler_version": "sequential-weighted-without-replacement-v1",
     }
@@ -109,20 +115,42 @@ def generate_ticket_candidates(
                 "back_numbers": back,
             })
         candidates[strategy] = tickets
+        lane_counts: dict[tuple[tuple[int, ...], tuple[int, ...]], int] = {}
+        for ticket in tickets:
+            combination = (tuple(ticket["front_numbers"]), tuple(ticket["back_numbers"]))
+            lane_counts[combination] = lane_counts.get(combination, 0) + 1
         strategy_metadata[strategy] = {
             "strategy": strategy,
             "slot_seed": slot_seed,
             "ticket_count": len(tickets),
+            "unique_ticket_combinations": len(lane_counts),
+            "duplicate_ticket_count": sum(count - 1 for count in lane_counts.values()),
             "training_cutoff_draw_id": records[-1]["draw_id"],
-            "sampling_method": "sequential weighted sampling without replacement",
+            "sampling_method": "sequential weighted sampling without replacement within each ticket; with replacement across tickets",
         }
+
+    global_counts: dict[tuple[tuple[int, ...], tuple[int, ...]], int] = {}
+    lane_presence: dict[tuple[tuple[int, ...], tuple[int, ...]], set[str]] = {}
+    for strategy, tickets in candidates.items():
+        for ticket in tickets:
+            combination = (tuple(ticket["front_numbers"]), tuple(ticket["back_numbers"]))
+            global_counts[combination] = global_counts.get(combination, 0) + 1
+            lane_presence.setdefault(combination, set()).add(strategy)
+    duplicate_ticket_count = sum(count - 1 for count in global_counts.values())
+    cross_lane_duplicate_combination_count = sum(
+        len(lanes) > 1 for lanes in lane_presence.values()
+    )
 
     return {
         "schema_version": 1,
         "purpose": "exploratory_ticket_candidates",
         "generated_seed": seed,
         "generation_run_id": generation_run_id,
+        "code_commit": code_commit,
         "total_tickets": tickets_per_strategy * len(STRATEGIES),
+        "unique_ticket_combinations": len(global_counts),
+        "duplicate_ticket_count": duplicate_ticket_count,
+        "cross_lane_duplicate_combination_count": cross_lane_duplicate_combination_count,
         "tickets_per_strategy": tickets_per_strategy,
         "maximum_tickets_per_strategy": MAX_TICKETS_PER_STRATEGY,
         "training_draw_count": len(records),
