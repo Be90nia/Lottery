@@ -24,3 +24,8 @@ The collector currently stops on an empty or short page. That behavior is not, b
 ## Operator path
 
 Open **Actions → official-draw-sync-mvp → Run workflow** for an immediate probe. Download the `official-draw-sync-*` artifact and inspect `sync-receipt.json`, `fetch-error.txt`, raw page snapshots, and manifests. Do not manually copy candidate output into canonical history without completing the acceptance gates above.
+
+
+## Append eligibility boundary
+
+The current collector stops on an empty/short page but does not yet validate an authoritative total-page or total-record count. Its import manifest therefore marks source completeness unverified. The append-only publication gate rejects this candidate until official pagination metadata and the observed page/record inventory reconcile. The scheduled workflow is an evidence-capture smoke path only; it does not mutate canonical history, train models, or update forecast/outcome ledgers.
