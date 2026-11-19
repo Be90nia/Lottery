@@ -106,6 +106,7 @@ class ParsePageTests(unittest.TestCase):
                     "sha256": digest,
                     "raw_file": name,
                     "page_no": 1,
+                    "run_id": "a" * 32,
                 }),
                 encoding="utf-8",
             )
@@ -220,7 +221,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
                 with self.assertRaisesRegex(IngestionError, "potentially truncated"):
                     fetch_history(output, raw_dir, page_size=1, max_pages=1, delay_seconds=0)
             self.assertFalse(output.exists())
-            self.assertEqual(len([path for path in raw_dir.glob("*.json") if not path.name.endswith(".manifest.json")]), 1)
+            self.assertEqual(len([path for path in raw_dir.rglob("*.json") if not path.name.endswith(".manifest.json")]), 1)
 
     def test_empty_first_page_fails_closed_without_publishing(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -241,7 +242,32 @@ class FetchPaginationSafetyTests(unittest.TestCase):
             self.assertEqual(result["pagination_end_reason"], "short_page")
             self.assertFalse(result["source_completeness_verified"])
             self.assertEqual(result["trust_status"], "manifest_complete_not_officially_authenticated")
+            self.assertEqual(Path(result["raw_dir"]).parent, root / "raw")
+            self.assertTrue(Path(result["raw_dir"]).is_dir())
 
+
+    def test_repeated_fetch_runs_get_separate_snapshot_directories(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_parent = root / "raw"
+            payload = self.payload([self.row()])
+            with patch("lottery.ingest._fetch_page", return_value=(payload, 200, "application/json")):
+                first = fetch_history(root / "one.jsonl", raw_parent, page_size=2, delay_seconds=0)
+                second = fetch_history(root / "two.jsonl", raw_parent, page_size=2, delay_seconds=0)
+            self.assertNotEqual(first["raw_dir"], second["raw_dir"])
+            self.assertEqual(len(list(Path(first["raw_dir"]).glob("*.manifest.json"))), 1)
+            self.assertEqual(len(list(Path(second["raw_dir"]).glob("*.manifest.json"))), 1)
+
+    def test_import_rejects_snapshots_from_mixed_fetch_runs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_dir = root / "raw"
+            raw_dir.mkdir()
+            url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1"
+            _snapshot(self.payload([self.row("26131")]), 1, 200, "application/json", raw_dir, url, "a" * 32)
+            _snapshot(self.payload([self.row("26132")]), 2, 200, "application/json", raw_dir, url, "b" * 32)
+            with self.assertRaisesRegex(IngestionError, "one contiguous page sequence from one fetch run"):
+                ingest_snapshot_directory(raw_dir, root / "out.jsonl", require_manifests=True)
 
 class ImmutableSnapshotTests(unittest.TestCase):
     def test_identical_snapshot_does_not_rewrite_original_manifest(self):
