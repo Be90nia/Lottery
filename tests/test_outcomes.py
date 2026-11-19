@@ -237,6 +237,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         second_kwargs = dict(
             self.kwargs,
             target_draw_id="2605",
+            draw_date="2026-02-03",
             published_at="2026-02-03T20:30:00+08:00",
             captured_at="2026-02-03T20:31:00+08:00",
             recorded_at=datetime(2026, 2, 3, 13, 0, tzinfo=timezone.utc),
