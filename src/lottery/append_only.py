@@ -35,6 +35,12 @@ def _hash(path: Path) -> str:
 
 def reconcile_append_only(current_path: Path,candidate_path: Path,candidate_manifest_path: Path,
                           output_path: Path,receipt_path: Path) -> dict[str,Any]:
+    protected = [current_path, candidate_path, candidate_manifest_path]
+    destinations = [output_path, receipt_path]
+    resolved_inputs = {p.resolve() for p in protected}
+    resolved_outputs = [p.resolve() for p in destinations]
+    if len(set(resolved_outputs)) != len(resolved_outputs) or any(p in resolved_inputs for p in resolved_outputs):
+        raise AppendOnlyError("output and receipt paths must be distinct from each other and every input")
     current=_read(current_path); candidate=_read(candidate_path)
     try: manifest=json.loads(candidate_manifest_path.read_text(encoding="utf-8"))
     except (OSError,UnicodeDecodeError,json.JSONDecodeError) as e:
