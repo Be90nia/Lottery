@@ -234,7 +234,7 @@ def _read_ledger(ledger_path: Path) -> list[dict[str, Any]]:
                     or item.get("reported_set_index") not in (None, 1, 2, 3)):
                 raise BallSetEvidenceError(f"observation ledger record has invalid fields at line {line_no}")
             source = item.get("source")
-            if not isinstance(source, dict) or source.get("authority_class") != "A2":
+            if not isinstance(source, dict) or source.get("authority_class") not in ("A1", "A2"):
                 raise BallSetEvidenceError(f"observation ledger source authority is invalid at line {line_no}")
             if not isinstance(source.get("requested_url"), str) or not isinstance(source.get("final_url"), str):
                 raise BallSetEvidenceError(f"observation ledger source URLs are invalid at line {line_no}")
