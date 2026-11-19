@@ -148,7 +148,7 @@ class ForecastLedgerTests(unittest.TestCase):
             body = {key: value for key, value in record.items() if key != "event_hash"}
             body["sequence"] = True
             record = {**body, "event_hash": _event_hash(body)}
-            ledger.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+            ledger.write_text(json.dumps(record) + "\n", encoding="utf-8")
             with self.assertRaisesRegex(ForecastLedgerError, "sequence"):
                 verify_ledger(ledger)
 
