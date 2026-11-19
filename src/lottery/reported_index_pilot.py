@@ -32,6 +32,7 @@ class ReportedIndexPilotError(ValueError):
 
 
 MIN_TRAIN_PER_INDEX = 200
+PILOT_EXPECTED_TARGET_COUNTS = {"1": 160, "2": 147, "3": 160}
 ALPHA = DEFAULT_ALPHA
 EWMA_HALF_LIFE = 100.0
 BLOCK_LENGTH = 10
@@ -225,8 +226,7 @@ def build_reported_index_pilot(
     target_counts = {
         key: len(group) - MIN_TRAIN_PER_INDEX for key, group in per_index.items()
     }
-    expected_targets = {"1": 160, "2": 147, "3": 160}
-    if target_counts != expected_targets:
+    if target_counts != PILOT_EXPECTED_TARGET_COUNTS:
         raise ReportedIndexPilotError("same-index rolling-origin target counts differ from preregistration")
 
     score_rows: list[dict[str, Any]] = []
