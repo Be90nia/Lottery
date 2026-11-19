@@ -70,6 +70,12 @@ Each fetch writes immutable raw page snapshots and SHA-256 manifests under a uni
 
 The live endpoint has not yet passed this repository's end-to-end verification. Strict import checks the exact HTTPS host/path/query, final URL, empty redirect chain, contiguous page inventory, and single-run identity. When page 1 supplies positive integer `value.total` and `value.totalPage`, it also reconciles the ceiling relation, per-page record counts, and deduplicated draw inventory into a raw-page-backed pagination attestation; missing totals leave completeness unverified, and inconsistent totals fail closed. This does not provide cryptographic source authenticity. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset. If an authorized party supplies raw JSON response snapshots, they can be imported offline with `--snapshots-dir`; use `--require-manifests` to require matching per-file SHA-256 sidecars with the exact Sporttery API endpoint, timezone-aware retrieval timestamp, HTTP 200, and matching raw filename. This checks consistency of supplied metadata, not cryptographic source authenticity or uncertain field semantics.
 
+## Reported ball-set index evidence
+
+The scheduled [ball-set evidence workflow](.github/workflows/ball-set-evidence.yml) archives per-draw set-index announcements from the approved Jiangsu provincial source and builds a raw-evidence-backed coverage report plus a write-once reported-index view. The current verified view covers 1,067 draws in the 2019-08-31–2026-11-16 window (index counts 360 / 347 / 360). It excludes out-of-inventory observations and preserves `equipment_regime_id` and `physical_ball_set_id` as null.
+
+This is a **reported-index evidence view**, not a physical ball-set identity map. The existing regime eligibility remains blocked. The research-only pilot protocol is [preregistered here](docs/REPORTED_SET_INDEX_CONDITIONAL_MODEL_PREREGISTRATION.md); it does not access LOT-042 or authorize model promotion. See [the evidence archive guide](docs/BALL_SET_EVIDENCE_ARCHIVE.md).
+
 ## Legacy historical candidate data
 
 An existing 2,901-draw dataset from the earlier `dlt-analysis` project has been imported under `data/candidates/`. It is explicitly marked **unverified candidate data**, not a trusted training dataset. Its structure and cleaning-script defects are documented in [the legacy data audit](docs/LEGACY_DATA_AUDIT.md). Do not use its promotion, prize, sales, or equipment fields as ground truth until they are reconciled with immutable official source snapshots.
