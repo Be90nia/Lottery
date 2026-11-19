@@ -140,6 +140,18 @@ class ForecastLedgerTests(unittest.TestCase):
             with self.assertRaisesRegex(ForecastLedgerError, "already exists"):
                 append_forecast(ledger, event)
 
+    def test_boolean_sequence_is_rejected_even_with_recomputed_hash(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            append_forecast(ledger, create_forecast_event(self.rows, **self.kwargs))
+            record = json.loads(ledger.read_text(encoding="utf-8"))
+            body = {key: value for key, value in record.items() if key != "event_hash"}
+            body["sequence"] = True
+            record = {**body, "event_hash": _event_hash(body)}
+            ledger.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+            with self.assertRaisesRegex(ForecastLedgerError, "sequence"):
+                verify_ledger(ledger)
+
     def test_tampering_is_detected(self):
         with tempfile.TemporaryDirectory() as temp:
             ledger = Path(temp) / "forecast.jsonl"
