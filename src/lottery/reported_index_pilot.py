@@ -23,7 +23,6 @@ from .reported_set_index import (
     PILOT_EXPECTED_RECORD_COUNT,
     PILOT_EXPECTED_SET_COUNTS,
     PILOT_PROTOCOL_VERSION,
-    ReportedSetIndexError,
 )
 
 
@@ -232,7 +231,6 @@ def build_reported_index_pilot(
     score_rows: list[dict[str, Any]] = []
     comparisons: dict[str, dict[str, Any]] = {}
     raw_pvalues: dict[str, float] = {}
-    delta_series: dict[str, list[float]] = {}
     model_summary: dict[str, Any] = {}
     for index in ("1", "2", "3"):
         group = per_index[index]
@@ -306,7 +304,6 @@ def build_reported_index_pilot(
                         target_scores[challenger][zone], target_scores["uniform"][zone]
                     )
                 ]
-                delta_series[key] = deltas
                 seed = RANDOM_SEED + int(index) * 100 + (0 if challenger == "expanding" else 10) + (0 if zone == "front" else 1)
                 ci = _moving_block_ci(deltas, seed=seed)
                 pvalue, complete_blocks = _block_sign_flip_pvalue(deltas, seed=seed + 1)
