@@ -16,16 +16,24 @@ from run_subset_rolling_origin import (
 class ConfirmatoryGateTests(unittest.TestCase):
     def test_solver_and_multiplicity_reviews_are_both_required(self):
         self.assertFalse(_confirmatory_gate(
-            True, solver_policy_approved=False, multiplicity_policy_approved=True
+            True, solver_policy_approved=False, multiplicity_policy_approved=True,
+            non_regression_policy_approved=True,
         ))
         self.assertFalse(_confirmatory_gate(
-            True, solver_policy_approved=True, multiplicity_policy_approved=False
+            True, solver_policy_approved=True, multiplicity_policy_approved=False,
+            non_regression_policy_approved=True,
         ))
         self.assertTrue(_confirmatory_gate(
-            True, solver_policy_approved=True, multiplicity_policy_approved=True
+            True, solver_policy_approved=True, multiplicity_policy_approved=True,
+            non_regression_policy_approved=True,
         ))
         self.assertFalse(_confirmatory_gate(
-            False, solver_policy_approved=True, multiplicity_policy_approved=True
+            False, solver_policy_approved=True, multiplicity_policy_approved=True,
+            non_regression_policy_approved=True,
+        ))
+        self.assertFalse(_confirmatory_gate(
+            True, solver_policy_approved=True, multiplicity_policy_approved=True,
+            non_regression_policy_approved=False,
         ))
 
 
