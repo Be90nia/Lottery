@@ -1,0 +1,61 @@
+import hashlib
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from lottery.mvp import run_mvp
+
+
+def draw(index):
+    return {
+        "draw_id": f"26{index:03d}",
+        "draw_date": f"2026-01-{index:02d}",
+        "front_numbers": [1, 2, 3, 4, 5],
+        "back_numbers": [1, 2],
+        "source_id": "fixture",
+    }
+
+
+class MvpOrchestratorTests(unittest.TestCase):
+    def test_run_publishes_atomic_three_lane_batch_and_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "draws.jsonl"
+            output = root / "out" / "mvp.json"
+            raw = "".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)).encode()
+            dataset.write_bytes(raw)
+
+            document = run_mvp(
+                dataset, output, tickets_per_strategy=3, seed=91,
+                code_commit="a" * 40,
+            )
+            persisted = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(document, persisted)
+            self.assertEqual(document["receipt"]["status"], "candidate_batch_generated")
+            self.assertEqual(document["receipt"]["dataset_sha256"], hashlib.sha256(raw).hexdigest())
+            self.assertEqual(document["receipt"]["published_ticket_count"], 9)
+            self.assertEqual(document["batch"]["total_tickets"], 9)
+            self.assertEqual(set(document["batch"]["strategies"]), {"uniform", "expanding", "ewma"})
+            self.assertEqual(document["receipt"]["automatic_sync_status"], "not_attempted")
+            self.assertEqual(document["receipt"]["model_training_status"], "not_performed")
+            self.assertEqual(document["receipt"]["model_promotion_status"], "not_performed")
+            batch_bytes = json.dumps(
+                document["batch"], ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode("utf-8")
+            self.assertEqual(document["receipt"]["batch_sha256"], hashlib.sha256(batch_bytes).hexdigest())
+            self.assertFalse(output.with_suffix(".json.tmp").exists())
+
+    def test_invalid_dataset_never_publishes_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "invalid.jsonl"
+            output = root / "mvp.json"
+            dataset.write_text("not-json\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                run_mvp(dataset, output)
+            self.assertFalse(output.exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
