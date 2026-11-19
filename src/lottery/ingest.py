@@ -97,6 +97,7 @@ def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir:
             with body_path.open("xb") as handle:
                 handle.write(raw)
                 handle.flush()
+                os.fsync(handle.fileno())
         except FileExistsError:
             if hashlib.sha256(body_path.read_bytes()).hexdigest() != digest:
                 raise IngestionError(f"content-addressed snapshot collision or corruption: {body_path}")
@@ -128,6 +129,7 @@ def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir:
             with manifest_path.open("x", encoding="utf-8") as handle:
                 handle.write(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
                 handle.flush()
+                os.fsync(handle.fileno())
         except FileExistsError:
             existing = json.loads(manifest_path.read_text(encoding="utf-8"))
             if (not isinstance(existing, dict) or existing.get("sha256") != digest
