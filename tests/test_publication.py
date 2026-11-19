@@ -117,6 +117,20 @@ class AppendOnlyPublicationTests(unittest.TestCase):
         self.assertEqual(self.output.read_text(), "do not overwrite")
 
 
+    def test_skipped_new_draw_id_rejected(self):
+        changed = [*self.old, draw("26004", "2026-01-04")]
+        self.write_candidate(changed)
+        with self.assertRaisesRegex(PublicationError, "sequence has a gap"):
+            self.run_gate()
+
+    def test_draw_id_year_rollover_is_accepted(self):
+        old = [draw("26131", "2026-12-28"), draw("26132", "2026-12-30")]
+        candidate = [*old, draw("27001", "2027-01-02")]
+        self.write_rows(self.current, old)
+        self.write_candidate(candidate)
+        receipt = self.run_gate()
+        self.assertEqual(receipt["added_draw_ids"], ["27001"])
+
     def test_existing_output_manifest_is_never_overwritten(self):
         sidecar = self.output.with_suffix(self.output.suffix + ".manifest.json")
         sidecar.write_text("prior manifest", encoding="utf-8")
