@@ -10,6 +10,34 @@
 
 The endpoint and field names are corroborated by multiple public implementations and technical references, but this repository's runtime collector must still verify live availability, pagination completeness, and field semantics before a dataset is promoted to a trusted release. The web research interface could not directly retrieve the API response during initial setup.
 
+## Append-only publication requires a raw-page pagination attestation
+
+Complete per-page sidecars do **not** prove that the source returned the complete
+history. The append-only gate therefore requires all of the following:
+
+- `source_completeness_verified: true` and a
+  `source_completeness_attestation` object with schema
+  `sporttery-pagination-attestation-v1`.
+- Source-reported total records and total pages, page size, and JSON Pointer
+  paths into page 1's exact raw response for both totals.
+- A contiguous page inventory from 1 through the source-reported final page,
+  with each raw filename, SHA-256, and parsed record count.
+- A matching raw response file and sidecar for every page. The gate re-hashes
+  each byte stream, verifies the exact official endpoint/query and one fetch
+  run, parses each page again, checks full/terminal page counts against the
+  source totals, rejects duplicate draw IDs, and compares the reconstructed
+  rows with the candidate dataset.
+- The CLI requires `--snapshots-dir`; a manifest boolean alone is never
+  sufficient.
+
+The offline importer intentionally continues to emit
+`source_completeness_verified: false` and does not manufacture this
+attestation. Do not flip the boolean manually. Until the upstream pagination
+metadata fields and terminal-page semantics are observed and independently
+verified from raw responses, canonical append/no-new-draw publication remains
+blocked. This gate does not authenticate the upstream operator or prove that
+the upstream source itself is authoritative.
+
 ## Preservation and trust
 
 The collector archives exact response bytes before parsing and writes a sidecar manifest containing retrieval time, URL, HTTP status, content type, SHA-256, and parser version. A parse failure does not silently skip a row. Conflicting duplicate draw identifiers stop the run.
