@@ -50,7 +50,7 @@ class AppendOnlyPublicationTests(unittest.TestCase):
             "provenance_complete": True,
             "trust_status": "manifest_complete_not_officially_authenticated",
             "snapshot_count": 1,
-            "snapshots": [{"sha256": "c" * 64, "provenance_complete": True}],
+            "snapshots": [{"sha256": "c" * 64, "raw_file": "page-00001.json", "provenance_complete": True}],
         }
         self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
 
