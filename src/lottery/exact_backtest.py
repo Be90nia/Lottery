@@ -91,6 +91,23 @@ def uniform_exact_nll(population_size: int, selection_size: int) -> float:
     return math.log(math.comb(population_size, selection_size))
 
 
+def verify_target_manifest(raw: bytes, *, expected_sha256: str) -> tuple[str, ...]:
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise ValueError("target manifest SHA-256 mismatch")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("target manifest must be valid UTF-8 JSON") from exc
+    target_ids = payload.get("target_draw_ids") if isinstance(payload, dict) else payload
+    if not isinstance(target_ids, list) or not target_ids:
+        raise ValueError("target manifest must contain a non-empty target_draw_ids array")
+    if any(not isinstance(value, str) or not value for value in target_ids):
+        raise ValueError("target IDs must be non-empty strings")
+    if len(set(target_ids)) != len(target_ids):
+        raise ValueError("target manifest contains duplicate draw IDs")
+    return tuple(target_ids)
+
+
 def verify_frozen_snapshot(raw: bytes, *, expected_sha256: str,
                            expected_row_count: int,
                            expected_target_ids: Sequence[str],
@@ -178,8 +195,10 @@ def evaluate_rolling_origin(
             observed = tuple(target[field])
             uniform_nll = uniform_exact_nll(population, selection)
             records_out.append({
-                "target_draw_id": target["draw_id"], "zone": zone, "model_id": "uniform",
+                "target_draw_id": target["draw_id"], "target_draw_date": target["draw_date"],
+                "zone": zone, "model_id": "uniform",
                 "snapshot_sha256": snapshot_sha256, "training_row_count": target_index,
+                "training_first_draw_id": training[0]["draw_id"],
                 "training_last_draw_id": training[-1]["draw_id"],
                 "strict_before_target": True, "status": "scored",
                 "observed_subset": list(observed), "log_probability": -uniform_nll,
@@ -187,8 +206,10 @@ def evaluate_rolling_origin(
             })
             for model_id, factory in model_factories.items():
                 base = {
-                    "target_draw_id": target["draw_id"], "zone": zone, "model_id": model_id,
+                    "target_draw_id": target["draw_id"], "target_draw_date": target["draw_date"],
+                    "zone": zone, "model_id": model_id,
                     "snapshot_sha256": snapshot_sha256, "training_row_count": target_index,
+                    "training_first_draw_id": training[0]["draw_id"],
                     "training_last_draw_id": training[-1]["draw_id"],
                     "strict_before_target": True, "observed_subset": list(observed),
                 }
