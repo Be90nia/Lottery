@@ -150,7 +150,10 @@ def build_ball_set_coverage(
         raise BallSetCoverageError(f"draw inventory is invalid: {exc}") from exc
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     with ledger_lock(ledger_path):
-        observations = _read_ledger(ledger_path)
+        try:
+            observations = _read_ledger(ledger_path)
+        except BallSetEvidenceError as exc:
+            raise BallSetCoverageError(f"observation ledger failed integrity validation: {exc}") from exc
         ledger_raw = ledger_path.read_bytes() if ledger_path.exists() else b""
     if any(not isinstance(item, dict) or item.get("schema_version") != OBSERVATION_SCHEMA for item in observations):
         raise BallSetCoverageError("observation ledger contains an unsupported record")
