@@ -59,7 +59,7 @@ def generate_ticket_candidates(
     half_life: float = 100.0,
 ) -> dict[str, Any]:
     if type(tickets_per_strategy) is not int or not 1 <= tickets_per_strategy <= MAX_TICKETS_PER_STRATEGY:
-        raise ValueError(f"tickets_per_strategy must be an integer in 1..{MAX_TICKETS_PER_STRATEGY}")
+        raise ValueError(f"tickets_per_strategy must be a positive integer in 1..{MAX_TICKETS_PER_STRATEGY}")
     if type(seed) is not int:
         raise ValueError("seed must be an integer")
     if not math.isfinite(alpha) or alpha <= 0:
