@@ -241,6 +241,8 @@ def append_forecast(
     ledger_path: Path,
     event: dict[str, Any],
 ) -> dict[str, Any]:
+    if isinstance(event, dict) and ({"sequence", "previous_event_hash"} & set(event)):
+        raise ForecastLedgerError("caller-supplied chain metadata is forbidden")
     _validate_forecast_payload(event)
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     # Serialize the complete read/verify/deduplicate/append transaction.
