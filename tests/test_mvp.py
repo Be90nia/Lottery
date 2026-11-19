@@ -61,7 +61,7 @@ class MvpOrchestratorTests(unittest.TestCase):
             root = Path(temp)
             dataset = root / "draws.jsonl"
             output = root / "mvp.json"
-            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            dataset.write_text("".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)), encoding="utf-8")
             completed = subprocess.run(
                 [sys.executable, "scripts/run_mvp.py", "--dataset", str(dataset),
                  "--tickets-per-strategy", "2", "--seed", "73", "--output", str(output)],
