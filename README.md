@@ -144,6 +144,12 @@ reproducible numerical dependencies before running exact-subset fit/evaluation:
 python -m pip install -e .
 ```
 
+The current candidate uses permutation-invariant subset-shape features (sum,
+odd-count, range, adjacent-pair count, and front-zone gap variance). It does
+not encode individual ball identities; its purpose is to test whether
+whole-subset structure adds value beyond the per-number expanding/EWMA
+baselines. It is not automatically selected for ticket generation.
+
 The solver version, stopping tolerances, and full rolling-origin protocol are
 recorded in the evaluation receipt. The model remains equipment-blind and is
 not production-ready while the pinned source snapshot is not officially
