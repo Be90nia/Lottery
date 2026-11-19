@@ -121,6 +121,10 @@ def _verify_source_completeness_attestation(
         raise AppendOnlyError("attested page size must be an integer in 1..100")
     if type(attestation.get("metadata_page_no")) is not int or attestation.get("metadata_page_no") != 1:
         raise AppendOnlyError("pagination totals must be attested from source page 1")
+    if (not isinstance(attestation.get("total_records_pointer"), str)
+            or not isinstance(attestation.get("total_pages_pointer"), str)
+            or attestation["total_records_pointer"] == attestation["total_pages_pointer"]):
+        raise AppendOnlyError("source total-record and total-page metadata pointers must be distinct strings")
     total_records = attestation["source_total_records"]
     total_pages = attestation["source_total_pages"]
     page_size = attestation["page_size"]
