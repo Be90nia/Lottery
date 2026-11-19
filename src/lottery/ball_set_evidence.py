@@ -48,6 +48,8 @@ class ParsedAnnouncement:
     front_numbers: tuple[int, ...] | None
     back_numbers: tuple[int, ...] | None
     draw_result_status: str
+    draw_result_evidence_start: int | None
+    draw_result_evidence_end: int | None
 
 
 class _AnnouncementHTMLParser(HTMLParser):
@@ -139,10 +141,16 @@ def parse_announcement(raw: bytes, source_url: str, content_type: str = "text/ht
     result_match = DRAW_RESULT_SECTION.search(text)
     front_numbers: tuple[int, ...] | None = None
     back_numbers: tuple[int, ...] | None = None
+    draw_result_evidence_start: int | None = None
+    draw_result_evidence_end: int | None = None
     if not result_match:
         draw_result_status = "missing_draw_result"
     else:
-        number_tokens = [int(value) for value in DRAW_NUMBER.findall(result_match.group(1))]
+        token_matches = list(DRAW_NUMBER.finditer(result_match.group(1)))
+        number_tokens = [int(match.group(1)) for match in token_matches]
+        if token_matches:
+            draw_result_evidence_start = result_match.start(1) + token_matches[0].start()
+            draw_result_evidence_end = result_match.start(1) + token_matches[-1].end()
         if len(number_tokens) != 7:
             draw_result_status = "invalid_draw_result"
         else:
@@ -177,6 +185,8 @@ def parse_announcement(raw: bytes, source_url: str, content_type: str = "text/ht
         authority_footer_present="江苏省体育彩票管理中心" in text,
         front_numbers=front_numbers, back_numbers=back_numbers,
         draw_result_status=draw_result_status,
+        draw_result_evidence_start=draw_result_evidence_start,
+        draw_result_evidence_end=draw_result_evidence_end,
     )
 
 
