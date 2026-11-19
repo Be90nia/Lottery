@@ -20,10 +20,10 @@ def draw(index):
 
 
 
-def _append_outcome_worker(path, event, barrier, results):
+def _append_outcome_worker(path, event, forecast_path, barrier, results):
     try:
         barrier.wait(timeout=15)
-        append_outcome(Path(path), event)
+        append_outcome(Path(path), event, Path(forecast_path))
         results.put("ok")
     except Exception as exc:
         results.put(type(exc).__name__ + ":" + str(exc))
@@ -47,7 +47,7 @@ class OutcomeLedgerTests(unittest.TestCase):
             "target_draw_id": "2604",
             "published_at": "2026-02-02T20:30:00+08:00",
             "captured_at": "2026-02-02T20:31:00+08:00",
-            "source_url": "https://webapi.sporttery.cn/gateway/lottery/result",
+            "source_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1",
             "source_sha256": hashlib.sha256(b"raw official response").hexdigest(),
             "http_status": 200,
             "front_numbers": [2, 8, 12, 19, 31],
@@ -60,7 +60,7 @@ class OutcomeLedgerTests(unittest.TestCase):
 
     def test_record_verify_and_score(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
-        result = append_outcome(self.outcomes, event)
+        result = append_outcome(self.outcomes, event, self.forecasts)
         self.assertEqual(result["sequence"], 1)
         self.assertEqual(verify_outcome_ledger(self.outcomes)["events"], 1)
         report = score_ledgers(self.forecasts, self.outcomes)
@@ -75,6 +75,20 @@ class OutcomeLedgerTests(unittest.TestCase):
             report["scores"][0]["models"]["uniform"]["back"]["brier_per_number"],
             5 / 36, places=12,
         )
+
+    def test_append_requires_a_valid_forecast_link(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        malformed = dict(event, forecast_event_hash="f" * 64)
+        with self.assertRaisesRegex(OutcomeLedgerError, "does not link"):
+            append_outcome(self.outcomes, malformed, self.forecasts)
+        self.assertFalse(self.outcomes.exists())
+
+    def test_rejects_unknown_event_fields(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        malformed = dict(event, injected=True)
+        with self.assertRaisesRegex(OutcomeLedgerError, "invalid schema"):
+            append_outcome(self.outcomes, malformed, self.forecasts)
+        self.assertFalse(self.outcomes.exists())
 
     def test_rejects_publication_before_draw(self):
         kwargs = dict(self.kwargs, published_at="2026-02-02T19:59:00+08:00")
@@ -111,13 +125,13 @@ class OutcomeLedgerTests(unittest.TestCase):
 
     def test_duplicate_outcome_rejected(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
-        append_outcome(self.outcomes, event)
+        append_outcome(self.outcomes, event, self.forecasts)
         with self.assertRaisesRegex(OutcomeLedgerError, "already exists"):
-            append_outcome(self.outcomes, event)
+            append_outcome(self.outcomes, event, self.forecasts)
 
     def test_tampering_detected(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
-        append_outcome(self.outcomes, event)
+        append_outcome(self.outcomes, event, self.forecasts)
         record = json.loads(self.outcomes.read_text(encoding="utf-8"))
         record["front_numbers"][0] = 35
         self.outcomes.write_text(json.dumps(record) + "\n", encoding="utf-8")
@@ -127,7 +141,7 @@ class OutcomeLedgerTests(unittest.TestCase):
 
     def test_scoring_rejects_outcome_linked_to_wrong_forecast_hash(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
-        append_outcome(self.outcomes, event)
+        append_outcome(self.outcomes, event, self.forecasts)
         record = json.loads(self.outcomes.read_text(encoding="utf-8"))
         body = {key: value for key, value in record.items() if key != "event_hash"}
         body["forecast_event_hash"] = "f" * 64
@@ -138,7 +152,7 @@ class OutcomeLedgerTests(unittest.TestCase):
 
     def test_verifier_rejects_forged_outcome_metadata_even_with_valid_chain(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
-        append_outcome(self.outcomes, event)
+        append_outcome(self.outcomes, event, self.forecasts)
         record = json.loads(self.outcomes.read_text(encoding="utf-8"))
         body = {key: value for key, value in record.items() if key != "event_hash"}
         body["source_snapshot_sha256"] = "bad"
@@ -163,7 +177,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         ctx = multiprocessing.get_context("spawn")
         barrier, results = ctx.Barrier(2), ctx.Queue()
         processes = [
-            ctx.Process(target=_append_outcome_worker, args=(str(self.outcomes), event, barrier, results))
+            ctx.Process(target=_append_outcome_worker, args=(str(self.outcomes), event, str(self.forecasts), barrier, results))
             for _ in range(2)
         ]
         for process in processes:
@@ -198,7 +212,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         ctx = multiprocessing.get_context("spawn")
         barrier, results = ctx.Barrier(2), ctx.Queue()
         processes = [
-            ctx.Process(target=_append_outcome_worker, args=(str(self.outcomes), event, barrier, results))
+            ctx.Process(target=_append_outcome_worker, args=(str(self.outcomes), event, str(self.forecasts), barrier, results))
             for event in (first_event, second_event)
         ]
         for process in processes:
