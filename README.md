@@ -104,7 +104,7 @@ eligibility, archival, and analysis rules. The prospective test has not started.
 Generate legal candidate combinations from a draw-history JSONL file:
 
 ```bash
-python scripts/run_mvp.py --dataset data/candidates/legacy_draws.jsonl \
+python scripts/run_mvp.py --dataset data/candidates/pinned-draws-20261118.jsonl \
   --tickets-per-strategy 5 --seed 20261119 \\
   --code-commit "$(git rev-parse HEAD)" --output mvp-output.json
 ```
@@ -116,9 +116,7 @@ lanes: legal uniform sampling, expanding-frequency weights, and EWMA weights
 (3N tickets total; N is limited to 1..100 per lane). Every zone is sampled
 without replacement. The output records the exact input SHA-256, canonical
 training fingerprint, deterministic run/ticket IDs, master and lane seeds,
-training cutoff, and per-lane counts. The tool does not
-authenticate the input dataset: the checked-in legacy history remains an
-unverified candidate. These marginal-weighted tickets are exploratory
+training cutoff, and per-lane counts. The tool does not authenticate the input dataset. The default pinned candidate contains 2,949 draws through 2026-11-16 (draw 26131); its manifest trust status is `manifest_complete_not_officially_authenticated`, not official authentication. The older 2,901-row legacy history remains available for reproducing historical benchmark results. These marginal-weighted tickets are exploratory
 combinations, not a calibrated joint model, physical ball-set labels, or
 predictions with demonstrated advantage. See the output's limitations field.
 
@@ -172,7 +170,7 @@ Run all 595 front-zone and 66 back-zone pair tests under the legal uniform-draw
 null, with one Holm correction family across all 661 hypotheses:
 
 ```bash
-python scripts/analyze_pairs.py data/candidates/legacy_draws.jsonl \
+python scripts/analyze_pairs.py data/candidates/pinned-draws-20261118.jsonl \
   --output pair-cooccurrence.json
 ```
 
@@ -183,7 +181,7 @@ manipulation; the binomial null assumes independence across draws.
 ### Chronological train/validation/test splits
 
 ```bash
-python scripts/split_dataset.py data/candidates/legacy_draws.jsonl \
+python scripts/split_dataset.py data/candidates/pinned-draws-20261118.jsonl \
   --output-dir data/splits/legacy-70-15-15
 ```
 
