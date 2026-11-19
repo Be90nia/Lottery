@@ -79,5 +79,16 @@ class EvaluationGateTests(unittest.TestCase):
         with self.assertRaisesRegex(EvaluationGateError, "hash mismatch"):
             verify_evaluation_receipt(changed)
 
+    def test_out_of_order_targets_rejected(self):
+        data = rows()
+        data[100], data[101] = data[101], data[100]
+        with self.assertRaisesRegex(EvaluationGateError, "strictly increasing"):
+            self.build(data)
+
+    def test_non_integer_bootstrap_seed_rejected(self):
+        with self.assertRaisesRegex(EvaluationGateError, "thresholds or seed"):
+            self.build(seed="7")
 
 
+if __name__ == "__main__":
+    unittest.main()
