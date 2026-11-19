@@ -40,6 +40,23 @@ def run_mvp(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"dataset is not valid UTF-8 JSONL: {exc}") from exc
     validation = validate_records(rows)
+    dataset_manifest_path = dataset_path.with_suffix(dataset_path.suffix + ".manifest.json")
+    dataset_trust_status = "not_authenticated_by_this_tool"
+    dataset_manifest_sha256 = None
+    if dataset_manifest_path.exists():
+        manifest_bytes = dataset_manifest_path.read_bytes()
+        try:
+            dataset_manifest = json.loads(manifest_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"dataset manifest is invalid: {exc}") from exc
+        if (not isinstance(dataset_manifest, dict)
+                or dataset_manifest.get("output_sha256") != hashlib.sha256(raw).hexdigest()
+                or dataset_manifest.get("validation") != validation
+                or dataset_manifest.get("provenance_complete") is not True
+                or dataset_manifest.get("trust_status") != "manifest_complete_not_officially_authenticated"):
+            raise ValueError("dataset manifest does not verify this input or has an unsupported trust status")
+        dataset_trust_status = dataset_manifest["trust_status"]
+        dataset_manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
     batch = generate_ticket_candidates(
         rows,
         tickets_per_strategy=tickets_per_strategy,
@@ -58,7 +75,8 @@ def run_mvp(
         "path": str(dataset_path),
         "sha256": dataset_sha256,
         "validation": validation,
-        "trust_status": "not_authenticated_by_this_tool",
+        "trust_status": dataset_trust_status,
+        "manifest_sha256": dataset_manifest_sha256,
     }
     # Recompute the batch digest after attaching the exact byte-level input evidence.
     batch_bytes = json.dumps(
@@ -74,7 +92,8 @@ def run_mvp(
         "batch_sha256": hashlib.sha256(batch_bytes).hexdigest(),
         "requested_tickets_per_strategy": tickets_per_strategy,
         "published_ticket_count": batch["total_tickets"],
-        "data_trust_status": "not_authenticated_by_this_tool",
+        "data_trust_status": dataset_trust_status,
+        "dataset_manifest_sha256": dataset_manifest_sha256,
         "automatic_sync_status": "not_attempted",
         "model_training_status": "not_performed",
         "model_promotion_status": "not_performed",
