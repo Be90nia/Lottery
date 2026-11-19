@@ -100,7 +100,7 @@ class ExponentialFamilyTests(unittest.TestCase):
         )
         self.assertFalse(result.converged)
         self.assertIn(result.terminal_status, ("max_iterations", "line_search_failed"))
-        self.assertEqual(result.solver, "deterministic_unbounded_lbfgs_armijo_v1")
+        self.assertEqual(result.solver, "deterministic_unbounded_lbfgsb_strong_wolfe_v1")
 
     def test_repeating_full_training_multiset_preserves_objective(self):
         observations = [(1, 2, 3), (1, 2, 4), (2, 4, 6), (3, 6, 8)]
