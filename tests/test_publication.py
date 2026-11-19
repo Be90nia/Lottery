@@ -50,7 +50,9 @@ class AppendOnlyPublicationTests(unittest.TestCase):
             "provenance_complete": True,
             "trust_status": "manifest_complete_not_officially_authenticated",
             "snapshot_count": 1,
-            "snapshots": [{"sha256": "c" * 64, "raw_file": "page-00001.json", "provenance_complete": True}],
+            "snapshots": [{"sha256": "c" * 64, "raw_file": "page-00001.json", "page_no": 1, "records": len(rows), "provenance_complete": True}],
+            "source_completeness_verified": True,
+            "completeness_evidence": {"method": "official_pagination_metadata", "reported_total_records": len(rows), "reported_total_pages": 1, "page_size": 100},
         }
         self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -128,6 +130,28 @@ class AppendOnlyPublicationTests(unittest.TestCase):
         with self.assertRaisesRegex(PublicationError, "receipt_path already exists"):
             self.run_gate()
         self.assertEqual(self.receipt.read_text(encoding="utf-8"), "prior receipt")
+
+    def test_unverified_source_completeness_rejected(self):
+        data = json.loads(self.manifest.read_text())
+        data["source_completeness_verified"] = False
+        data["completeness_evidence"] = None
+        self.manifest.write_text(json.dumps(data))
+        with self.assertRaisesRegex(PublicationError, "completeness is unverified"):
+            self.run_gate()
+
+    def test_page_inventory_gap_rejected(self):
+        data = json.loads(self.manifest.read_text())
+        data["snapshots"][0]["page_no"] = 2
+        self.manifest.write_text(json.dumps(data))
+        with self.assertRaisesRegex(PublicationError, "page inventory"):
+            self.run_gate()
+
+    def test_reported_total_record_mismatch_rejected(self):
+        data = json.loads(self.manifest.read_text())
+        data["completeness_evidence"]["reported_total_records"] += 1
+        self.manifest.write_text(json.dumps(data))
+        with self.assertRaisesRegex(PublicationError, "pagination totals"):
+            self.run_gate()
 
 if __name__ == "__main__":
     unittest.main()
