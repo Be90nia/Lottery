@@ -181,7 +181,7 @@ def build_ball_set_coverage(
                 source_domains.add(urlsplit(final_url).hostname or "")
             result = _verify_observation(observation, row, archive_dir)
             evaluated.append(result)
-            if result[0] == "primary_verified":
+            if result[0] in ("primary_verified", "missing_label", "unsupported_label"):
                 raw_verified += 1
             elif result[0] in ("raw_evidence_invalid", "parse_error"):
                 raw_invalid += 1
@@ -223,7 +223,23 @@ def build_ball_set_coverage(
         if status == "primary_verified":
             verified_rows.append(row_report)
 
-    out_of_inventory = sum(1 for item in observations if item.get("draw_id") not in inventory_by_id)
+    out_of_inventory_records = [
+        {
+            "draw_id": item.get("draw_id"),
+            "draw_date": item.get("draw_date"),
+            "reported_set_index": item.get("reported_set_index"),
+            "observation_id": item.get("observation_id"),
+            "observation_status": item.get("observation_status"),
+            "source_url": item.get("source", {}).get("final_url"),
+            "inventory_crosswalk_status": "not_in_inventory",
+            "equipment_regime_id": None,
+            "physical_ball_set_id": None,
+            "eligible": False,
+            "exclusion_reason": "inventory_crosswalk_pending",
+        }
+        for item in observations if item.get("draw_id") not in inventory_by_id
+    ]
+    out_of_inventory = len(out_of_inventory_records)
     years: dict[str, dict[str, Any]] = {}
     for item in per_draw:
         year = item["draw_date"][:4]
@@ -274,6 +290,7 @@ def build_ball_set_coverage(
         "observation_ledger_sha256": _sha_bytes(ledger_raw),
         "observation_count": len(observations),
         "out_of_inventory_observation_count": out_of_inventory,
+        "out_of_inventory_observations": out_of_inventory_records,
         "parser_versions": sorted(parser_versions | {PARSER_VERSION}),
         "source_domains": sorted(domain for domain in source_domains if domain),
         "summary": {
