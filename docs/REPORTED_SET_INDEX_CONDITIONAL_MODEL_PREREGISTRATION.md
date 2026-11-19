@@ -65,8 +65,9 @@ No hyperparameter search, feature search, or strategy selection is permitted on 
 
 - LOT-042's 500-draw holdout is sealed: no reads, training, tuning, selection, ranking, cumulative p-values, or feedback.
 - This pilot is development-only and cannot promote a model, alter a champion, or claim predictive efficacy.
-- After the pilot completes, the candidate emitter may produce 5 tickets per estimator lane (uniform / expanding / EWMA) for each reported index: 3 indices × 3 estimators × 5 tickets = 45 exploratory candidates. It must emit every lane; it may not select a "winner" from these same evaluation results.
-- The receipt must preserve all input hashes, per-index training counts, target windows, sampler calibration, pilot report hash, and unresolved physical-regime status.
+- The pilot remains frozen to the 1,067 primary-verified labels and its preregistered target windows. New A2 announcement pages are excluded from pilot scoring and may enter live candidate generation only after all frozen overlap draw results match the pinned inventory and every new draw is strictly sequential.
+- After the pilot completes, the live candidate emitter may produce 5 tickets per estimator lane (uniform / expanding / EWMA) for each reported index: 3 indices × 3 estimators × 5 tickets = 45 exploratory candidates. It must emit every lane; it may not select a "winner" from these same evaluation results.
+- The receipt must preserve frozen and live view hashes, candidate dataset and manifest hashes, appended draw IDs, per-index training counts, target windows, sampler calibration, pilot report hash, and unresolved physical-regime status.
 - A non-significant or adverse result means retain uniform as the statistical baseline; do not cherry-pick one index, one zone, or one time window. All candidates remain exploratory and no model is promoted.
 - Any future claim about stable physical ball identity requires a separate authoritative regime/replacement chronology and a new preregistration.
 
