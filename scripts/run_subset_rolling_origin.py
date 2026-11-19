@@ -123,7 +123,7 @@ def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
     if type(record.get("candidate_iterations")) is not int or record["candidate_iterations"] < 0:
         raise ValueError("checkpoint candidate iteration count is invalid")
     gradient = record.get("candidate_gradient_infinity_norm")
-    if type(gradient) not in (int, float) or not math.isfinite(gradient):
+    if type(gradient) not in (int, float) or not math.isfinite(gradient) or gradient < 0:
         raise ValueError("checkpoint candidate gradient diagnostic is invalid")
     expected_statuses = {"candidate", "expanding", "ewma"}
     expected_scores = {"uniform", "expanding", "ewma", "exponential_family"}
@@ -294,7 +294,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
     result = {
         "run_type": "LOT-055-equipment-blind-exact-subset-rolling-origin",
         "snapshot_sha256": digest, "snapshot_rows": len(rows),
-        "code_commit": os.environ.get("GITHUB_SHA", "local"),
+        "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
         "snapshot_first_draw": rows[0]["draw_id"], "snapshot_last_draw": rows[-1]["draw_id"],
         "first_target_draw": rows[MIN_TRAIN]["draw_id"], "last_target_draw": rows[-1]["draw_id"],
         "target_count_per_zone": len(rows) - MIN_TRAIN, "minimum_training_rows": MIN_TRAIN,
