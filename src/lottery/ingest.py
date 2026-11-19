@@ -273,6 +273,8 @@ def ingest_snapshot_directory(
             and sidecar.get("sha256") == digest
             and sidecar.get("raw_file") == path.name
             and type(sidecar.get("page_no")) is int and sidecar["page_no"] >= 1
+            and isinstance(sidecar.get("run_id"), str) and len(sidecar["run_id"]) == 32
+            and all(char in "0123456789abcdef" for char in sidecar["run_id"])
         )
         if not required_provenance:
             provenance_complete = False
@@ -282,6 +284,7 @@ def ingest_snapshot_directory(
                 )
         snapshot_reports.append({
             "page_no": sidecar.get("page_no") if isinstance(sidecar, dict) else None,
+            "run_id": sidecar.get("run_id") if isinstance(sidecar, dict) else None,
             "raw_file": path.name,
             "sha256": digest,
             "bytes": len(raw),
@@ -289,6 +292,12 @@ def ingest_snapshot_directory(
             "sidecar_manifest": sidecar_path.name if sidecar is not None else None,
             "provenance_complete": bool(required_provenance),
         })
+
+    if provenance_complete:
+        page_numbers = [item["page_no"] for item in snapshot_reports]
+        run_ids = {item["run_id"] for item in snapshot_reports}
+        if page_numbers != list(range(1, len(snapshot_reports) + 1)) or len(run_ids) != 1:
+            raise IngestionError("snapshot directory must contain one contiguous page sequence from one fetch run")
 
     ordered = sorted(all_rows.values(), key=lambda row: (row.draw_date, row.draw_id))
     from .validate import validate_records
