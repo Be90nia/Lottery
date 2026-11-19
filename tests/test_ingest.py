@@ -122,7 +122,15 @@ class ParsePageTests(unittest.TestCase):
             self.assertEqual(report["trust_status"], "manifest_complete_not_officially_authenticated")
             row = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(row["source_unsort_drawresult"], "03 01 05 02 04 02 01")
-            self.assertTrue(output.with_suffix(".jsonl.manifest.json").exists())
+            output_manifest_path = output.with_suffix(".jsonl.manifest.json")
+            self.assertTrue(output_manifest_path.exists())
+            output_manifest = json.loads(output_manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                output_manifest["output_sha256"],
+                hashlib.sha256(output.read_bytes()).hexdigest(),
+            )
+            with self.assertRaisesRegex(IngestionError, "output or output manifest already exists"):
+                ingest_snapshot_directory(raw_dir, output, require_manifests=True)
 
             sidecar_path = raw_dir / f"page-00001-{digest[:12]}.manifest.json"
             sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
