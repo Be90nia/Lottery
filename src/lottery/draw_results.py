@@ -8,12 +8,13 @@ import re
 from typing import Any
 
 from .ball_set_evidence import (
-    BallSetEvidenceError, PARSER_VERSION, _allowed_url, _canonical_hash,
+    BallSetEvidenceError, _allowed_url, _canonical_hash, _read_ledger,
     parse_announcement,
 )
 from .ledger_lock import ledger_lock
 
 DRAW_RESULT_SCHEMA = "lottery.official-draw-result/v1"
+DRAW_RESULT_PARSER_VERSION = "jiangsu-draw-result-v1"
 ZERO_HASH = "0" * 64
 RESULT_STATUSES = {
     "inventory_matched", "pending_inventory", "draw_mismatch",
@@ -119,7 +120,7 @@ def append_draw_result(
         supersedes = previous[-1] if previous else None
         identity = {
             "draw_id": parsed.draw_id, "source_url": source_url,
-            "body_sha256": manifest["body_sha256"], "parser_version": PARSER_VERSION,
+            "body_sha256": manifest["body_sha256"], "parser_version": DRAW_RESULT_PARSER_VERSION,
         }
         result_id = _canonical_hash(identity)
         if supersedes and supersedes["source"]["body_sha256"] == manifest["body_sha256"]:
@@ -162,7 +163,7 @@ def append_draw_result(
             "source": {**manifest, "authority_class": "A2"},
             "parser": {
                 "name": "dlt-official-draw-result",
-                "version": PARSER_VERSION,
+                "version": DRAW_RESULT_PARSER_VERSION,
                 "evidence_locator": {
                     "text_character_start": parsed.draw_result_evidence_start,
                     "text_character_end": parsed.draw_result_evidence_end,
@@ -183,6 +184,72 @@ def append_draw_result(
             import os
             os.fsync(handle.fileno())
     return {"status": status, "result_observation_id": result_id}
+
+
+
+
+def backfill_draw_result_ledger(
+    observations: list[dict[str, Any]], *, archive_dir: Path,
+    inventory: dict[str, dict[str, Any]], inventory_sha256: str,
+    ledger_path: Path,
+) -> dict[str, Any]:
+    existing = read_draw_result_ledger(ledger_path)
+    existing_ids = {item["result_observation_id"] for item in existing}
+    added = 0
+    errors: list[str] = []
+    root = archive_dir.resolve()
+    for observation in observations:
+        source = observation["source"]
+        identity = {
+            "draw_id": observation["draw_id"],
+            "source_url": source["final_url"],
+            "body_sha256": source["body_sha256"],
+            "parser_version": DRAW_RESULT_PARSER_VERSION,
+        }
+        if _canonical_hash(identity) in existing_ids:
+            continue
+        try:
+            raw_path = (root / source["raw_object_ref"]).resolve()
+            manifest_path = (root / source["manifest_object_ref"]).resolve()
+            if not raw_path.is_relative_to(root) or not manifest_path.is_relative_to(root):
+                raise DrawResultLedgerError("archived evidence path escapes archive")
+            raw = raw_path.read_bytes()
+            if hashlib.sha256(raw).hexdigest() != source["body_sha256"] or len(raw) != source["body_byte_length"]:
+                raise DrawResultLedgerError("archived raw response hash/length mismatch")
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            expected_manifest = {
+                key: value for key, value in source.items()
+                if key not in ("authority_class", "manifest_object_ref")
+            }
+            if manifest != expected_manifest:
+                raise DrawResultLedgerError("archived retrieval manifest mismatch")
+            parsed = parse_announcement(raw, source["final_url"], source["content_type"])
+            fetched = {
+                "requested_url": source["requested_url"],
+                "final_url": source["final_url"],
+                "redirect_chain": source.get("redirect_chain", []),
+                "retrieved_at_utc": source["retrieved_at_utc"],
+                "http_status": source["http_status"],
+                "content_type": source["content_type"],
+                "body": raw,
+                "headers": {},
+            }
+            manifest["manifest_object_ref"] = source["manifest_object_ref"]
+            result = append_draw_result(
+                fetched, parsed, manifest, inventory=inventory,
+                inventory_sha256=inventory_sha256, ledger_path=ledger_path,
+            )
+            existing_ids.add(result["result_observation_id"])
+            if result["status"] in (
+                "draw_mismatch", "draw_result_mismatch", "source_revision_requires_review",
+                "conflict", "source_authority_unverified",
+            ):
+                errors.append(f"{observation['draw_id']}: {result['status']}")
+            else:
+                added += 1
+        except (OSError, ValueError, KeyError, BallSetEvidenceError, json.JSONDecodeError) as exc:
+            errors.append(f"{observation.get('draw_id')}: {exc}")
+    return {"added": added, "errors": errors}
 
 
 def verify_draw_result_record(
