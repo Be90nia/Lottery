@@ -10,7 +10,6 @@ from typing import Any
 from .ball_set_evidence import _next_draw_id, _allowed_url
 from .ingest import _atomic_write_new
 from .reported_index_pilot import (
-    ReportedIndexPilotError,
     _canonical,
     _sha,
     _verify_view,
@@ -107,6 +106,7 @@ def build_live_reported_index_mvp(
             or candidate_manifest.get("provenance_complete") is not True
             or candidate_manifest.get("trust_status") != TRUST_STATUS
             or candidate_manifest.get("source_completeness_verified") is not False
+            or candidate_manifest.get("verified_overlap_draw_count") != len(frozen_rows)
             or candidate_manifest.get("base_inventory_sha256") != frozen_manifest["inventory_sha256"]
             or candidate_manifest.get("coverage_report_sha256") != frozen_manifest["coverage_report_sha256"]
             or candidate_manifest.get("observation_ledger_sha256") != frozen_manifest["observation_ledger_sha256"]):
@@ -132,7 +132,8 @@ def build_live_reported_index_mvp(
             or live_manifest.get("training_eligibility") != "blocked_regime_unresolved"
             or live_manifest.get("physical_identity_claim") != "none"
             or live_manifest.get("model_scope") != "reported_set_index_only_not_physical_identity"
-            or live_manifest.get("source_completeness_verified") is not False):
+            or live_manifest.get("source_completeness_verified") is not False
+            or live_manifest.get("verified_overlap_draw_count") != len(frozen_rows)):
         raise LiveReportedIndexMVPError("live index view does not match its frozen and append-only inputs")
 
     candidate_by_id = {row["draw_id"]: row for row in candidate_rows}
@@ -142,6 +143,11 @@ def build_live_reported_index_mvp(
     live_by_id = {row.get("draw_id"): row for row in live_rows}
     if len(live_by_id) != len(live_rows) or len(live_rows) != live_manifest.get("record_count"):
         raise LiveReportedIndexMVPError("live view contains duplicate IDs or invalid record count")
+    chronological_keys = [(row.get("draw_date"), row.get("draw_id")) for row in live_rows]
+    if chronological_keys != sorted(chronological_keys):
+        raise LiveReportedIndexMVPError("live view rows are not chronologically ordered")
+    if candidate_rows[-1]["draw_id"] != live_rows[-1]["draw_id"]:
+        raise LiveReportedIndexMVPError("candidate dataset and live view do not share the same latest draw")
     if not set(frozen_by_id).issubset(live_by_id):
         raise LiveReportedIndexMVPError("live view is missing frozen pilot rows")
 
@@ -193,8 +199,9 @@ def build_live_reported_index_mvp(
                 or not isinstance(row.get("source_observation_id"), str)
                 or not isinstance(row.get("source_draw_result_sha256"), str)
                 or not re.fullmatch(r"[0-9a-f]{64}", row["source_draw_result_sha256"])
-                or not isinstance(row.get("reported_set_index"), int)
-                or row["reported_set_index"] not in (1, 2, 3)):
+                or type(row.get("reported_set_index")) is not int
+                or row["reported_set_index"] not in (1, 2, 3)
+                or row.get("source_observation_id") not in row.get("observation_ids", [])):
             raise LiveReportedIndexMVPError(f"live draw {draw_id} violates A2 candidate eligibility boundary")
         try:
             _allowed_url(row["source_draw_result_url"])
