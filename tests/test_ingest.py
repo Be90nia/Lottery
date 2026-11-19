@@ -124,6 +124,15 @@ class ParsePageTests(unittest.TestCase):
             self.assertEqual(row["source_unsort_drawresult"], "03 01 05 02 04 02 01")
             self.assertTrue(output.with_suffix(".jsonl.manifest.json").exists())
 
+            sidecar_path = raw_dir / f"page-00001-{digest[:12]}.manifest.json"
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            sidecar["redirect_chain"] = ["https://example.invalid/redirect-target"]
+            sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+            with self.assertRaisesRegex(IngestionError, "lacks complete official-source provenance"):
+                ingest_snapshot_directory(
+                    raw_dir, root / "redirected.jsonl", require_manifests=True
+                )
+
     def test_strict_offline_import_rejects_noncontiguous_page_inventory(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
