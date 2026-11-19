@@ -433,3 +433,134 @@ def calibrate_weighted_subset(target_marginals: Sequence[float], k: int, *,
                                      max_residual, iteration, last_objective,
                                      "line_search_failed")
     raise AssertionError("unreachable calibration state")
+
+
+@dataclass(frozen=True)
+class ExponentialFit:
+    status: str
+    theta: tuple[float, ...]
+    unregularized_mean_nll: float
+    penalized_objective: float
+    gradient_inf_norm: float
+    iterations: int
+    termination_reason: str
+    cells: FeatureCells
+
+    @property
+    def forecast_ready(self) -> bool:
+        return (self.status == "converged" and math.isfinite(self.penalized_objective)
+                and math.isfinite(self.gradient_inf_norm) and self.gradient_inf_norm <= 1e-8)
+
+    def score_log_probability(self, subset: Sequence[int]) -> float:
+        if not self.forecast_ready:
+            raise RuntimeError("non-converged exponential fit is not scoreable")
+        return log_probability(subset, self.theta, self.cells)
+
+
+def exponential_objective_gradient(theta: Sequence[float],
+                                   training_subsets: Sequence[Sequence[int]],
+                                   cells: FeatureCells, *, regularization: float = 1.0
+                                   ) -> tuple[float, tuple[float, ...], float]:
+    """Mean-NLL objective, analytic gradient, and unregularized mean NLL."""
+    if not training_subsets:
+        raise ValueError("training subsets must not be empty")
+    if not math.isfinite(regularization) or regularization < 0.0:
+        raise ValueError("regularization must be finite and non-negative")
+    parameters = _validate_theta(theta, len(cells.schema.names))
+    observed = [standardized_features(subset, cells.stats) for subset in training_subsets]
+    count = len(observed)
+    mean_features = tuple(math.fsum(row[j] for row in observed) / count
+                          for j in range(len(parameters)))
+    log_z = log_partition(parameters, cells)
+    mean_dot = math.fsum(parameters[j] * mean_features[j] for j in range(len(parameters)))
+    mean_nll = log_z - mean_dot
+    weighted_cells = []
+    for features, multiplicity in cells.cells:
+        log_mass = math.log(multiplicity) + math.fsum(a * b for a, b in zip(parameters, features)) - log_z
+        weighted_cells.append((features, math.exp(log_mass)))
+    expected = tuple(math.fsum(probability * features[j] for features, probability in weighted_cells)
+                     for j in range(len(parameters)))
+    gradient = tuple(expected[j] - mean_features[j] + regularization * parameters[j]
+                     for j in range(len(parameters)))
+    objective = mean_nll + 0.5 * regularization * math.fsum(value * value for value in parameters)
+    if not math.isfinite(objective) or any(not math.isfinite(value) for value in gradient):
+        raise ArithmeticError("non-finite exponential-family objective or gradient")
+    return objective, gradient, mean_nll
+
+
+def fit_exponential(training_subsets: Sequence[Sequence[int]], cells: FeatureCells, *,
+                    regularization: float = 1.0, max_iterations: int = 5000,
+                    gradient_tolerance: float = 1e-8) -> ExponentialFit:
+    """Fit the frozen L-BFGS-B objective; SciPy must be supplied by a locked runtime."""
+    if regularization != 1.0:
+        raise ValueError("the preregistered regularization is fixed at lambda=1.0")
+    if max_iterations != 5000 or gradient_tolerance != 1e-8:
+        raise ValueError("optimizer settings differ from the frozen preregistration")
+    try:
+        from scipy.optimize import minimize
+    except ImportError as exc:
+        raise RuntimeError("SciPy L-BFGS-B is unavailable; install only from the LOT-066 hash-locked dependency set") from exc
+
+    initial = [0.0] * len(cells.schema.names)
+
+    def objective(theta: Sequence[float]) -> tuple[float, list[float]]:
+        value, gradient, _ = exponential_objective_gradient(
+            theta, training_subsets, cells, regularization=regularization
+        )
+        return value, list(gradient)
+
+    result = minimize(
+        objective, initial, method="L-BFGS-B", jac=True,
+        options={"maxiter": max_iterations, "gtol": gradient_tolerance, "ftol": 0.0},
+    )
+    theta = tuple(float(value) for value in result.x)
+    try:
+        objective_value, gradient, mean_nll = exponential_objective_gradient(
+            theta, training_subsets, cells, regularization=regularization
+        )
+    except (ValueError, ArithmeticError, OverflowError):
+        return ExponentialFit("post_fit_validation_failed", theta, math.inf, math.inf,
+                              math.inf, int(getattr(result, "nit", 0)),
+                              "independent_recomputation_failed", cells)
+    gradient_norm = max((abs(value) for value in gradient), default=0.0)
+    converged = bool(result.success) and gradient_norm <= gradient_tolerance
+    status = "converged" if converged else (
+        "max_iterations" if int(getattr(result, "nit", 0)) >= max_iterations else "solver_failed"
+    )
+    return ExponentialFit(status, theta, mean_nll, objective_value, gradient_norm,
+                          int(getattr(result, "nit", 0)), str(result.message), cells)
+
+
+def marginal_inclusion_targets(training_rows: Sequence[dict[str, object]], zone: str, *,
+                               family: str, alpha: float = 100.0,
+                               half_life: float = 100.0) -> tuple[float, ...]:
+    """Frozen expanding/EWMA marginal formulas, using training rows only."""
+    if zone not in ("front", "back"):
+        raise ValueError("zone must be front or back")
+    if not training_rows:
+        raise ValueError("training history must not be empty")
+    if alpha != 100.0:
+        raise ValueError("the preregistered shrinkage mass is fixed at alpha=100")
+    if family not in ("expanding", "ewma"):
+        raise ValueError("family must be expanding or ewma")
+    if not math.isfinite(half_life) or half_life != 100.0:
+        raise ValueError("the preregistered EWMA half-life is fixed at 100 draws")
+    field, m, k = ("front_numbers", 35, 5) if zone == "front" else ("back_numbers", 12, 2)
+    counts = [0.0] * m
+    total_weight = 0.0
+    for index, row in enumerate(training_rows):
+        lag = len(training_rows) - index - 1
+        weight = 1.0 if family == "expanding" else 2.0 ** (-lag / half_life)
+        subset = validate_subset(row[field], m, k)
+        total_weight += weight
+        for number in subset:
+            counts[number - 1] += weight
+    denominator = total_weight + alpha
+    return tuple((count + alpha * k / m) / denominator for count in counts)
+
+
+def fit_weighted_subset_baseline(training_rows: Sequence[dict[str, object]], zone: str, *,
+                                 family: str) -> CalibrationResult:
+    targets = marginal_inclusion_targets(training_rows, zone, family=family)
+    k = 5 if zone == "front" else 2
+    return calibrate_weighted_subset(targets, k)
