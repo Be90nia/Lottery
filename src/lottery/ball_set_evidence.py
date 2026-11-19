@@ -209,6 +209,12 @@ def _read_ledger(ledger_path: Path) -> list[dict[str, Any]]:
     if not ledger_path.exists():
         return []
     observations = []
+    allowed_statuses = {
+        "primary_verified", "official_label_pending_inventory", "missing_label",
+        "unsupported_label", "conflict", "source_revision_requires_review",
+        "source_revision_same_semantics", "draw_mismatch", "source_authority_unverified",
+        "parse_error",
+    }
     with ledger_path.open("r", encoding="utf-8") as handle:
         for line_no, line in enumerate(handle, 1):
             if not line.strip():
@@ -219,8 +225,25 @@ def _read_ledger(ledger_path: Path) -> list[dict[str, Any]]:
                 raise BallSetEvidenceError(f"observation ledger has invalid JSON at line {line_no}") from exc
             if not isinstance(item, dict) or item.get("schema_version") != OBSERVATION_SCHEMA:
                 raise BallSetEvidenceError(f"observation ledger has unsupported record at line {line_no}")
+            if (not isinstance(item.get("observation_id"), str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", item["observation_id"])
+                    or not isinstance(item.get("draw_id"), str)
+                    or not re.fullmatch(r"\d{5}", item["draw_id"])
+                    or not isinstance(item.get("draw_date"), str)
+                    or item.get("observation_status") not in allowed_statuses
+                    or item.get("reported_set_index") not in (None, 1, 2, 3)):
+                raise BallSetEvidenceError(f"observation ledger record has invalid fields at line {line_no}")
+            source = item.get("source")
+            if not isinstance(source, dict) or source.get("authority_class") != "A2":
+                raise BallSetEvidenceError(f"observation ledger source authority is invalid at line {line_no}")
+            _allowed_url(source.get("requested_url"))
+            _allowed_url(source.get("final_url"))
+            if (not isinstance(source.get("body_sha256"), str)
+                    or not re.fullmatch(r"[0-9a-f]{64}", source["body_sha256"])
+                    or not source.get("raw_object_ref") or not source.get("manifest_object_ref")):
+                raise BallSetEvidenceError(f"observation ledger raw evidence reference is invalid at line {line_no}")
             observations.append(item)
-    ids = [item.get("observation_id") for item in observations]
+    ids = [item["observation_id"] for item in observations]
     if len(ids) != len(set(ids)):
         raise BallSetEvidenceError("observation ledger contains duplicate observation IDs")
     return observations
@@ -386,7 +409,10 @@ def collect_ball_set_evidence(
     inventory_sha256 = hashlib.sha256(inventory_bytes).hexdigest()
     inventory_rows = []
     try:
-        inventory_rows = [json.loads(line) for line in inventory_bytes.decode("utf-8").splitlines() if line]
+        inventory_lines = inventory_bytes.decode("utf-8").splitlines()
+        if any(not line.strip() for line in inventory_lines):
+            raise BallSetEvidenceError("draw inventory contains blank lines")
+        inventory_rows = [json.loads(line) for line in inventory_lines]
         validate_records(inventory_rows)
     except (UnicodeDecodeError, json.JSONDecodeError, DatasetValidationError) as exc:
         raise BallSetEvidenceError(f"draw inventory is invalid: {exc}") from exc
