@@ -24,3 +24,8 @@ The collector currently stops on an empty or short page. That behavior is not, b
 ## Operator path
 
 Open **Actions → official-draw-sync-mvp → Run workflow** for an immediate probe. Download the `official-draw-sync-*` artifact and inspect `sync-receipt.json`, `fetch-error.txt`, raw page snapshots, and manifests. Do not manually copy candidate output into canonical history without completing the acceptance gates above.
+
+
+## Pagination safety hardening
+
+The collector now refuses to publish output when `--max-pages` is reached while the final page is full, because that run may be truncated. An empty first page is also a failure rather than a successful empty dataset. A short page or later empty page records the observed termination reason, but `source_completeness_verified` remains false: observing an apparent terminal page is not independent proof that the upstream service returned every page. The workflow receipt carries both fields so operators cannot mistake a completed HTTP traversal for authenticated, complete history.
