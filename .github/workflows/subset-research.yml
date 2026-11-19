@@ -11,6 +11,7 @@ on:
   pull_request:
     paths:
       - "scripts/run_subset_rolling_origin.py"
+      - "pyproject.toml"
       - "src/lottery/subset_model/**"
       - ".github/workflows/subset-research.yml"
 
