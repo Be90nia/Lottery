@@ -23,7 +23,7 @@ OBSERVATION_SCHEMA = "lottery.ball-set-observation/v1"
 ALLOWED_HOSTS = {"www.js-lottery.com", "api.js-lottery.com"}
 DRAW_TITLE = re.compile(r"超级大乐透第\s*(\d{5})\s*期开奖公告")
 DRAW_DATE = re.compile(r"开奖日期\s*[：:]\s*(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日")
-SET_LABEL = re.compile(r"本期使用第\s*([123])\s*套摇奖球")
+SET_LABEL = re.compile(r"本期使用第\s*(\d+)\s*套摇奖球")
 ANCHOR_DRAW = re.compile(r"超级大乐透第\s*(\d{5})\s*期开奖公告")
 
 
