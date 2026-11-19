@@ -166,6 +166,7 @@ def build_reported_set_index_view(
         "coverage_report_sha256": report_hash,
         "observation_ledger_sha256": ledger_sha,
         "source_domains": coverage.get("source_domains", []),
+        "coverage_source_completeness_verified": coverage.get("source_completeness_verified") is True,
         "record_count": len(view_rows),
         "set_index_counts": set_counts,
         "first_draw": view_rows[0]["draw_id"] if view_rows else None,
@@ -193,11 +194,13 @@ def write_reported_set_index_view(
         for row in view_rows
     )
     manifest_bytes = (json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
-    for path, content in ((output_path, output_bytes), (manifest_path, manifest_bytes)):
-        if path.exists():
-            if path.read_bytes() != content:
-                raise ReportedSetIndexError(f"immutable reported set-index artifact conflicts: {path}")
-        else:
+    artifacts = ((output_path, output_bytes), (manifest_path, manifest_bytes))
+    # Validate every existing path before publishing either missing member.
+    for path, content in artifacts:
+        if path.exists() and path.read_bytes() != content:
+            raise ReportedSetIndexError(f"immutable reported set-index artifact conflicts: {path}")
+    for path, content in artifacts:
+        if not path.exists():
             try:
                 _atomic_write_new(path, content)
             except FileExistsError:
