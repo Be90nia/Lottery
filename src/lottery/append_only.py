@@ -110,6 +110,10 @@ def reconcile_append_only(
         raise AppendOnlyError("candidate manifest must be an object")
     if manifest.get("output_sha256") != _hash(candidate_path):
         raise AppendOnlyError("candidate manifest output_sha256 does not match candidate bytes")
+    if manifest.get("source_completeness_verified") is not True:
+        raise AppendOnlyError(
+            "source pagination completeness is not independently verified; refusing publication"
+        )
     if (
         manifest.get("trust_status") != "manifest_complete_not_officially_authenticated"
         or manifest.get("provenance_complete") is not True
