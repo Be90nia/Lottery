@@ -1,13 +1,18 @@
 import hashlib
+import io
 import json
+import random
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 from pathlib import Path
 
-from lottery.tickets import generate_ticket_candidates
+from lottery.tickets import (
+    _calibrated_sampler, _sample_ticket_subset, generate_ticket_candidates, main,
+)
 
 
 def draw(index, front=None, back=None):
@@ -44,6 +49,33 @@ class TicketCandidateTests(unittest.TestCase):
                 self.assertEqual(len(set(ticket["back_numbers"])), 2)
                 self.assertTrue(all(1 <= n <= 12 for n in ticket["back_numbers"]))
 
+    def test_conditional_poisson_sampler_matches_requested_marginals(self):
+        target = [0.1, 0.2, 0.3, 0.6, 0.8]
+        sampler, receipt = _calibrated_sampler(target, 2)
+        achieved = sampler.inclusion_marginals()
+        self.assertLessEqual(receipt["maximum_absolute_residual"], 1e-8)
+        self.assertEqual(receipt["terminal_status"], "converged")
+        for actual, expected in zip(achieved, target):
+            self.assertAlmostEqual(actual, expected, delta=1e-8)
+        rng = random.Random(17)
+        for _ in range(100):
+            subset = _sample_ticket_subset(sampler, rng)
+            self.assertEqual(len(subset), 2)
+            self.assertEqual(subset, sorted(set(subset)))
+            self.assertTrue(all(1 <= value <= 5 for value in subset))
+
+    def test_generation_receipt_records_marginal_calibration(self):
+        result = generate_ticket_candidates(self.rows, tickets_per_strategy=2)
+        self.assertEqual(result["schema_version"], 2)
+        for metadata in result["strategy_metadata"].values():
+            self.assertEqual(
+                metadata["sampling_method"],
+                "exact conditional-Poisson rejective sampling; with replacement across tickets",
+            )
+            for zone in ("front_marginal_calibration", "back_marginal_calibration"):
+                self.assertEqual(metadata[zone]["terminal_status"], "converged")
+                self.assertLessEqual(metadata[zone]["maximum_absolute_residual"], 1e-8)
+
     def test_seed_is_reproducible(self):
         first = generate_ticket_candidates(self.rows, tickets_per_strategy=3, seed=91)
         second = generate_ticket_candidates(self.rows, tickets_per_strategy=3, seed=91)
@@ -51,10 +83,10 @@ class TicketCandidateTests(unittest.TestCase):
         self.assertEqual(first["generation_run_id"], second["generation_run_id"])
 
     def test_duplicate_tickets_are_preserved_under_with_replacement_sampling(self):
-        def repeated_sample(_weights, count, _rng):
-            return [1, 2, 3, 4, 5] if count == 5 else [1, 2]
+        def repeated_sample(sampler, _rng):
+            return [1, 2, 3, 4, 5] if sampler.k == 5 else [1, 2]
 
-        with patch("lottery.tickets._weighted_sample_without_replacement", side_effect=repeated_sample):
+        with patch("lottery.tickets._sample_ticket_subset", side_effect=repeated_sample):
             result = generate_ticket_candidates(self.rows, tickets_per_strategy=3)
         for strategy, tickets in result["strategies"].items():
             self.assertEqual(len(tickets), 3)
@@ -107,6 +139,27 @@ class TicketCandidateTests(unittest.TestCase):
             self.assertEqual(len(report["strategies"]["uniform"]), 2)
             self.assertEqual(len(report["strategies"]["expanding"]), 2)
             self.assertEqual(len(report["strategies"]["ewma"]), 2)
+
+    def test_cli_validates_the_exact_bytes_it_generates_from(self):
+        with tempfile.TemporaryDirectory() as temp:
+            dataset = Path(temp) / "draws.jsonl"
+            dataset.write_text(
+                "".join(json.dumps(row) + "\n" for row in self.rows),
+                encoding="utf-8",
+            )
+            original_read_bytes = Path.read_bytes
+            reads = []
+
+            def counted_read_bytes(path):
+                if path == dataset:
+                    reads.append(path)
+                return original_read_bytes(path)
+
+            with patch("sys.argv", ["generate_tickets.py", str(dataset), "--seed", "3"]), \
+                    patch.object(Path, "read_bytes", counted_read_bytes), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(main(), 0)
+            self.assertEqual(reads, [dataset])
 
     def test_generation_limit_is_enforced(self):
         with self.assertRaisesRegex(ValueError, "1..100"):

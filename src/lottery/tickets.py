@@ -1,8 +1,10 @@
 """Small, reproducible MVP for generating legal DLT ticket candidates.
 
 The three strategies are uniform, expanding-frequency, and EWMA marginal
-weights. Weighted sampling is a diversification heuristic, not a joint model
-or evidence of predictive advantage. No physical ball-set identity is inferred.
+models. Each marginal vector is calibrated to an exact conditional-Poisson
+fixed-size joint distribution before sampling. The rejective dependence
+structure is a modeling assumption, not evidence of predictive advantage.
+No physical ball-set identity is inferred.
 """
 from __future__ import annotations
 
@@ -16,11 +18,12 @@ from pathlib import Path
 import sys
 from typing import Any, Iterable
 
+from .conditional_poisson import ConditionalPoisson
 from .backtest import (
     BACK_PICK, BACK_SIZE, DEFAULT_ALPHA, FRONT_PICK, FRONT_SIZE,
     _probabilities, _validate_rows,
 )
-from .validate import validate_jsonl
+from .validate import validate_records
 
 
 STRATEGIES = ("uniform", "expanding", "ewma")
@@ -28,30 +31,47 @@ MAX_TICKETS_PER_STRATEGY = 100
 SLOT_SEED_STRIDE = 1_000_003
 
 
-def _weighted_sample_without_replacement(
-    probabilities: list[float], count: int, rng: random.Random
-) -> list[int]:
-    if count < 1 or count > len(probabilities):
-        raise ValueError("sample count must be between 1 and pool size")
-    if any(not math.isfinite(weight) or weight < 0 for weight in probabilities):
-        raise ValueError("weights must be finite and non-negative")
-    remaining = list(enumerate(probabilities, start=1))
-    selected: list[int] = []
-    for _ in range(count):
-        total = sum(weight for _, weight in remaining)
-        if total <= 0:
-            raise ValueError("weights must have positive remaining mass")
-        threshold = rng.random() * total
-        cumulative = 0.0
-        chosen_index = len(remaining) - 1
-        for index, (_, weight) in enumerate(remaining):
-            cumulative += weight
-            if threshold < cumulative:
-                chosen_index = index
-                break
-        number, _ = remaining.pop(chosen_index)
-        selected.append(number)
-    return sorted(selected)
+SAMPLER_VERSION = "conditional-poisson-rejective-v1"
+CALIBRATION_VERSION = "deterministic-lbfgs-armijo-calibration-v1"
+CALIBRATION_TOLERANCE = 1e-8
+CALIBRATION_MAX_ITERATIONS = 5000
+CALIBRATION_HISTORY_SIZE = 10
+
+
+def _calibrated_sampler(
+    probabilities: list[float], count: int
+) -> tuple[ConditionalPoisson, dict[str, Any]]:
+    calibration = ConditionalPoisson.calibrate(
+        probabilities,
+        count,
+        tolerance=CALIBRATION_TOLERANCE,
+        max_iterations=CALIBRATION_MAX_ITERATIONS,
+        history_size=CALIBRATION_HISTORY_SIZE,
+    )
+    if not calibration.converged:
+        raise ValueError(
+            f"conditional-Poisson marginal calibration failed: "
+            f"{calibration.terminal_status}; residual={calibration.maximum_absolute_residual}"
+        )
+    sampler = ConditionalPoisson(calibration.centered_log_weights, count)
+    achieved = sampler.inclusion_marginals()
+    residual = max(abs(actual - target) for actual, target in zip(achieved, probabilities))
+    if not math.isfinite(residual) or residual > CALIBRATION_TOLERANCE:
+        raise ValueError(
+            f"conditional-Poisson sampler failed independent marginal check: {residual}"
+        )
+    return sampler, {
+        "terminal_status": calibration.terminal_status,
+        "iterations": calibration.iterations,
+        "gradient_infinity_norm": calibration.gradient_infinity_norm,
+        "maximum_absolute_residual": residual,
+        "tolerance": CALIBRATION_TOLERANCE,
+        "algorithm": CALIBRATION_VERSION,
+    }
+
+
+def _sample_ticket_subset(sampler: ConditionalPoisson, rng: random.Random) -> list[int]:
+    return list(sampler.sample(rng))
 
 
 def generate_ticket_candidates(
@@ -83,7 +103,11 @@ def generate_ticket_candidates(
         "half_life": half_life,
         "code_commit": code_commit,
         "strategies": STRATEGIES,
-        "sampler_version": "sequential-weighted-without-replacement-v1",
+        "sampler_version": SAMPLER_VERSION,
+        "calibration_version": CALIBRATION_VERSION,
+        "calibration_tolerance": CALIBRATION_TOLERANCE,
+        "calibration_max_iterations": CALIBRATION_MAX_ITERATIONS,
+        "calibration_history_size": CALIBRATION_HISTORY_SIZE,
     }
     generation_run_id = hashlib.sha256(
         json.dumps(run_identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -99,12 +123,14 @@ def generate_ticket_candidates(
             records, "back_numbers", BACK_SIZE, BACK_PICK,
             model=strategy, alpha=alpha, half_life=half_life,
         )
+        front_sampler, front_calibration = _calibrated_sampler(front_weights, FRONT_PICK)
+        back_sampler, back_calibration = _calibrated_sampler(back_weights, BACK_PICK)
         slot_seed = seed + strategy_index * SLOT_SEED_STRIDE
         rng = random.Random(slot_seed)
         tickets = []
         for ticket_index in range(tickets_per_strategy):
-            front = _weighted_sample_without_replacement(front_weights, FRONT_PICK, rng)
-            back = _weighted_sample_without_replacement(back_weights, BACK_PICK, rng)
+            front = _sample_ticket_subset(front_sampler, rng)
+            back = _sample_ticket_subset(back_sampler, rng)
             ticket_id = hashlib.sha256(
                 f"{generation_run_id}:{strategy}:{ticket_index + 1}".encode("utf-8")
             ).hexdigest()[:24]
@@ -126,7 +152,10 @@ def generate_ticket_candidates(
             "unique_ticket_combinations": len(lane_counts),
             "duplicate_ticket_count": sum(count - 1 for count in lane_counts.values()),
             "training_cutoff_draw_id": records[-1]["draw_id"],
-            "sampling_method": "sequential weighted sampling without replacement within each ticket; with replacement across tickets",
+            "sampling_method": "exact conditional-Poisson rejective sampling; with replacement across tickets",
+            "sampler_version": SAMPLER_VERSION,
+            "front_marginal_calibration": front_calibration,
+            "back_marginal_calibration": back_calibration,
         }
 
     global_counts: dict[tuple[tuple[int, ...], tuple[int, ...]], int] = {}
@@ -142,7 +171,7 @@ def generate_ticket_candidates(
     )
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "purpose": "exploratory_ticket_candidates",
         "generated_seed": seed,
         "generation_run_id": generation_run_id,
@@ -162,16 +191,21 @@ def generate_ticket_candidates(
         },
         "training_first_draw_id": records[0]["draw_id"],
         "training_last_draw_id": records[-1]["draw_id"],
+        "sampler_version": SAMPLER_VERSION,
         "model_configuration": {
             "expanding_alpha_pseudo_draws": alpha,
             "ewma_half_life_draws": half_life,
-            "sampling": "sequential weighted sampling without replacement",
-            "sampler_version": "sequential-weighted-without-replacement-v1",
+            "sampling": "conditional-Poisson rejective distribution calibrated to the supplied inclusion marginals",
+            "sampler_version": SAMPLER_VERSION,
+            "calibration_version": CALIBRATION_VERSION,
+            "calibration_tolerance": CALIBRATION_TOLERANCE,
+            "calibration_max_iterations": CALIBRATION_MAX_ITERATIONS,
+            "calibration_history_size": CALIBRATION_HISTORY_SIZE,
         },
         "strategies": candidates,
         "limitations": [
             "Historical candidate data may be unverified; this tool does not authenticate its input.",
-            "Marginal inclusion weights do not define a calibrated joint ticket probability.",
+            "The conditional-Poisson joint distribution matches the requested first-order inclusion marginals; its higher-order dependence structure is a rejective-sampling assumption, not a demonstrated predictive edge.",
             "No out-of-sample advantage over the legal uniform baseline has been established.",
             "Strategy labels are computational variants, not physical lottery ball-set identities.",
             "Each ticket is a legal combination, not a prediction or guarantee.",
@@ -190,9 +224,9 @@ def main() -> int:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
-        validation = validate_jsonl(args.dataset)
         raw = args.dataset.read_bytes()
         rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
+        validation = validate_records(rows)
         report = generate_ticket_candidates(
             rows, tickets_per_strategy=args.tickets, seed=args.seed,
             alpha=args.alpha, half_life=args.half_life,

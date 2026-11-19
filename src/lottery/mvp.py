@@ -60,8 +60,24 @@ def run_mvp(
     batch_bytes = json.dumps(
         batch, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
+    calibration_receipts = [
+        calibration
+        for lane in batch["strategy_metadata"].values()
+        for calibration in (
+            lane["front_marginal_calibration"],
+            lane["back_marginal_calibration"],
+        )
+    ]
+    calibration_tolerance = batch["model_configuration"]["calibration_tolerance"]
+    maximum_calibration_residual = max(
+        item["maximum_absolute_residual"] for item in calibration_receipts
+    )
+    if (any(item["terminal_status"] != "converged" for item in calibration_receipts)
+            or maximum_calibration_residual > calibration_tolerance):
+        raise ValueError("ticket sampler calibration receipt failed its convergence gate")
+
     receipt = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "candidate_batch_generated",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "generation_run_id": batch["generation_run_id"],
@@ -70,12 +86,16 @@ def run_mvp(
         "batch_sha256": hashlib.sha256(batch_bytes).hexdigest(),
         "requested_tickets_per_strategy": tickets_per_strategy,
         "published_ticket_count": batch["total_tickets"],
+        "sampler_version": batch["sampler_version"],
+        "sampling_calibration_status": "passed",
+        "sampling_calibration_tolerance": calibration_tolerance,
+        "maximum_marginal_calibration_residual": maximum_calibration_residual,
         "data_trust_status": "not_authenticated_by_this_tool",
         "automatic_sync_status": "not_attempted",
         "model_training_status": "not_performed",
         "model_promotion_status": "not_performed",
     }
-    document = {"schema_version": 1, "receipt": receipt, "batch": batch}
+    document = {"schema_version": 2, "receipt": receipt, "batch": batch}
     rendered = json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
