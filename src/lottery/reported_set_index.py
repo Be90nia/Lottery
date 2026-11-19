@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -71,6 +72,9 @@ def build_reported_set_index_view(
     ledger_sha = _sha(ledger_raw)
     if coverage.get("inventory_sha256") != inventory_sha:
         raise ReportedSetIndexError("coverage report is bound to a different draw inventory")
+    code_commit = coverage.get("code_commit")
+    if not isinstance(code_commit, str) or not re.fullmatch(r"[0-9a-f]{40}", code_commit):
+        raise ReportedSetIndexError("coverage report is not bound to a full source commit SHA")
     if coverage.get("observation_ledger_sha256") != ledger_sha:
         raise ReportedSetIndexError("coverage report is bound to a different observation ledger")
 
@@ -186,6 +190,10 @@ def build_reported_set_index_view(
         "observation_ledger_sha256": ledger_sha,
         "source_domains": coverage.get("source_domains", []),
         "coverage_source_completeness_verified": coverage.get("source_completeness_verified") is True,
+        "collector_receipt_status": coverage.get("collector_receipt_status", "missing"),
+        "latest_collected_draw_id": coverage.get("latest_collected_draw_id"),
+        "observation_count": coverage.get("observation_count"),
+        "out_of_inventory_observation_count": coverage.get("out_of_inventory_observation_count"),
         "record_count": len(view_rows),
         "set_index_counts": set_counts,
         "first_draw": view_rows[0]["draw_id"] if view_rows else None,
