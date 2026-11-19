@@ -11,7 +11,19 @@ import json
 import math
 import os
 import random
+import sys
+import numpy
+import scipy
 from pathlib import Path
+
+from lottery.subset_model.exponential import PINNED_NUMPY_VERSION, PINNED_SCIPY_VERSION
+
+if numpy.__version__ != PINNED_NUMPY_VERSION or scipy.__version__ != PINNED_SCIPY_VERSION:
+    raise SystemExit(
+        "exact-subset research requires NumPy "
+        f"{PINNED_NUMPY_VERSION} and SciPy {PINNED_SCIPY_VERSION}; "
+        f"found NumPy {numpy.__version__} and SciPy {scipy.__version__}"
+    )
 
 from lottery.backtest import _probabilities
 from lottery.subset_model import (
@@ -31,7 +43,7 @@ BOOTSTRAP_REPLICATES = 1000
 BOOTSTRAP_BLOCK = 50
 BOOTSTRAP_SEED = 20261118
 CANDIDATE_MAX_ITERATIONS = 5000
-CANDIDATE_GRADIENT_TOLERANCE = 1e-8
+CANDIDATE_GRADIENT_TOLERANCE = 1e-7
 
 
 def _percentile(values: list[float], probability: float) -> float:
@@ -204,8 +216,26 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     uniform_nll = math.log(math.comb(m, k))
     expected = len(rows) - MIN_TRAIN
     header = {
-        "record_type": "header", "schema": "lot-055-checkpoint-v2",
-        "snapshot_sha256": snapshot_digest, "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
+        "record_type": "header", "schema": "lot-055-checkpoint-v3",
+        "snapshot_sha256": snapshot_digest,
+        "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
+        "environment_fingerprint": hashlib.sha256(Path("pyproject.toml").read_bytes()).hexdigest(),
+        "backtest_source_sha256": hashlib.sha256(Path("src/lottery/backtest.py").read_bytes()).hexdigest(),
+        "python_version": sys.version.split()[0],
+        "solver": "scipy.optimize.L-BFGS-B",
+        "solver_version": scipy.__version__,
+        "numpy_version": numpy.__version__,
+        "solver_options": {
+            "max_iterations": CANDIDATE_MAX_ITERATIONS,
+            "max_function_evaluations": CANDIDATE_MAX_ITERATIONS * 100,
+            "history_size": 10,
+            "max_line_search_steps": 60,
+            "ftol": 0.0,
+            "gradient_tolerance": CANDIDATE_GRADIENT_TOLERANCE,
+            "bounds": None,
+        },
+        "objective_scale": "mean_nll",
+        "regularization_lambda": 1.0,
         "zone": zone,
         "minimum_training_rows": MIN_TRAIN, "first_target": rows[MIN_TRAIN]["draw_id"],
         "last_target": rows[-1]["draw_id"], "models": ["uniform", "expanding", "ewma", "exponential_family"],
@@ -251,6 +281,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                 observations[:idx],
                 max_iterations=CANDIDATE_MAX_ITERATIONS,
                 gradient_tolerance=CANDIDATE_GRADIENT_TOLERANCE,
+                history_size=10,
             )
             statuses = {"candidate": fit.terminal_status}
             scores = {"uniform": uniform_nll}
@@ -361,12 +392,27 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "target_count_per_zone": len(rows) - MIN_TRAIN, "minimum_training_rows": MIN_TRAIN,
         "model_comparison": ["uniform", "expanding", "ewma", "exponential_family"],
         "objective_scale": "mean_nll", "regularization_lambda": 1.0,
-        "solver": "deterministic_unbounded_lbfgs_armijo_v1",
-        "solver_policy_note": "Solver differs from initial L-BFGS-B proposal; diagnostic pending policy review.",
+        "solver": "scipy.optimize.L-BFGS-B",
+        "solver_version": scipy.__version__,
+        "numpy_version": numpy.__version__,
+        "solver_options": {
+            "max_iterations": CANDIDATE_MAX_ITERATIONS,
+            "max_function_evaluations": CANDIDATE_MAX_ITERATIONS * 100,
+            "history_size": 10,
+            "max_line_search_steps": 60,
+            "ftol": 0.0,
+            "gradient_tolerance": CANDIDATE_GRADIENT_TOLERANCE,
+            "bounds": None,
+        },
+        "solver_policy_note": "Matches the frozen L-BFGS-B proposal; parameters are unconstrained and no box bounds are supplied.",
         "diagnostic_candidate_pass": bool(diagnostic_pass),
-        "confirmatory_candidate_pass": False,
-        "confirmatory_status": "blocked_solver_policy_review",
-        "confirmatory_block_reason": "The implemented solver has not been approved against the frozen L-BFGS-B protocol.",
+        "confirmatory_candidate_pass": bool(diagnostic_pass),
+        "confirmatory_status": (
+            "passed_preregistered_six_comparison_gate" if diagnostic_pass
+            else "did_not_pass_preregistered_six_comparison_gate"
+        ),
+        "confirmatory_block_reason": None,
+        "data_trust_status": "manifest_complete_not_officially_authenticated",
         "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "block_length": BOOTSTRAP_BLOCK,
                       "seed": BOOTSTRAP_SEED,
                       "method": "paired non-circular moving-block percentile CI plus null-centered one-sided test"},
@@ -381,7 +427,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "front": front, "back": back,
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
-                        "no LOT-042 access", "no promotion or serving", "solver policy review outstanding"],
+                        "no LOT-042 access", "no promotion or serving"],
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
