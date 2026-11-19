@@ -74,6 +74,10 @@ Monte Carlo frequency baseline details are documented in [research methods](docs
 
 The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into the legacy candidate.
 
+### Model regression receipts (LOT-073)
+
+Build a deterministic paired evaluation receipt from a chronological per-target score file, comparing a candidate against both the champion and uniform baseline. The gate requires front/back Brier and log-loss confidence intervals to show improvement against both references; even a pass is human-review-only and cannot promote or serve a model. See [model regression receipt protocol](docs/MODEL_REGRESSION_RECEIPTS.md).
+
 ### Prospective forecast logging
 
 Before an eligible future draw, the fixed marginal models can be recorded with
