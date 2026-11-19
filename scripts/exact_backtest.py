@@ -123,7 +123,8 @@ def main() -> int:
             "run_manifest_artifact_id": manifest["artifact_id"],
         }, ensure_ascii=False, indent=2))
         return 0
-    except (OSError, UnicodeDecodeError, ValueError, KeyError, ImportError) as exc:
+    except (OSError, UnicodeDecodeError, ValueError, KeyError, ImportError,
+            importlib.metadata.PackageNotFoundError) as exc:
         print(f"EXACT_BACKTEST_BLOCKED: {exc}", file=sys.stderr)
         return 2
 
