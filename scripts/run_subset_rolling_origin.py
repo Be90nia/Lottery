@@ -352,22 +352,31 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
     # The preregistered confirmatory family is exactly candidate-vs-uniform
     # for front and back. Expanding/EWMA remain fixed comparators, not extra
     # hypotheses in the Holm family.
-    primary_p_values = {
-        "front": front["paired_candidate_minus_baseline"]["uniform"]["one_sided_null_centered_p_value"],
-        "back": back["paired_candidate_minus_baseline"]["uniform"]["one_sided_null_centered_p_value"],
+    primary_comparisons = {
+        "front": front["paired_candidate_minus_baseline"]["uniform"],
+        "back": back["paired_candidate_minus_baseline"]["uniform"],
     }
-    holm_adjusted = _holm_adjust(primary_p_values, alpha=0.05)
+    primary_p_values = {
+        zone: comparison["one_sided_null_centered_p_value"]
+        for zone, comparison in primary_comparisons.items()
+        if comparison is not None
+    }
+    # Missing/failed targets leave the inferential family incomplete; do not
+    # invent a p-value or shrink the preregistered family.
+    holm_adjusted = (
+        _holm_adjust(primary_p_values, alpha=0.05)
+        if len(primary_p_values) == 2 else {}
+    )
     zone_inferential_pass = {
-        "front": (
-            front["complete_coverage"]
-            and front["paired_candidate_minus_baseline"]["uniform"]["ci_95_upper"] < 0.0
-            and holm_adjusted["front"] < 0.05
-        ),
-        "back": (
-            back["complete_coverage"]
-            and back["paired_candidate_minus_baseline"]["uniform"]["ci_95_upper"] < 0.0
-            and holm_adjusted["back"] < 0.05
-        ),
+        zone: (
+            comparison is not None
+            and zone in holm_adjusted
+            and (zone == "front" and front["complete_coverage"]
+                 or zone == "back" and back["complete_coverage"])
+            and comparison["ci_95_upper"] < 0.0
+            and holm_adjusted.get(zone, 1.0) < 0.05
+        )
+        for zone, comparison in primary_comparisons.items()
     }
     primary_inferential_pass = all(zone_inferential_pass.values())
     multiplicity_policy_approved = True
