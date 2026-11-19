@@ -1,10 +1,10 @@
 name: official-draw-sync-mvp
 
 on:
-  schedule:
-    - cron: "17 15 * * *"
   workflow_dispatch:
 
+# Expensive evidence/source jobs are manual-only until source completeness is verified
+# and the repository's Actions budget is available.
 permissions:
   contents: read
 
