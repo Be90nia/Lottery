@@ -75,7 +75,8 @@ class BallSetCoverageTests(unittest.TestCase):
 
     def report(self):
         return build_ball_set_coverage(
-            self.inventory, self.ledger, self.archive, code_commit="a" * 40
+            self.inventory, self.ledger, self.draw_result_ledger,
+            self.archive, code_commit="a" * 40
         )
 
     def test_verified_label_requires_raw_bytes_manifest_and_inventory_match(self):
