@@ -37,7 +37,10 @@ class BallSetCoverageTests(unittest.TestCase):
         rows = [
             {"draw_id": "26128", "draw_date": "2026-11-09",
              "front_numbers": [3, 13, 20, 25, 34], "back_numbers": [9, 12],
-             "source_id": "sha256:fixture"},
+             "source_id": "sha256:fixture-26128"},
+            {"draw_id": "26129", "draw_date": "2026-11-11",
+             "front_numbers": [2, 12, 14, 17, 33], "back_numbers": [7, 8],
+             "source_id": "sha256:fixture-26129"},
         ]
         self.inventory.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
         self.archive = self.root / "archive"
