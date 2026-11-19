@@ -102,6 +102,7 @@ def build_evaluation_receipt(
         raise EvaluationGateError(f"incomplete coverage: {len(rows)} targets; need {min_targets}")
     targets = []
     seen = set()
+    previous_target_number = None
     deltas = {
         reference: {zone: {metric: [] for metric in METRICS} for zone in ZONES}
         for reference in ("champion", "uniform")
@@ -163,6 +164,13 @@ def build_evaluation_receipt(
         "protocol_version": protocol_version,
         "scope": scope,
         "target_count": len(targets),
+        "score_rows_sha256": hashlib.sha256(_canonical({"score_rows": rows})).hexdigest(),
+        "evaluation_config": {
+            "min_targets": min_targets,
+            "bootstrap_replicates": replicates,
+            "block_length_draws": block_length,
+            "bootstrap_seed": seed,
+        },
         "first_target_draw_id": targets[0],
         "last_target_draw_id": targets[-1],
         "target_draw_ids_sha256": hashlib.sha256(
@@ -186,6 +194,24 @@ def verify_evaluation_receipt(receipt: dict[str, Any]) -> bool:
         raise EvaluationGateError("receipt hash mismatch")
     if body.get("schema") != RECEIPT_SCHEMA:
         raise EvaluationGateError("unsupported receipt schema")
+    if body.get("scope") not in ("rolling_origin", "shadow"):
+        raise EvaluationGateError("receipt scope is forbidden or invalid")
+    _validate_sha(body.get("dataset_sha256"), "dataset_sha256")
+    _validate_sha(body.get("score_rows_sha256"), "score_rows_sha256")
+    _validate_sha(body.get("target_draw_ids_sha256"), "target_draw_ids_sha256")
+    config = body.get("evaluation_config")
+    if (not isinstance(config, dict) or type(config.get("min_targets")) is not int
+            or config["min_targets"] < 200
+            or type(config.get("bootstrap_replicates")) is not int
+            or config["bootstrap_replicates"] < 1000
+            or type(config.get("block_length_draws")) is not int
+            or config["block_length_draws"] < 50
+            or config["block_length_draws"] > config["min_targets"] // 2
+            or type(config.get("bootstrap_seed")) is not int
+            or config["bootstrap_seed"] < 0
+            or type(body.get("target_count")) is not int
+            or body["target_count"] < config["min_targets"]):
+        raise EvaluationGateError("receipt evaluation configuration is invalid")
     if body.get("production_ready") is not False or body.get("automatic_promotion") is not False:
         raise EvaluationGateError("evaluation receipt cannot authorize production or promotion")
     return True
