@@ -115,10 +115,7 @@ class SourcePaginationAttestationTests(unittest.TestCase):
             manifest = ingest_snapshot_directory(
                 snapshots_dir, candidate, require_manifests=True
             )
-            manifest_path.write_text(
-                json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
+            self.assertTrue(manifest_path.exists())
             current = root / "current.jsonl"
             current.write_text(
                 "".join(
