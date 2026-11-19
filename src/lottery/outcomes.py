@@ -121,7 +121,7 @@ def _verify_chain(path: Path, event_type: str) -> dict[str, Any]:
                 if key not in ("sequence", "previous_event_hash")
             }
             _validate_outcome_payload(payload)
-        if body.get("sequence") != count + 1:
+        if type(body.get("sequence")) is not int or body.get("sequence") != count + 1:
             raise OutcomeLedgerError(f"line {line_no}: sequence is not contiguous")
         if body.get("previous_event_hash") != previous:
             raise OutcomeLedgerError(f"line {line_no}: previous hash does not match")
