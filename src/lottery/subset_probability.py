@@ -289,3 +289,147 @@ def sample_subsets(log_weights: Sequence[float], k: int, count: int, *, seed: in
         raise ValueError("seed must be an integer")
     rng = random.Random(seed)
     return tuple(sample_conditional_poisson(log_weights, k, rng) for _ in range(count))
+
+
+@dataclass(frozen=True)
+class CalibrationResult:
+    status: str
+    log_weights: tuple[float, ...]
+    target_marginals: tuple[float, ...]
+    achieved_marginals: tuple[float, ...]
+    max_abs_residual: float
+    iterations: int
+    objective: float
+    termination_reason: str
+
+    @property
+    def forecast_ready(self) -> bool:
+        return self.status == "converged" and self.max_abs_residual <= 1e-8
+
+
+def _solve_linear_system(matrix: list[list[float]], rhs: list[float]) -> list[float]:
+    """Deterministic Gaussian elimination with partial pivoting."""
+    n = len(rhs)
+    augmented = [list(matrix[i]) + [rhs[i]] for i in range(n)]
+    for column in range(n):
+        pivot = max(range(column, n), key=lambda row: abs(augmented[row][column]))
+        pivot_value = augmented[pivot][column]
+        if not math.isfinite(pivot_value) or abs(pivot_value) < 1e-14:
+            raise ArithmeticError("singular calibration Hessian")
+        augmented[column], augmented[pivot] = augmented[pivot], augmented[column]
+        scale = augmented[column][column]
+        for j in range(column, n + 1):
+            augmented[column][j] /= scale
+        for row in range(n):
+            if row == column:
+                continue
+            factor = augmented[row][column]
+            if factor:
+                for j in range(column, n + 1):
+                    augmented[row][j] -= factor * augmented[column][j]
+    solution = [augmented[i][n] for i in range(n)]
+    if any(not math.isfinite(value) for value in solution):
+        raise ArithmeticError("non-finite calibration Newton step")
+    return solution
+
+
+def _pairwise_inclusion(log_weights: Sequence[float], k: int,
+                        marginals: Sequence[float]) -> list[list[float]]:
+    weights = tuple(log_weights)
+    m = len(weights)
+    log_z = conditional_poisson_log_normalizer(weights, k)
+    matrix = [[0.0] * m for _ in range(m)]
+    for i in range(m):
+        matrix[i][i] = marginals[i]
+        for j in range(i + 1, m):
+            reduced = tuple(value for index, value in enumerate(weights) if index not in (i, j))
+            if k < 2:
+                pair = 0.0
+            else:
+                log_pair = weights[i] + weights[j] + conditional_poisson_log_normalizer(reduced, k - 2) - log_z
+                pair = math.exp(log_pair)
+            matrix[i][j] = matrix[j][i] = pair
+    return matrix
+
+
+def _calibration_objective(log_weights: Sequence[float], target: Sequence[float], k: int) -> float:
+    return conditional_poisson_log_normalizer(log_weights, k) - math.fsum(
+        eta * marginal for eta, marginal in zip(log_weights, target)
+    )
+
+
+def calibrate_weighted_subset(target_marginals: Sequence[float], k: int, *,
+                              tolerance: float = 1e-8, max_iterations: int = 200) -> CalibrationResult:
+    """Fit centered log weights to exact fixed-size inclusion marginals.
+
+    The convex dual is solved by damped Newton steps in the zero-sum gauge.
+    Failure is returned as a non-ready receipt; targets are never clipped or
+    renormalized.
+    """
+    target = tuple(float(value) for value in target_marginals)
+    m = len(target)
+    _validate_dimensions(m, k)
+    if type(max_iterations) is not int or max_iterations < 1:
+        raise ValueError("max_iterations must be a positive integer")
+    if not math.isfinite(tolerance) or tolerance <= 0:
+        raise ValueError("tolerance must be finite and positive")
+    if any(not math.isfinite(value) or not 0.0 < value < 1.0 for value in target):
+        raise ValueError("target marginals must be finite and strictly interior")
+    if abs(math.fsum(target) - k) > 1e-10:
+        raise ValueError("target marginals must sum to selection size within 1e-10")
+    if k == 0 or k == m:
+        raise ValueError("interior marginal calibration is undefined for boundary selection sizes")
+
+    eta = [0.0] * m
+    last_objective = _calibration_objective(eta, target, k)
+    for iteration in range(max_iterations + 1):
+        achieved = conditional_poisson_marginals(eta, k)
+        residual = [achieved[i] - target[i] for i in range(m)]
+        max_residual = max(abs(value) for value in residual)
+        if max_residual <= tolerance:
+            return CalibrationResult("converged", tuple(eta), target, achieved,
+                                     max_residual, iteration, last_objective,
+                                     "marginal_residual_tolerance")
+        if iteration == max_iterations:
+            return CalibrationResult("max_iterations", tuple(eta), target, achieved,
+                                     max_residual, iteration, last_objective,
+                                     "iteration_limit")
+        pair = _pairwise_inclusion(eta, k, achieved)
+        covariance = [[pair[i][j] - achieved[i] * achieved[j] for j in range(m)]
+                      for i in range(m)]
+        # KKT system fixes the redundant additive log-weight degree of freedom.
+        kkt = [row + [1.0] for row in covariance]
+        kkt.append([1.0] * m + [0.0])
+        rhs = [-value for value in residual] + [0.0]
+        try:
+            direction = _solve_linear_system(kkt, rhs)[:m]
+        except ArithmeticError:
+            return CalibrationResult("solver_failed", tuple(eta), target, achieved,
+                                     max_residual, iteration, last_objective,
+                                     "singular_or_nonfinite_hessian")
+        directional = math.fsum(residual[i] * direction[i] for i in range(m))
+        if not math.isfinite(directional) or directional >= 0.0:
+            return CalibrationResult("solver_failed", tuple(eta), target, achieved,
+                                     max_residual, iteration, last_objective,
+                                     "non_descent_newton_direction")
+        step = 1.0
+        accepted = False
+        while step >= 2.0 ** -30:
+            candidate = [eta[i] + step * direction[i] for i in range(m)]
+            center = math.fsum(candidate) / m
+            candidate = [value - center for value in candidate]
+            try:
+                objective = _calibration_objective(candidate, target, k)
+            except (ValueError, ArithmeticError, OverflowError):
+                objective = math.inf
+            if math.isfinite(objective) and objective <= last_objective + 1e-4 * step * directional:
+                eta = candidate
+                last_objective = objective
+                accepted = True
+                break
+            step *= 0.5
+        if not accepted:
+            return CalibrationResult("solver_failed", tuple(eta), target, achieved,
+                                     max_residual, iteration, last_objective,
+                                     "line_search_failed")
+    raise AssertionError("unreachable calibration state")
