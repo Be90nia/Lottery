@@ -96,6 +96,22 @@ class BallSetParserTests(unittest.TestCase):
     def test_missing_draw_id_or_date_is_rejected(self):
         with self.assertRaisesRegex(BallSetEvidenceError, "missing an explicit"):
             parse_announcement(b"<html><body>no draw details</body></html>", BASE)
+    def test_front_and_back_results_are_parsed_with_evidence_span(self):
+        parsed = parse_announcement(page(label=1), BASE)
+        self.assertEqual(parsed.front_numbers, (3, 13, 20, 25, 34))
+        self.assertEqual(parsed.back_numbers, (9, 12))
+        self.assertEqual(parsed.draw_result_status, "parsed")
+        self.assertIsNotNone(parsed.draw_result_evidence_start)
+        self.assertGreater(parsed.draw_result_evidence_end, parsed.draw_result_evidence_start)
+
+    def test_missing_and_invalid_draw_results_are_not_inferred(self):
+        missing = page(label=1).replace("本期开奖号码：03 13 20 25 34 09 12".encode("utf-8"), b"")
+        parsed_missing = parse_announcement(missing, BASE)
+        self.assertEqual(parsed_missing.draw_result_status, "missing_draw_result")
+        invalid = page(label=1).replace("03 13 20 25 34 09 12".encode("utf-8"), "03 13 13 25 34 09 12".encode("utf-8"))
+        parsed_invalid = parse_announcement(invalid, BASE)
+        self.assertEqual(parsed_invalid.draw_result_status, "invalid_draw_result")
+
 
     def test_unsupported_explicit_set_index_is_not_misclassified_as_missing(self):
         parsed = parse_announcement(page(label=4), BASE)
