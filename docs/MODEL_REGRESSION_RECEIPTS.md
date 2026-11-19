@@ -26,3 +26,5 @@ This first slice is not yet wired to automatic candidate fitting or lifecycle re
 
 
 The gate enforces a hard floor of 200 chronological, strictly increasing five-digit draw IDs, at least 1,000 bootstrap replicates, and a block length of at least 50 and no more than half the minimum target count. Callers cannot lower these floors. The receipt records the complete evaluation configuration and a SHA-256 of the canonical per-target score rows, in addition to the target-ID digest.
+
+The CLI writes the receipt with an atomic no-replace operation; an existing output path is an error and is never overwritten. The CLI verifies the receipt before publication.
