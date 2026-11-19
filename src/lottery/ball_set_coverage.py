@@ -569,7 +569,9 @@ def write_ball_set_coverage_report(
     json_bytes = (json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
     columns = [
         "draw_id", "draw_date", "reported_set_index", "status", "observation_ids",
-        "source_urls", "equipment_regime_id", "physical_ball_set_id",
+        "source_urls", "draw_result_status", "front_numbers", "back_numbers",
+        "draw_result_observation_ids", "draw_result_source_urls",
+        "equipment_regime_id", "physical_ball_set_id",
         "prior_same_key_verified_count", "eligible", "exclusion_reason",
     ]
     from io import StringIO
@@ -580,6 +582,10 @@ def write_ball_set_coverage_report(
         item = dict(row)
         item["observation_ids"] = ";".join(item["observation_ids"])
         item["source_urls"] = ";".join(item["source_urls"])
+        item["draw_result_observation_ids"] = ";".join(item["draw_result_observation_ids"])
+        item["draw_result_source_urls"] = ";".join(item["draw_result_source_urls"])
+        item["front_numbers"] = " ".join(map(str, item["front_numbers"] or []))
+        item["back_numbers"] = " ".join(map(str, item["back_numbers"] or []))
         writer.writerow(item)
     csv_bytes = stream.getvalue().encode("utf-8")
 
@@ -631,7 +637,11 @@ def write_ball_set_coverage_report(
         f"- Verified coverage inside window: {summary['observed_window_coverage_rate']:.2%}",
         f"- Primary-verified labels: {summary['primary_verified_draws']} ({summary['primary_verified_coverage_rate']:.2%})",
         f"- Per-set counts: {summary['set_index_counts']}",
-        f"- Out-of-inventory observations: {report['out_of_inventory_observation_count']}",
+        f"- Draw results cross-checked to inventory: {summary['draw_result_inventory_matched_draws']}",
+        f"- Draw-result mismatches/conflicts: {summary['draw_result_mismatches']}/{summary['draw_result_conflicts']}",
+        f"- Future official draw-result candidates pending inventory: {summary['draw_result_candidates_pending_inventory']}",
+        f"- Out-of-inventory label observations: {report['out_of_inventory_observation_count']}",
+        f"- Out-of-inventory draw-result observations: {report['out_of_inventory_draw_result_count']}",
         f"- Raw evidence objects verified/invalid (in inventory): {summary['raw_observation_objects_verified']}/{summary['raw_observation_objects_invalid']}",
         f"- Raw evidence objects verified/invalid (outside inventory): {summary['out_of_inventory_raw_objects_verified']}/{summary['out_of_inventory_raw_objects_invalid']}",
         f"- Regime assignments: {summary['regime_assignment_count']}",
