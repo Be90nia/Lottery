@@ -630,6 +630,7 @@ def write_ball_set_coverage_report(
         f"- Inventory SHA-256: `{report['inventory_sha256']}`",
         f"- Inventory trust: `{report['inventory_trust_status']}`",
         f"- Observation ledger SHA-256: `{report['observation_ledger_sha256']}`",
+        f"- Draw-result ledger SHA-256: `{report['draw_result_ledger_sha256']}`",
         f"- Collector receipt status: `{report['collector_receipt_status']}`",
         f"- Source completeness verified: `{report['source_completeness_verified']}`",
         f"- Latest collected draw: `{report['latest_collected_draw_id']}`",
@@ -693,6 +694,20 @@ def write_ball_set_coverage_report(
             f"| {row['domain']} | {row['observation_versions']} | {row['explicit_label_versions']} | "
             f"{row['primary_verified_at_capture']} | {row['pending_inventory_at_capture']} | "
             f"{row['conflict_records']} | {row['source_revision_requires_review']} |"
+        )
+    lines.extend([
+        "",
+        "## Future draw-result candidates",
+        "",
+        "| Draw | Date | Front | Back | Status |",
+        "|---|---|---|---|---|",
+    ]
+    for row in report["out_of_inventory_draw_results"]:
+        lines.append(
+            f"| {row['draw_id']} | {row['draw_date']} | "
+            f"{' '.join(map(str, row['front_numbers'] or [])) or '—'} | "
+            f"{' '.join(map(str, row['back_numbers'] or [])) or '—'} | "
+            f"{row['draw_result_status']} |"
         )
     lines.extend([
         "",
