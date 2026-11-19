@@ -118,11 +118,15 @@ tickets) and reported in the batch receipt; no hidden deduplication or reroll oc
 (3N tickets total; N is limited to 1..100 per lane). Every zone is sampled
 without replacement. The output records the exact input SHA-256, canonical
 training fingerprint, deterministic run/ticket IDs, master and lane seeds,
-training cutoff, and per-lane counts. The tool does not
-authenticate the input dataset: the checked-in legacy history remains an
-unverified candidate. These marginal-weighted tickets are exploratory
-combinations, not a calibrated joint model, physical ball-set labels, or
-predictions with demonstrated advantage. See the output's limitations field.
+training cutoff, and per-lane counts. Each lane's first-order inclusion
+marginals are calibrated (maximum residual 1e-8) to an exact
+conditional-Poisson/rejective fixed-size distribution before sampling. This
+defines a coherent joint distribution for ticket generation, but its
+higher-order dependence structure is a modeling assumption, not a verified
+physical draw mechanism or demonstrated predictive advantage. The tool does
+not authenticate the input dataset: the checked-in legacy history remains an
+unverified candidate. Strategy lanes are not physical ball-set labels. See
+the output's limitations field.
 
 ### Post-draw outcome capture and scoring
 
