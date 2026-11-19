@@ -132,6 +132,7 @@ def generate_ticket_candidates(
             "strategy": strategy,
             "slot_seed": slot_seed,
             "ticket_count": len(tickets),
+            "duplicate_sampling_retries": attempts - tickets_per_strategy,
             "training_cutoff_draw_id": records[-1]["draw_id"],
             "sampling_method": "sequential weighted sampling without replacement",
         }
