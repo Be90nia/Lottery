@@ -60,7 +60,7 @@ jobs:
             --ledger evidence-archive/observations.jsonl \
             --receipt evidence-archive/receipt.json \
             --draw-inventory data/candidates/legacy_draws.jsonl \
-            --delay 0.5 \
+            --delay 1.0 \
             --max-forward-pages 2000
 
       - name: Write fallback failure receipt
