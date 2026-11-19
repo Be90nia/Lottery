@@ -24,6 +24,7 @@ jobs:
       PYTHONPATH: src
       RUN_FULL_SUBSET_RESEARCH: "1"
       RESEARCH_CODE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      RESEARCH_SNAPSHOT_COMMIT: cbd5f5eac634ab12edc3fdda3c844f811587f6fd
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -32,6 +33,40 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
+      - name: Checkout the exact preregistered snapshot commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: Be90nia/Lottery
+          ref: cbd5f5eac634ab12edc3fdda3c844f811587f6fd
+          path: snapshot-archive
+          persist-credentials: false
+      - name: Verify and stage frozen snapshot without changing its bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          source = Path("snapshot-archive/data/processed/draws-20261118.jsonl")
+          manifest_path = Path("snapshot-archive/data/processed/draws-20261118.jsonl.manifest.json")
+          raw = source.read_bytes()
+          expected = "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          if hashlib.sha256(raw).hexdigest() != expected:
+              raise SystemExit("pinned snapshot SHA-256 mismatch")
+          if manifest.get("output_sha256") != expected or manifest.get("output_bytes") != len(raw):
+              raise SystemExit("snapshot sidecar digest/byte count mismatch")
+          if manifest.get("trust_status") != "manifest_complete_not_officially_authenticated":
+              raise SystemExit("snapshot trust status changed; stop for preregistration review")
+          if manifest.get("validation", {}).get("records") != 2949:
+              raise SystemExit("snapshot manifest row count mismatch")
+          destination = Path("data/processed/draws-20261118.jsonl")
+          destination.parent.mkdir(parents=True, exist_ok=True)
+          destination.write_bytes(raw)
+          print(f"Verified frozen snapshot: bytes={len(raw)} sha256={expected}")
+          PY
       - name: Restore prior checkpoint when evaluator source is unchanged
         if: github.event_name != 'workflow_dispatch' || inputs.resume_checkpoints
         env:
