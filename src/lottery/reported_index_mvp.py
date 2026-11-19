@@ -1,7 +1,6 @@
 """Emit exploratory ticket lanes for each source-reported set index."""
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from pathlib import Path
@@ -10,7 +9,6 @@ from typing import Any
 from .ingest import _atomic_write_new
 from .reported_index_pilot import (
     PILOT_EXPECTED_SET_COUNTS,
-    ReportedIndexPilotError,
     _canonical,
     _sha,
     _verify_view,
