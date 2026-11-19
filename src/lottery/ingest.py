@@ -257,6 +257,8 @@ def ingest_snapshot_directory(
             and bool(sidecar.get("run_id"))
             and timestamp_valid
             and sidecar.get("http_status") == 200
+            and type(sidecar.get("bytes")) is int
+            and sidecar.get("bytes") == len(raw)
             and sidecar.get("sha256") == digest
             and sidecar.get("raw_file") == path.name
         )
