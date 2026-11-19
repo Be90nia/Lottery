@@ -102,12 +102,12 @@ class OutcomeLedgerTests(unittest.TestCase):
 
     def test_rejects_non_official_source(self):
         kwargs = dict(self.kwargs, source_url="https://sporttery-cn.example/result")
-        with self.assertRaisesRegex(OutcomeLedgerError, "official sporttery.cn"):
+        with self.assertRaisesRegex(OutcomeLedgerError, "official Sporttery history endpoint"):
             create_outcome_event(self.forecasts, **kwargs)
 
     def test_rejects_non_https_or_non_200(self):
         kwargs = dict(self.kwargs, source_url="http://webapi.sporttery.cn/result")
-        with self.assertRaisesRegex(OutcomeLedgerError, "HTTPS"):
+        with self.assertRaisesRegex(OutcomeLedgerError, "official Sporttery history endpoint"):
             create_outcome_event(self.forecasts, **kwargs)
         kwargs = dict(self.kwargs, http_status=206)
         with self.assertRaisesRegex(OutcomeLedgerError, "HTTP status"):
