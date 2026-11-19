@@ -261,7 +261,8 @@ def build_ball_set_coverage(
             "year": year, "inventory_draws": 0, "primary_verified": 0,
             "missing_official_label": 0, "unobserved": 0,
             "conflicting_official_sources": 0, "source_revision_requires_review": 0,
-            "draw_mismatch": 0, "parse_error": 0, "unsupported_label": 0,
+            "draw_mismatch": 0, "source_authority_unverified": 0,
+            "parse_error": 0, "unsupported_label": 0, "non_primary_only": 0,
             "set_1": 0, "set_2": 0, "set_3": 0,
         })
         bucket["inventory_draws"] += 1
