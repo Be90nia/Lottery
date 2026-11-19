@@ -15,7 +15,7 @@ concurrency:
 jobs:
   fetch-and-archive-candidate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -47,7 +47,7 @@ jobs:
           PYTHONPATH: src
         run: |
           RAW_DIR="$(python - <<'PY'
-          import json
+          import json, os
           from pathlib import Path
           root = Path("sync-run/raw").resolve()
           summary = json.loads(Path("sync-run/fetch-output.json").read_text(encoding="utf-8"))
@@ -56,7 +56,7 @@ jobs:
               raise SystemExit("fetch receipt raw_dir is outside the isolated run root")
           print(raw_dir)
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
-              output.write(f"raw_dir={raw_dir}\\n")
+              output.write(f"raw_dir={raw_dir}\n")
           PY
           )"
           python scripts/fetch_history.py \
@@ -82,7 +82,7 @@ jobs:
             > sync-run/processed/append-only-output.json \
             2> sync-run/processed/append-only-error.txt
           rc=$?
-          printf '%s\\n' "$rc" > sync-run/processed/append-only-exit-code.txt
+          printf '%s\n' "$rc" > sync-run/processed/append-only-exit-code.txt
           exit "$rc"
       - name: Write machine-readable sync receipt
         if: always()
