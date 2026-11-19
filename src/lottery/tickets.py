@@ -115,13 +115,31 @@ def generate_ticket_candidates(
                 "back_numbers": back,
             })
         candidates[strategy] = tickets
+        lane_counts: dict[tuple[tuple[int, ...], tuple[int, ...]], int] = {}
+        for ticket in tickets:
+            combination = (tuple(ticket["front_numbers"]), tuple(ticket["back_numbers"]))
+            lane_counts[combination] = lane_counts.get(combination, 0) + 1
         strategy_metadata[strategy] = {
             "strategy": strategy,
             "slot_seed": slot_seed,
             "ticket_count": len(tickets),
+            "unique_ticket_combinations": len(lane_counts),
+            "duplicate_ticket_count": sum(count - 1 for count in lane_counts.values()),
             "training_cutoff_draw_id": records[-1]["draw_id"],
-            "sampling_method": "sequential weighted sampling without replacement",
+            "sampling_method": "sequential weighted sampling without replacement within each ticket; with replacement across tickets",
         }
+
+    global_counts: dict[tuple[tuple[int, ...], tuple[int, ...]], int] = {}
+    lane_presence: dict[tuple[tuple[int, ...], tuple[int, ...]], set[str]] = {}
+    for strategy, tickets in candidates.items():
+        for ticket in tickets:
+            combination = (tuple(ticket["front_numbers"]), tuple(ticket["back_numbers"]))
+            global_counts[combination] = global_counts.get(combination, 0) + 1
+            lane_presence.setdefault(combination, set()).add(strategy)
+    duplicate_ticket_count = sum(count - 1 for count in global_counts.values())
+    cross_lane_duplicate_combination_count = sum(
+        len(lanes) > 1 for lanes in lane_presence.values()
+    )
 
     return {
         "schema_version": 1,
@@ -130,6 +148,9 @@ def generate_ticket_candidates(
         "generation_run_id": generation_run_id,
         "code_commit": code_commit,
         "total_tickets": tickets_per_strategy * len(STRATEGIES),
+        "unique_ticket_combinations": len(global_counts),
+        "duplicate_ticket_count": duplicate_ticket_count,
+        "cross_lane_duplicate_combination_count": cross_lane_duplicate_combination_count,
         "tickets_per_strategy": tickets_per_strategy,
         "maximum_tickets_per_strategy": MAX_TICKETS_PER_STRATEGY,
         "training_draw_count": len(records),
