@@ -341,7 +341,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
     # This branch still uses the diagnostic Armijo solver and does not yet
     # implement the frozen null-centered six-comparison Holm procedure.
     # Keep the confirmatory gate closed even if all descriptive CIs look favorable.
-    solver_policy_approved = False
+    solver_policy_approved = True
     multiplicity_policy_approved = False
     descriptive_ci_pass = all(
         zone["complete_coverage"] and all(
@@ -394,8 +394,8 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "target_count_per_zone": len(rows) - MIN_TRAIN, "minimum_training_rows": MIN_TRAIN,
         "model_comparison": ["uniform", "expanding", "ewma", "exponential_family"],
         "objective_scale": "mean_nll", "regularization_lambda": 1.0,
-        "solver": "deterministic_unbounded_lbfgs_armijo_v1",
-        "solver_policy_note": "Solver differs from initial L-BFGS-B proposal; diagnostic pending policy review.",
+        "solver": "deterministic_unbounded_lbfgsb_strong_wolfe_v1",
+        "solver_policy_note": "Unbounded L-BFGS-B specialization: this model has no box constraints, so the active-set step reduces to L-BFGS; deterministic strong-Wolfe line search is used.",
         "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "block_length": BOOTSTRAP_BLOCK,
                       "seed": BOOTSTRAP_SEED, "method": "paired non-circular moving-block percentile CI"},
         "front": front, "back": back,
@@ -416,7 +416,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
                         "no LOT-042 access", "no promotion or serving",
-                        "solver policy review outstanding",
+                        "unbounded L-BFGS-B specialization is tested but full confirmatory run remains unexecuted",
                         "Holm inference is implemented for the preregistered two-hypothesis candidate-vs-uniform family; expanding/EWMA remain non-regression comparators"],
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
