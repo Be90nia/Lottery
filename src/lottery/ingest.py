@@ -78,6 +78,7 @@ def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir:
         "retrieved_at": retrieved_at,
         "http_status": status,
         "content_type": content_type,
+        "bytes": len(raw),
         "sha256": digest,
         "parser_version": PARSER_VERSION,
         "run_id": run_id,
