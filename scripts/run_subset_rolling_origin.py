@@ -328,6 +328,22 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
                            BOOTSTRAP_SEED, checkpoint_dir / "front.jsonl", digest)
     back = _evaluate_zone(rows, "back", BACK_POPULATION, BACK_SELECTION, False,
                           BOOTSTRAP_SEED + 1, checkpoint_dir / "back.jsonl", digest)
+    p_values: dict[str, float | None] = {}
+    for zone_name, zone in (("front", front), ("back", back)):
+        for reference in ("uniform", "expanding", "ewma"):
+            comparison = zone["paired_candidate_minus_baseline"][reference]
+            p_values[f"{zone_name}:{reference}"] = (
+                comparison["one_sided_null_centered_p_value"]
+                if comparison is not None else None
+            )
+    holm_adjusted = _holm_adjust(p_values, family_size=6)
+    for zone_name, zone in (("front", front), ("back", back)):
+        for reference in ("uniform", "expanding", "ewma"):
+            comparison = zone["paired_candidate_minus_baseline"][reference]
+            if comparison is not None:
+                comparison["holm_adjusted_p_value"] = holm_adjusted[f"{zone_name}:{reference}"]
+                comparison["holm_family_size"] = 6
+
     diagnostic_pass = all(
         zone["complete_coverage"] and all(
             zone["paired_candidate_minus_baseline"][ref] is not None
