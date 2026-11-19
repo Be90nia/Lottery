@@ -81,6 +81,7 @@ def main() -> int:
             records, target_ids=targets, model_factories=factories, min_train=300,
             snapshot_sha256=snapshot_hash, bootstrap_seed=args.bootstrap_seed,
             bootstrap_replicates=1000, bootstrap_block_length=50,
+            confirmatory_model_id="complete_set_exponential",
         )
         manifest = attach_artifact_id({
             "schema": "lottery.exact-set-evaluation-run/v1",
@@ -97,12 +98,12 @@ def main() -> int:
                           "replicates": 1000, "block_length": 50,
                           "seed": args.bootstrap_seed},
             "model_ids": sorted(factories),
-            "confirmatory_gate": "BLOCKED",
-            "confirmatory_blocker": (
-                "The exact one-sided p-value construction and the complete Holm "
-                "hypothesis family must be frozen in the preregistration before "
-                "confirmatory claims are permitted."
-            ),
+            "confirmatory_gate": report["overall_promotion_status"],
+            "confirmatory_inference": report["confirmatory_inference"],
+            "p_value_method": "one-sided null-centered paired moving-block bootstrap; 1000 replicates; block length 50",
+            "holm_family": ["complete_set_exponential:front", "complete_set_exponential:back"],
+            "holm_alpha": 0.05,
+            "remaining_promotion_blocker": "non-regression and calibration acceptance gates are not yet implemented",
         })
         args.output_dir.mkdir(parents=True, exist_ok=True)
         (args.output_dir / "run-manifest.jcs.json").write_bytes(canonicalize(manifest) + b"\n")
@@ -116,7 +117,7 @@ def main() -> int:
         )
         print(json.dumps({
             "status": "DESCRIPTIVE_RUN_COMPLETE",
-            "confirmatory_gate": "BLOCKED",
+            "confirmatory_gate": report["overall_promotion_status"],
             "target_count": report["target_count"],
             "terminal_record_count": report["terminal_record_count"],
             "output_dir": str(args.output_dir),
