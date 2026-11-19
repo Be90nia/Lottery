@@ -205,6 +205,8 @@ def _verify_source_completeness_attestation(
                 timestamp_valid = False
         if (sidecar.get("source") != "Sporttery public historical draw API"
                 or sidecar.get("raw_file") != raw_file
+                or not isinstance(sidecar.get("content_type"), str)
+                or "json" not in sidecar.get("content_type", "").lower()
                 or sidecar.get("sha256") != digest
                 or type(sidecar.get("bytes")) is not int or sidecar.get("bytes") != len(raw)
                 or snapshot.get("bytes") != len(raw)
