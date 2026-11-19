@@ -78,7 +78,7 @@ An existing 2,901-draw dataset from the earlier `dlt-analysis` project has been 
 Monte Carlo frequency baseline details are documented in [research methods](docs/RESEARCH_METHODS.md). The baseline uses legal draws without replacement within each number zone and reports global frequency diagnostics; it does not produce a predictive number ranking.
 
 
-The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into the legacy candidate.
+The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into either draw candidate.
 
 ### Prospective forecast logging
 
@@ -192,7 +192,7 @@ manipulation; the binomial null assumes independence across draws.
 
 ```bash
 python scripts/split_dataset.py data/candidates/pinned-draws-20261118.jsonl \
-  --output-dir data/splits/legacy-70-15-15
+  --output-dir data/splits/pinned-70-15-15
 ```
 
 This deterministic utility keeps every draw date intact and records input/output
