@@ -137,15 +137,25 @@ class BallSetCoverageTests(unittest.TestCase):
         first = self.report()
         second = self.report()
         self.assertEqual(first["report_sha256"], second["report_sha256"])
-        out_json, out_csv, out_md = (self.root / "coverage.json", self.root / "coverage.csv", self.root / "coverage.md")
+        out_json, out_csv, out_set, out_year, out_md = (
+            self.root / "coverage.json", self.root / "per-draw.csv",
+            self.root / "per-set.csv", self.root / "per-year.csv", self.root / "coverage.md",
+        )
         protected = {self.inventory.resolve(), self.ledger.resolve()}
-        write_ball_set_coverage_report(first, output_json=out_json, output_csv=out_csv,
-                                       output_markdown=out_md, protected_paths=protected)
+        write_ball_set_coverage_report(
+            first, output_json=out_json, output_csv=out_csv,
+            output_per_set_csv=out_set, output_per_year_csv=out_year,
+            output_markdown=out_md, protected_paths=protected,
+        )
         self.assertEqual(json.loads(out_json.read_text())["report_sha256"], first["report_sha256"])
         self.assertIn("regime_unresolved", out_md.read_text())
+        self.assertTrue(out_csv.exists() and out_set.exists() and out_year.exists())
         with self.assertRaisesRegex(BallSetCoverageError, "overwrite an input"):
-            write_ball_set_coverage_report(first, output_json=self.inventory, output_csv=out_csv,
-                                           output_markdown=out_md, protected_paths=protected)
+            write_ball_set_coverage_report(
+                first, output_json=self.inventory, output_csv=out_csv,
+                output_per_set_csv=out_set, output_per_year_csv=out_year,
+                output_markdown=out_md, protected_paths=protected,
+            )
 
     def test_out_of_inventory_observation_is_reported_separately(self):
         second = "https://www.js-lottery.com/cms/post-148233.html"
