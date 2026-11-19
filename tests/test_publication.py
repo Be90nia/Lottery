@@ -115,5 +115,19 @@ class AppendOnlyPublicationTests(unittest.TestCase):
         self.assertEqual(self.output.read_text(), "do not overwrite")
 
 
+    def test_existing_output_manifest_is_never_overwritten(self):
+        sidecar = self.output.with_suffix(self.output.suffix + ".manifest.json")
+        sidecar.write_text("prior manifest", encoding="utf-8")
+        with self.assertRaisesRegex(PublicationError, "already exists"):
+            self.run_gate()
+        self.assertFalse(self.output.exists())
+        self.assertEqual(sidecar.read_text(encoding="utf-8"), "prior manifest")
+
+    def test_existing_receipt_is_never_overwritten(self):
+        self.receipt.write_text("prior receipt", encoding="utf-8")
+        with self.assertRaisesRegex(PublicationError, "receipt_path already exists"):
+            self.run_gate()
+        self.assertEqual(self.receipt.read_text(encoding="utf-8"), "prior receipt")
+
 if __name__ == "__main__":
     unittest.main()
