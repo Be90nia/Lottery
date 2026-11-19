@@ -104,6 +104,7 @@ def append_draw_result(
         status = "draw_result_mismatch"
     else:
         status = "inventory_matched"
+    crosswalk_status = status
 
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     with ledger_lock(ledger_path):
@@ -127,6 +128,7 @@ def append_draw_result(
                 and supersedes.get("front_numbers") == list(parsed.front_numbers or ())
                 and supersedes.get("back_numbers") == list(parsed.back_numbers or ())
                 and parsed.draw_result_status == "parsed"
+                and status in ("inventory_matched", "pending_inventory")
                 and supersedes.get("draw_result_status") not in (
                     "draw_result_mismatch", "draw_mismatch", "source_revision_requires_review", "conflict",
                 )
@@ -164,7 +166,7 @@ def append_draw_result(
                 },
             },
             "inventory_crosswalk_at_capture": {
-                "status": status,
+                "status": crosswalk_status,
                 "inventory_sha256": inventory_sha256,
                 "inventory_trust_status": "candidate_unverified",
             },
@@ -189,6 +191,8 @@ def verify_draw_result_record(
         "conflict", "missing_draw_result", "invalid_draw_result",
     ):
         return {"status": record["draw_result_status"], "front_numbers": None, "back_numbers": None}
+    if inventory_row is None and record.get("inventory_crosswalk_at_capture", {}).get("status") == "inventory_matched":
+        return {"status": "inventory_missing_after_match", "front_numbers": None, "back_numbers": None}
     try:
         root = archive_dir.resolve()
         raw_path = (root / source["raw_object_ref"]).resolve()
@@ -205,6 +209,12 @@ def verify_draw_result_record(
         }
         if manifest != expected_manifest:
             raise DrawResultLedgerError("draw-result retrieval manifest mismatch")
+        identity = {
+            "draw_id": record["draw_id"], "source_url": source["final_url"],
+            "body_sha256": source["body_sha256"], "parser_version": record.get("parser", {}).get("version"),
+        }
+        if _canonical_hash(identity) != record["result_observation_id"]:
+            raise DrawResultLedgerError("draw-result observation identity mismatch")
         parsed = parse_announcement(raw, source["final_url"], source["content_type"])
     except (OSError, ValueError, BallSetEvidenceError, json.JSONDecodeError) as exc:
         return {"status": "raw_evidence_invalid", "front_numbers": None, "back_numbers": None}
