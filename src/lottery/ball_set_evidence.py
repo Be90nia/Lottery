@@ -270,7 +270,7 @@ def _archive_raw_response(fetched: dict[str, Any], archive_dir: Path, authority_
 def _archive_observation(
     fetched: dict[str, Any], parsed: ParsedAnnouncement, manifest: dict[str, Any], *,
     expected_draw_id: str | None, expected_draw_date: str | None,
-    ledger_path: Path,
+    ledger_path: Path, inventory: dict[str, str], inventory_sha256: str,
 ) -> dict[str, Any]:
     digest = manifest["body_sha256"]
     source_url = fetched["final_url"]
@@ -281,7 +281,12 @@ def _archive_observation(
     elif not parsed.authority_footer_present:
         status = "source_authority_unverified"
     elif parsed.observation_status == "primary_verified":
-        status = "official_label_pending_inventory"
+        if parsed.draw_id not in inventory:
+            status = "official_label_pending_inventory"
+        elif inventory[parsed.draw_id] != parsed.draw_date:
+            status = "draw_mismatch"
+        else:
+            status = "primary_verified"
     else:
         status = parsed.observation_status
 
@@ -330,6 +335,13 @@ def _archive_observation(
             "matched_text": parsed.matched_text,
         },
         "reported_set_index": parsed.reported_set_index,
+        "inventory_crosswalk_at_capture": {
+            "status": "not_in_inventory" if parsed.draw_id not in inventory else (
+                "matched" if inventory[parsed.draw_id] == parsed.draw_date else "date_mismatch"
+            ),
+            "inventory_sha256": inventory_sha256,
+            "inventory_trust_status": "candidate_unverified",
+        },
         "equipment_regime_id": None,
         "physical_ball_set_id": None,
         "observation_status": status,
@@ -445,7 +457,7 @@ def collect_ball_set_evidence(
             fetched, parsed, manifest,
             expected_draw_id=expected_id,
             expected_draw_date=expected_date if page_index == 0 else None,
-            ledger_path=ledger_path,
+            ledger_path=ledger_path, inventory=inventory, inventory_sha256=inventory_sha256,
         )
         observation_results.append(result)
         fetched_pages.append({
