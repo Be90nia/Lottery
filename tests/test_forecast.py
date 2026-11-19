@@ -131,6 +131,16 @@ class ForecastLedgerTests(unittest.TestCase):
                 append_forecast(ledger, invalid)
             self.assertFalse(ledger.exists())
 
+    def test_append_rejects_caller_supplied_chain_metadata(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            event = create_forecast_event(self.rows, **self.kwargs)
+            event["sequence"] = 999
+            event["previous_event_hash"] = "f" * 64
+            with self.assertRaisesRegex(ForecastLedgerError, "caller-supplied chain metadata"):
+                append_forecast(ledger, event)
+            self.assertFalse(ledger.exists())
+
     def test_verifier_rejects_invalid_payload_even_with_recomputed_hash(self):
         with tempfile.TemporaryDirectory() as temp:
             ledger = Path(temp) / "forecast.jsonl"
