@@ -221,7 +221,9 @@ def verify_draw_result_record(
         parsed = parse_announcement(raw, source["final_url"], source["content_type"])
     except (OSError, ValueError, BallSetEvidenceError, json.JSONDecodeError) as exc:
         return {"status": "raw_evidence_invalid", "front_numbers": None, "back_numbers": None}
-    if not parsed.authority_footer_present or parsed.draw_id != record["draw_id"] or parsed.draw_date != record["draw_date"]:
+    if not parsed.authority_footer_present:
+        return {"status": "source_authority_unverified", "front_numbers": None, "back_numbers": None}
+    if parsed.draw_id != record["draw_id"] or parsed.draw_date != record["draw_date"]:
         return {"status": "draw_mismatch", "front_numbers": None, "back_numbers": None}
     locator = record.get("parser", {}).get("evidence_locator", {})
     if (parsed.draw_result_status != "parsed"
