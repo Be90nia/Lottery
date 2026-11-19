@@ -39,6 +39,10 @@
 - [研究方法](docs/RESEARCH_METHODS.md)
 - [奖金规则时期](docs/PRIZE_RULE_ERAS.md)
 - [初步随机基线结果](docs/BASELINE_RESULTS.md)
+- [MVP 首轮样本外评估](docs/TICKET_MVP_RESULTS.md)
+- [三策略批量生成与凭据契约](docs/TICKET_MVP_BATCH_CONTRACT.md)
+- [自动开奖同步 MVP](docs/AUTO_DRAW_SYNC_MVP.md)
+- [开奖结果快照绑定](docs/OUTCOME_SNAPSHOT_BINDING.md)
 - [任务清单](TASKS.md)
 - [测试计划](TEST_PLAN.md)
 
@@ -93,14 +97,38 @@ The ledger is not a digital signature or proof of source authenticity. See
 eligibility, archival, and analysis rules. The prospective test has not started.
 
 
+### Exploratory ticket-candidate MVP
+
+Generate legal candidate combinations from a draw-history JSONL file:
+
+```bash
+python scripts/run_mvp.py --dataset data/candidates/legacy_draws.jsonl \
+  --tickets-per-strategy 5 --seed 20261119 --output mvp-output.json
+```
+
+The one-command runner validates the input, generates the three-lane batch, and atomically writes a machine-readable receipt alongside the batch. The receipt makes explicit that source authentication, automatic sync, model training, and promotion were not performed by this command. The lower-level `scripts/generate_tickets.py` command remains available for direct candidate generation.
+
+The command emits N tickets in each of three explicitly separate strategy
+lanes: legal uniform sampling, expanding-frequency weights, and EWMA weights
+(3N tickets total; N is limited to 1..100 per lane). Every zone is sampled
+without replacement. The output records the exact input SHA-256, canonical
+training fingerprint, deterministic run/ticket IDs, master and lane seeds,
+training cutoff, and per-lane counts. The tool does not
+authenticate the input dataset: the checked-in legacy history remains an
+unverified candidate. These marginal-weighted tickets are exploratory
+combinations, not a calibrated joint model, physical ball-set labels, or
+predictions with demonstrated advantage. See the output's limitations field.
+
 ### Post-draw outcome capture and scoring
 
 After a result is officially published and its raw response snapshot is
 captured, `scripts/outcome_ledger.py` can append a separately hash-chained
-outcome event linked to the pre-draw forecast event. It checks the submitted
-official-domain URL, HTTP status, timestamp ordering, result number ranges,
-and hashes the exact snapshot bytes. It never fetches results itself and never
-modifies the forecast ledger.
+outcome event linked to the pre-draw forecast event. It requires the exact HTTPS Sporttery history endpoint with `gameNo=85`,
+parses the raw response, derives the selected numbers from the unique matching
+target draw, and rejects any CLI-supplied numbers that disagree with the
+snapshot. It also checks HTTP status and timestamp ordering and hashes the
+exact source bytes. It never fetches results itself and never modifies the
+forecast ledger.
 
 ```bash
 python scripts/outcome_ledger.py record --forecasts data/holdout/forecast-ledger.jsonl \
