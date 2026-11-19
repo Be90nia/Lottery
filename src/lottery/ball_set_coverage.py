@@ -385,10 +385,11 @@ def build_ball_set_coverage(
 
 
 def write_ball_set_coverage_report(
-    report: dict[str, Any], *, output_json: Path, output_csv: Path, output_markdown: Path,
+    report: dict[str, Any], *, output_json: Path, output_csv: Path,
+    output_per_set_csv: Path, output_per_year_csv: Path, output_markdown: Path,
     protected_paths: set[Path],
 ) -> None:
-    outputs = [output_json, output_csv, output_markdown]
+    outputs = [output_json, output_csv, output_per_set_csv, output_per_year_csv, output_markdown]
     resolved = [path.resolve() for path in outputs]
     if len(set(resolved)) != len(resolved):
         raise BallSetCoverageError("coverage output paths must be distinct from each other")
@@ -410,6 +411,34 @@ def write_ball_set_coverage_report(
         item["source_urls"] = ";".join(item["source_urls"])
         writer.writerow(item)
     csv_bytes = stream.getvalue().encode("utf-8")
+
+    per_set_columns = [
+        "set_index", "primary_verified_draws", "first_draw_id", "first_draw_date",
+        "last_draw_id", "last_draw_date", "calendar_years",
+        "largest_gap_inventory_positions", "leading_missing_inventory_positions",
+        "trailing_missing_inventory_positions", "longest_missing_inventory_run_between_verified",
+        "longest_missing_inventory_run_including_edges", "largest_gap_elapsed_days",
+        "expected_draws", "coverage_rate", "denominator_status", "eligible_rolling_origin_targets",
+    ]
+    set_stream = StringIO(newline="")
+    set_writer = csv.DictWriter(set_stream, fieldnames=per_set_columns, extrasaction="ignore")
+    set_writer.writeheader()
+    for set_index, row in report["per_set"].items():
+        set_writer.writerow({"set_index": set_index, **row})
+    per_set_csv_bytes = set_stream.getvalue().encode("utf-8")
+
+    per_year_columns = list(report["by_year"][0]) if report["by_year"] else [
+        "year", "inventory_draws", "primary_verified", "missing_official_label",
+        "unobserved", "conflicting_official_sources", "source_revision_requires_review",
+        "draw_mismatch", "source_authority_unverified", "parse_error", "unsupported_label",
+        "non_primary_only", "set_1", "set_2", "set_3",
+    ]
+    year_stream = StringIO(newline="")
+    year_writer = csv.DictWriter(year_stream, fieldnames=per_year_columns, extrasaction="ignore")
+    year_writer.writeheader()
+    year_writer.writerows(report["by_year"])
+    per_year_csv_bytes = year_stream.getvalue().encode("utf-8")
+
     summary = report["summary"]
     lines = [
         "# Ball-set evidence coverage",
@@ -447,6 +476,23 @@ def write_ball_set_coverage_report(
         )
     lines.extend([
         "",
+        "## Per-set coverage and gaps",
+        "",
+        "| Set | Verified draws | First draw | Last draw | Largest gap (positions) | Longest missing run | Largest gap (days) | Denominator |",
+        "|---:|---:|---|---|---:|---:|---:|---|",
+    ]
+    for set_index, row in report["per_set"].items():
+        lines.append(
+            f"| {set_index} | {row['primary_verified_draws']} | "
+            f"{row['first_draw_id'] or '—'} ({row['first_draw_date'] or '—'}) | "
+            f"{row['last_draw_id'] or '—'} ({row['last_draw_date'] or '—'}) | "
+            f"{row['largest_gap_inventory_positions'] if row['largest_gap_inventory_positions'] is not None else '—'} | "
+            f"{row['longest_missing_inventory_run_including_edges'] if row['longest_missing_inventory_run_including_edges'] is not None else '—'} | "
+            f"{row['largest_gap_elapsed_days'] if row['largest_gap_elapsed_days'] is not None else '—'} | "
+            f"{row['denominator_status']} |"
+        )
+    lines.extend([
+        "",
         "## Source domains",
         "",
         "| Domain | Observation versions | Explicit labels | Primary verified at capture | Pending inventory | Conflicts | Review required |",
@@ -468,6 +514,8 @@ def write_ball_set_coverage_report(
     md_bytes = ("\n".join(lines)).encode("utf-8")
     _atomic_write(output_json, json_bytes, protected_paths)
     _atomic_write(output_csv, csv_bytes, protected_paths)
+    _atomic_write(output_per_set_csv, per_set_csv_bytes, protected_paths)
+    _atomic_write(output_per_year_csv, per_year_csv_bytes, protected_paths)
     _atomic_write(output_markdown, md_bytes, protected_paths)
 
 
@@ -479,6 +527,8 @@ def main() -> int:
     parser.add_argument("--archive-dir", type=Path, required=True)
     parser.add_argument("--output-json", type=Path, required=True)
     parser.add_argument("--output-csv", type=Path, required=True)
+    parser.add_argument("--output-per-set-csv", type=Path, required=True)
+    parser.add_argument("--output-per-year-csv", type=Path, required=True)
     parser.add_argument("--output-markdown", type=Path, required=True)
     parser.add_argument("--code-commit", default=os.environ.get("GITHUB_SHA", "local"))
     args = parser.parse_args()
@@ -495,6 +545,7 @@ def main() -> int:
         protected.update(path.resolve() for path in raw_root.rglob("*") if path.is_file()) if raw_root.exists() else None
         write_ball_set_coverage_report(
             report, output_json=args.output_json, output_csv=args.output_csv,
+            output_per_set_csv=args.output_per_set_csv, output_per_year_csv=args.output_per_year_csv,
             output_markdown=args.output_markdown, protected_paths=protected,
         )
         print(json.dumps({
