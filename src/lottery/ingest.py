@@ -78,6 +78,7 @@ def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir:
         "retrieved_at": retrieved_at,
         "http_status": status,
         "content_type": content_type,
+        "bytes": len(raw),
         "sha256": digest,
         "parser_version": PARSER_VERSION,
         "run_id": run_id,
@@ -256,6 +257,8 @@ def ingest_snapshot_directory(
             and bool(sidecar.get("run_id"))
             and timestamp_valid
             and sidecar.get("http_status") == 200
+            and type(sidecar.get("bytes")) is int
+            and sidecar.get("bytes") == len(raw)
             and sidecar.get("sha256") == digest
             and sidecar.get("raw_file") == path.name
         )
@@ -274,6 +277,8 @@ def ingest_snapshot_directory(
             "sha256": digest,
             "bytes": len(raw),
             "records": len(rows),
+            "page_no": sidecar.get("page_no") if isinstance(sidecar, dict) else None,
+            "run_id": sidecar.get("run_id") if isinstance(sidecar, dict) else None,
             "sidecar_manifest": sidecar_path.name if sidecar is not None else None,
             "provenance_complete": bool(required_provenance),
         })
