@@ -74,3 +74,6 @@ A complete sidecar must identify `Sporttery public historical draw API`, use the
 
 
 Each network fetch writes to a unique `<raw-dir>/<run_id>/` directory. The JSON summary's `raw_dir` field identifies the exact page set for that run; pass that directory to `scripts/fetch_history.py --snapshots-dir ... --require-manifests`. Do not import the parent directory or combine pages from separate runs. Fetch/import outputs are write-once; choose a new output path for each run.
+
+
+The pinned 2,949-row candidate includes one historical `source_unsort_drawresult: "current"` sentinel on draw 16028. This value is treated strictly as unavailable raw draw order (the parsed front/back numbers remain the record); it is not interpreted as a number or a ball-set label. Unknown non-numeric source-order values continue to fail validation.
