@@ -73,7 +73,10 @@ def read_draw_result_ledger(path: Path) -> list[dict[str, Any]]:
                 _allowed_url(source[key])
             if source.get("source_authority_class") != "A2":
                 raise DrawResultLedgerError(f"invalid draw-result manifest authority at line {line_no}")
-            for hop in source.get("redirect_chain", []):
+            redirects = source.get("redirect_chain")
+            if not isinstance(redirects, list):
+                raise DrawResultLedgerError(f"invalid draw-result redirect chain at line {line_no}")
+            for hop in redirects:
                 if not isinstance(hop, dict) or not isinstance(hop.get("url"), str):
                     raise DrawResultLedgerError(f"invalid draw-result redirect at line {line_no}")
                 _allowed_url(hop["url"])
@@ -203,6 +206,8 @@ def backfill_draw_result_ledger(
     root = archive_dir.resolve()
     for observation in observations:
         source = observation["source"]
+        if source.get("authority_class") != "A2":
+            continue
         identity = {
             "draw_id": observation["draw_id"],
             "source_url": source["final_url"],
