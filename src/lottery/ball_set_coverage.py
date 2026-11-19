@@ -95,6 +95,8 @@ def _verify_observation(
         parsed = parse_announcement(raw, final_url, source.get("content_type", ""))
     except (OSError, BallSetEvidenceError, ValueError, json.JSONDecodeError) as exc:
         return "parse_error", None, source.get("final_url")
+    if not parsed.authority_footer_present:
+        return "source_authority_unverified", None, source.get("final_url")
     if parsed.draw_id != observation.get("draw_id") or parsed.draw_date != observation.get("draw_date"):
         return "draw_mismatch", None, source.get("final_url")
     if parsed.draw_id != inventory_row["draw_id"] or parsed.draw_date != inventory_row["draw_date"]:
@@ -195,6 +197,8 @@ def build_ball_set_coverage(
             status, set_index = "conflicting_official_sources", None
         elif "draw_mismatch" in states:
             status, set_index = "draw_mismatch", None
+        elif "source_authority_unverified" in states:
+            status, set_index = "source_authority_unverified", None
         elif "raw_evidence_invalid" in states or "parse_error" in states:
             status, set_index = "parse_error", None
         elif labels:
