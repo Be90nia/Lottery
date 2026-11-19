@@ -77,6 +77,12 @@ class BallSetParserTests(unittest.TestCase):
             tracker.redirect_request(None, None, 302, "Found", {}, "https://example.com/redirect")
 
 
+    def test_nonstandard_port_and_url_credentials_are_rejected(self):
+        with self.assertRaisesRegex(BallSetEvidenceError, "not an approved official"):
+            parse_announcement(page(), "https://www.js-lottery.com:8443/cms/post-1.html")
+        with self.assertRaisesRegex(BallSetEvidenceError, "not an approved official"):
+            parse_announcement(page(), "https://user:pass@www.js-lottery.com/cms/post-1.html")
+
     def test_non_official_host_is_rejected(self):
         with self.assertRaisesRegex(BallSetEvidenceError, "not an approved official"):
             parse_announcement(page(), "https://example.com/fake.html")
