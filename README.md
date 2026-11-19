@@ -40,6 +40,7 @@
 - [奖金规则时期](docs/PRIZE_RULE_ERAS.md)
 - [初步随机基线结果](docs/BASELINE_RESULTS.md)
 - [MVP 首轮样本外评估](docs/TICKET_MVP_RESULTS.md)
+- [三策略批量生成与凭据契约](docs/TICKET_MVP_BATCH_CONTRACT.md)
 - [任务清单](TASKS.md)
 - [测试计划](TEST_PLAN.md)
 
