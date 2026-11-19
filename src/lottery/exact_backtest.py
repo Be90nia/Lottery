@@ -146,6 +146,9 @@ def evaluate_rolling_origin(
     model_factories: dict[str, Callable[[Sequence[dict[str, Any]], str], Callable[[Sequence[int]], float]]],
     min_train: int = 300,
     snapshot_sha256: str,
+    bootstrap_seed: int | None = None,
+    bootstrap_replicates: int = 1000,
+    bootstrap_block_length: int = 50,
 ) -> dict[str, Any]:
     """Evaluate registered model factories with one terminal row per model/zone/target."""
     rows = tuple(records)
@@ -193,6 +196,12 @@ def evaluate_rolling_origin(
                     scorer = factory(training, zone)
                     if not callable(scorer):
                         raise TypeError("model factory did not return a scorer")
+                except Exception as exc:
+                    records_out.append({**base, "status": "fit_failed",
+                                        "log_probability": None, "nll": None,
+                                        "failure_reason": f"{type(exc).__name__}: {exc}"})
+                    continue
+                try:
                     logp = float(scorer(observed))
                     if not math.isfinite(logp) or logp > 1e-12:
                         raise ValueError("model returned an invalid log probability")
@@ -201,7 +210,7 @@ def evaluate_rolling_origin(
                                         "nll": nll, "failure_reason": None})
                     deltas[model_id][zone].append(nll - uniform_nll)
                 except Exception as exc:
-                    records_out.append({**base, "status": "runner_error",
+                    records_out.append({**base, "status": "probability_invalid",
                                         "log_probability": None, "nll": None,
                                         "failure_reason": f"{type(exc).__name__}: {exc}"})
     expected_record_count = len(expected_targets) * (len(model_factories) + 1) * len(ZONES)
@@ -216,6 +225,12 @@ def evaluate_rolling_origin(
                 "scored_targets": len(values),
                 "coverage": len(values) / len(expected_targets) if expected_targets else 0.0,
                 "paired_nll_delta_vs_uniform": math.fsum(values) / len(values) if values else None,
+                "bootstrap": (
+                    moving_block_bootstrap_ci(
+                        values, replicates=bootstrap_replicates,
+                        block_length=bootstrap_block_length, seed=bootstrap_seed
+                    ) if bootstrap_seed is not None and values else None
+                ),
             }
     return {
         "snapshot_sha256": snapshot_sha256,
