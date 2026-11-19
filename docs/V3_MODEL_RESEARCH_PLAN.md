@@ -70,6 +70,17 @@ The official provincial announcements label the sequence “本期出球顺序�
 - The position/ball-set analysis family is now predeclared in [POSITION_EQUIPMENT_ANALYSIS_PREREGISTRATION.md](POSITION_EQUIPMENT_ANALYSIS_PREREGISTRATION.md). It uses within-draw conditional permutations, preserves each selected set and ball-set label, and separates overall position tests from within-ball-set tests.
 - No tests are run until the eligibility gate in that preregistration is satisfied.
 
+## Phase F — exact unordered-subset distribution experiment
+
+This is a separate, equipment-blind experiment over complete unordered subsets:
+- Front support: all C(35,5) legal subsets; back support: all C(12,2) legal subsets.
+- The current exponential-family candidate uses permutation-invariant subset-shape features: sum, odd-count, range, adjacent-pair count, and front-zone gap variance. It does not encode individual ball identities; it tests whether whole-subset structure adds value beyond the per-number baselines.
+- Comparators are uniform and exact conditional-Poisson distributions calibrated to expanding-frequency and EWMA inclusion marginals.
+- Rolling-origin protocol: 300 prior draws minimum, then all 2,649 eligible targets in the pinned 2,949-row snapshot; front/back exact subset negative log likelihood; no target or later draw enters its own fit.
+- The six-comparison family is front/back × uniform/expanding/EWMA. Use paired non-circular moving-block bootstrap (block length 50, 1,000 replicates), a null-centered one-sided p-value, and Holm step-down over all six comparisons. Missing model coverage or invalid p-values fail closed.
+- Solver: SciPy 1.15.3 L-BFGS-B with NumPy 2.2.6; no box bounds; lambda=1, maxiter 5,000, maxfun 500,000, maxcor 10, maxls 60, ftol 0, final gradient acceptance 1e-7. Runtime versions and options are bound into checkpoint and result receipts.
+- This experiment remains equipment-blind. Its pinned snapshot is manifest-complete but not officially authenticated; a statistical pass is not production readiness and cannot open LOT-042.
+
 ## Phase E — prospective holdout
 
 LOT-042 remains separate and unstarted. Its 500-consecutive-draw protocol must begin only after a committed freeze boundary and only for future eligible draws. Historical extension data, including draws 26084–26131, cannot be relabeled prospective.
