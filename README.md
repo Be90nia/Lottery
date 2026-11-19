@@ -41,6 +41,8 @@
 - [初步随机基线结果](docs/BASELINE_RESULTS.md)
 - [MVP 首轮样本外评估](docs/TICKET_MVP_RESULTS.md)
 - [三策略批量生成与凭据契约](docs/TICKET_MVP_BATCH_CONTRACT.md)
+- [自动开奖同步 MVP](docs/AUTO_DRAW_SYNC_MVP.md)
+- [开奖结果快照绑定](docs/OUTCOME_SNAPSHOT_BINDING.md)
 - [任务清单](TASKS.md)
 - [测试计划](TEST_PLAN.md)
 
@@ -121,10 +123,12 @@ predictions with demonstrated advantage. See the output's limitations field.
 
 After a result is officially published and its raw response snapshot is
 captured, `scripts/outcome_ledger.py` can append a separately hash-chained
-outcome event linked to the pre-draw forecast event. It checks the submitted
-official-domain URL, HTTP status, timestamp ordering, result number ranges,
-and hashes the exact snapshot bytes. It never fetches results itself and never
-modifies the forecast ledger.
+outcome event linked to the pre-draw forecast event. It requires the exact HTTPS Sporttery history endpoint with `gameNo=85`,
+parses the raw response, derives the selected numbers from the unique matching
+target draw, and rejects any CLI-supplied numbers that disagree with the
+snapshot. It also checks HTTP status and timestamp ordering and hashes the
+exact source bytes. It never fetches results itself and never modifies the
+forecast ledger.
 
 ```bash
 python scripts/outcome_ledger.py record --forecasts data/holdout/forecast-ledger.jsonl \
