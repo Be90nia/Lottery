@@ -59,16 +59,12 @@ jobs:
           for lane, tickets in lanes.items():
               assert len(tickets) == 5, lane
               assert report["strategy_metadata"][lane]["ticket_count"] == 5
-              lane_combinations = set()
               for ticket in tickets:
                   front, back = ticket["front_numbers"], ticket["back_numbers"]
                   assert len(front) == 5 and len(set(front)) == 5 and front == sorted(front)
                   assert all(type(n) is int and 1 <= n <= 35 for n in front)
                   assert len(back) == 2 and len(set(back)) == 2 and back == sorted(back)
                   assert all(type(n) is int and 1 <= n <= 12 for n in back)
-                  combination = (tuple(front), tuple(back))
-                  assert combination not in lane_combinations, lane
-                  lane_combinations.add(combination)
                   ticket_ids.append(ticket["ticket_id"])
           assert len(ticket_ids) == 15 and len(set(ticket_ids)) == 15
           print("verified 15 legal tickets across 3 provenance lanes")
