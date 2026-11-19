@@ -55,27 +55,69 @@ def _percentile(values: list[float], probability: float) -> float:
 
 
 def _moving_block_bootstrap(values: list[float], seed: int) -> dict:
+    """Use one fixed block-resample stream for both CI and null-centered test."""
     n = len(values)
     if n < BOOTSTRAP_BLOCK:
         raise ValueError("not enough paired targets for the preregistered block length")
+    if any(not math.isfinite(value) for value in values):
+        raise ValueError("paired score differences must all be finite")
+
     rng = random.Random(seed)
-    means = []
-    for _ in range(BOOTSTRAP_REPLICATES):
-        sample = []
-        while len(sample) < n:
-            start = rng.randrange(0, n - BOOTSTRAP_BLOCK + 1)
-            sample.extend(values[start:start + BOOTSTRAP_BLOCK])
-        means.append(sum(sample[:n]) / n)
     observed = sum(values) / n
+    null_centered = [value - observed for value in values]
+    means = []
+    null_means = []
+    for _ in range(BOOTSTRAP_REPLICATES):
+        indices = []
+        while len(indices) < n:
+            start = rng.randrange(0, n - BOOTSTRAP_BLOCK + 1)
+            indices.extend(range(start, start + BOOTSTRAP_BLOCK))
+        indices = indices[:n]
+        # The exact same sampled chronological blocks feed the percentile CI
+        # and the null-centered one-sided test.
+        means.append(sum(values[index] for index in indices) / n)
+        null_means.append(sum(null_centered[index] for index in indices) / n)
+
+    p_value = (
+        1 + sum(statistic <= observed for statistic in null_means)
+    ) / (BOOTSTRAP_REPLICATES + 1)
     return {
         "observed_mean_delta_candidate_minus_reference": observed,
         "ci_95_lower": _percentile(means, 0.025),
         "ci_95_upper": _percentile(means, 0.975),
+        "one_sided_null_centered_p_value": p_value,
         "replicates": BOOTSTRAP_REPLICATES,
         "block_length_draws": BOOTSTRAP_BLOCK,
         "seed": seed,
-        "method": "paired non-circular moving-block bootstrap on chronological score differences",
+        "method": "paired non-circular moving-block bootstrap; same block indices for percentile CI and null-centered one-sided test",
+        "null_test": {
+            "alternative": "mean_delta_less_than_zero",
+            "null_series": "d_t_minus_observed_mean_delta",
+            "tail": "bootstrap_null_mean_less_than_or_equal_to_observed_mean_delta",
+            "p_value_correction": "(1 + exceedances) / (replicates + 1)",
+        },
     }
+
+
+def _holm_adjust(p_values: dict[str, float], alpha: float = 0.05) -> dict:
+    """Holm step-down adjusted p-values for a preregistered finite family."""
+    if not p_values:
+        raise ValueError("Holm family must contain at least one hypothesis")
+    if not math.isfinite(alpha) or not 0.0 < alpha < 1.0:
+        raise ValueError("alpha must be finite and strictly between zero and one")
+    for name, value in p_values.items():
+        if not isinstance(name, str) or not name:
+            raise ValueError("hypothesis names must be non-empty strings")
+        if type(value) not in (int, float) or not math.isfinite(value) or not 0.0 <= value <= 1.0:
+            raise ValueError(f"invalid p-value for {name}")
+    ordered = sorted(p_values.items(), key=lambda item: (item[1], item[0]))
+    adjusted = {}
+    running_max = 0.0
+    family_size = len(ordered)
+    for rank, (name, value) in enumerate(ordered):
+        running_max = max(running_max, (family_size - rank) * value)
+        adjusted[name] = min(1.0, running_max)
+    return adjusted
 
 
 def _load_and_validate(path: Path) -> tuple[list[dict], str]:
@@ -307,8 +349,30 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
             and zone["paired_candidate_minus_baseline"][ref]["ci_95_upper"] < 0.0
             for ref in ("uniform", "expanding", "ewma"))
         for zone in (front, back))
+    # The preregistered confirmatory family is exactly candidate-vs-uniform
+    # for front and back. Expanding/EWMA remain fixed comparators, not extra
+    # hypotheses in the Holm family.
+    primary_p_values = {
+        "front": front["paired_candidate_minus_baseline"]["uniform"]["one_sided_null_centered_p_value"],
+        "back": back["paired_candidate_minus_baseline"]["uniform"]["one_sided_null_centered_p_value"],
+    }
+    holm_adjusted = _holm_adjust(primary_p_values, alpha=0.05)
+    zone_inferential_pass = {
+        "front": (
+            front["complete_coverage"]
+            and front["paired_candidate_minus_baseline"]["uniform"]["ci_95_upper"] < 0.0
+            and holm_adjusted["front"] < 0.05
+        ),
+        "back": (
+            back["complete_coverage"]
+            and back["paired_candidate_minus_baseline"]["uniform"]["ci_95_upper"] < 0.0
+            and holm_adjusted["back"] < 0.05
+        ),
+    }
+    primary_inferential_pass = all(zone_inferential_pass.values())
+    multiplicity_policy_approved = True
     passed = _confirmatory_gate(
-        descriptive_ci_pass,
+        primary_inferential_pass,
         solver_policy_approved=solver_policy_approved,
         multiplicity_policy_approved=multiplicity_policy_approved,
     )
@@ -327,6 +391,16 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
                       "seed": BOOTSTRAP_SEED, "method": "paired non-circular moving-block percentile CI"},
         "front": front, "back": back,
         "descriptive_ci_pass": bool(descriptive_ci_pass),
+        "confirmatory_family": {
+            "hypotheses": ["candidate_vs_uniform_front", "candidate_vs_uniform_back"],
+            "family_size": 2,
+            "method": "Holm step-down",
+            "alpha": 0.05,
+            "raw_one_sided_p_values": primary_p_values,
+            "holm_adjusted_p_values": holm_adjusted,
+            "zone_inferential_pass": zone_inferential_pass,
+            "all_zones_inferential_pass": bool(primary_inferential_pass),
+        },
         "solver_policy_approved": solver_policy_approved,
         "multiplicity_policy_approved": multiplicity_policy_approved,
         "confirmatory_candidate_pass": bool(passed),
@@ -334,7 +408,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
                         "no LOT-042 access", "no promotion or serving",
                         "solver policy review outstanding",
-                        "null-centered six-comparison Holm procedure not implemented"],
+                        "Holm inference is implemented for the preregistered two-hypothesis candidate-vs-uniform family; expanding/EWMA remain non-regression comparators"],
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
