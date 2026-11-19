@@ -15,6 +15,7 @@ from urllib.parse import urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from .ledger_lock import ledger_lock
+from .validate import validate_records, DatasetValidationError
 
 COLLECTOR_VERSION = "0.1.0"
 PARSER_VERSION = "0.1.0"
@@ -279,6 +280,8 @@ def _archive_observation(
         status = "draw_mismatch"
     elif not parsed.authority_footer_present:
         status = "source_authority_unverified"
+    elif parsed.observation_status == "primary_verified":
+        status = "official_label_pending_inventory"
     else:
         status = parsed.observation_status
 
@@ -353,6 +356,15 @@ def collect_ball_set_evidence(
 ) -> dict[str, Any]:
     if delay_seconds < 0 or type(max_forward_pages) is not int or max_forward_pages < 1:
         raise ValueError("invalid delay or max_forward_pages")
+    inventory_bytes = draw_inventory_path.read_bytes()
+    inventory_sha256 = hashlib.sha256(inventory_bytes).hexdigest()
+    inventory_rows = []
+    try:
+        inventory_rows = [json.loads(line) for line in inventory_bytes.decode("utf-8").splitlines() if line]
+        validate_records(inventory_rows)
+    except (UnicodeDecodeError, json.JSONDecodeError, DatasetValidationError) as exc:
+        raise BallSetEvidenceError(f"draw inventory is invalid: {exc}") from exc
+    inventory = {row["draw_id"]: row["draw_date"] for row in inventory_rows}
     registry = json.loads(registry_path.read_text(encoding="utf-8"))
     if not isinstance(registry, dict) or registry.get("schema_version") != 1:
         raise BallSetEvidenceError("unsupported source registry schema")
@@ -473,6 +485,14 @@ def collect_ball_set_evidence(
         "pages_observed": fetched_pages, "observation_results": observation_results,
         "latest_draw_id": previous_id, "next_expected_draw_id": next_expected,
         "archive_observation_count": len(_read_ledger(ledger_path)),
+        "draw_inventory_sha256": inventory_sha256,
+        "draw_inventory_rows": len(inventory_rows),
+        "draw_inventory_trust_status": "candidate_unverified",
+        "inventory_crosswalk": {
+            "matched_draws": sum(1 for item in fetched_pages if item.get("draw_id") in inventory and inventory[item["draw_id"]] == item.get("draw_date")),
+            "not_in_inventory": sum(1 for item in fetched_pages if item.get("draw_id") not in inventory),
+            "date_mismatches": sum(1 for item in fetched_pages if item.get("draw_id") in inventory and inventory[item["draw_id"]] != item.get("draw_date")),
+        },
         "errors": errors,
         "source_completeness_verified": False,
         "equipment_regime_adjudicated": False,
@@ -492,14 +512,15 @@ def main() -> int:
     parser.add_argument("--archive-dir", type=Path, required=True)
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
+    parser.add_argument("--draw-inventory", type=Path, required=True)
     parser.add_argument("--delay", type=float, default=0.5)
     parser.add_argument("--max-forward-pages", type=int, default=2000)
     args = parser.parse_args()
     try:
         receipt = collect_ball_set_evidence(
             args.registry, args.archive_dir, args.ledger,
-            receipt_path=args.receipt, delay_seconds=args.delay,
-            max_forward_pages=args.max_forward_pages,
+            receipt_path=args.receipt, draw_inventory_path=args.draw_inventory,
+            delay_seconds=args.delay, max_forward_pages=args.max_forward_pages,
         )
         print(json.dumps(receipt, ensure_ascii=False, indent=2))
         return 1 if receipt["status"] in ("source_unavailable", "parse_error", "draw_mismatch", "review_required", "page_limit_reached") else 0
