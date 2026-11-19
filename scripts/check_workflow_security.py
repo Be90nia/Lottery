@@ -11,7 +11,7 @@ from pathlib import Path
 
 WORKFLOW_DIR = Path(".github/workflows")
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-ALLOWED_PERMISSION = re.compile(r"^(\\s*)contents:\\s*read\\s*(?:#.*)?$")
+ALLOWED_PERMISSION = re.compile(r"^(\s*)contents:\s*read\s*(?:#.*)?$")
 
 
 def main() -> int:
@@ -23,7 +23,7 @@ def main() -> int:
     for path in files:
         lines = path.read_text(encoding="utf-8").splitlines()
         for number, line in enumerate(lines, 1):
-            uses = re.match(r"^\\s*-?\\s*uses:\\s*([^\\s#]+)", line)
+            uses = re.match(r"^\s*-?\s*uses:\s*([^\s#]+)", line)
             if uses:
                 reference = uses.group(1)
                 if "@" not in reference:
@@ -35,7 +35,7 @@ def main() -> int:
                         f"{path}:{number}: action must use a full 40-character commit SHA: {reference}"
                     )
 
-            permission = re.match(r"^(\\s*)permissions:\\s*(?:#.*)?$", line)
+            permission = re.match(r"^(\s*)permissions:\s*(?:#.*)?$", line)
             if permission:
                 indent = len(permission.group(1))
                 found = False
@@ -54,15 +54,15 @@ def main() -> int:
                     errors.append(f"{path}:{number}: empty permissions block")
 
         for number, line in enumerate(lines, 1):
-            if re.match(r"^\\s*-?\\s*uses:\\s*actions/checkout@", line):
-                block = "\\n".join(lines[number : min(number + 4, len(lines))])
-                if not re.search(r"persist-credentials:\\s*false", block):
+            if re.match(r"^\s*-?\s*uses:\s*actions/checkout@", line):
+                block = "\n".join(lines[number : min(number + 4, len(lines))])
+                if not re.search(r"persist-credentials:\s*false", block):
                     errors.append(
                         f"{path}:{number}: checkout must set persist-credentials: false"
                     )
 
     if errors:
-        print("\\n".join(errors), file=sys.stderr)
+        print("\n".join(errors), file=sys.stderr)
         return 1
     print(f"Workflow security policy passed for {len(files)} workflow file(s).")
     return 0
