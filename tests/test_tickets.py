@@ -56,7 +56,7 @@ class TicketCandidateTests(unittest.TestCase):
             dataset = root / "draws.jsonl"
             output = root / "tickets.json"
             dataset.write_text(
-                "".join(json.dumps(row) + "\\n" for row in self.rows),
+                "".join(json.dumps(row) + "\n" for row in self.rows),
                 encoding="utf-8",
             )
             completed = subprocess.run(
