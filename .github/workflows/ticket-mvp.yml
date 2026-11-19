@@ -28,6 +28,32 @@ jobs:
         run: |
           python scripts/generate_tickets.py data/candidates/legacy_draws.jsonl \
             --tickets 5 --seed 20261119 --output ticket-candidates.json
+      - name: Verify complete 3-lane batch and provenance
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("ticket-candidates.json").read_text(encoding="utf-8"))
+          lanes = report["strategies"]
+          assert set(lanes) == {"uniform", "expanding", "ewma"}
+          assert report["tickets_per_strategy"] == 5
+          assert report["total_tickets"] == 15
+          assert len(report["generation_run_id"]) == 64
+          assert len(report["training_dataset_fingerprint"]) == 64
+          ticket_ids = []
+          for lane, tickets in lanes.items():
+              assert len(tickets) == 5, lane
+              assert report["strategy_metadata"][lane]["ticket_count"] == 5
+              for ticket in tickets:
+                  front, back = ticket["front_numbers"], ticket["back_numbers"]
+                  assert len(front) == 5 and len(set(front)) == 5 and front == sorted(front)
+                  assert all(type(n) is int and 1 <= n <= 35 for n in front)
+                  assert len(back) == 2 and len(set(back)) == 2 and back == sorted(back)
+                  assert all(type(n) is int and 1 <= n <= 12 for n in back)
+                  ticket_ids.append(ticket["ticket_id"])
+          assert len(ticket_ids) == 15 and len(set(ticket_ids)) == 15
+          print("verified 15 legal tickets across 3 provenance lanes")
+          PY
       - name: Upload candidate report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
