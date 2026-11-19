@@ -195,9 +195,6 @@ class ParsePageTests(unittest.TestCase):
         with self.assertRaises(IngestionError):
             _add_draw(rows, conflict)
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 
 class FetchPaginationSafetyTests(unittest.TestCase):
@@ -241,3 +238,6 @@ class FetchPaginationSafetyTests(unittest.TestCase):
             self.assertEqual(result["pagination_end_reason"], "short_page")
             self.assertFalse(result["source_completeness_verified"])
             self.assertEqual(result["trust_status"], "manifest_complete_not_officially_authenticated")
+
+if __name__ == "__main__":
+    unittest.main()
