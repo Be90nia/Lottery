@@ -21,7 +21,8 @@ python scripts/reconcile_draws.py \
   --candidate sync-run/candidate.jsonl \
   --candidate-manifest sync-run/candidate.jsonl.manifest.json \
   --output data/canonical/draws.next.jsonl \
-  --receipt sync-run/reconciliation-receipt.json
+  --receipt sync-run/reconciliation-receipt.json \
+  --snapshots-dir data/raw/authorized-sporttery
 ```
 
 Both files are validated. The candidate must contain every existing draw, and all existing draw semantics (date, selected numbers, draw order, equipment metadata) must match. The publication gate additionally requires a sidecar whose final URL exactly equals the requested Sporttery endpoint and whose redirect chain is empty; redirected responses are rejected by the live collector and cannot pass strict import or publication. It also requires `source_completeness_verified: true`; it refuses the current collector output until upstream pagination totals/page inventory can be independently reconciled. Only then may strictly later chronological draws be appended. Missing history, unverified completeness, corrections, incomplete provenance, and chronology regressions fail closed.
