@@ -591,6 +591,10 @@ def fetch_history(
             )
         if delay_seconds:
             time.sleep(delay_seconds)
+    if source_pagination is not None:
+        total_records, total_pages = source_pagination
+        if len(page_manifests) != total_pages or len(all_rows) != total_records:
+            raise IngestionError("observed fetch inventory does not match source-reported pagination totals")
     ordered = sorted(all_rows.values(), key=lambda row: (row.draw_date, row.draw_id))
     output_bytes = "".join(
         json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered
