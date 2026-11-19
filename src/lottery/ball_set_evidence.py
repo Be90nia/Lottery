@@ -141,7 +141,7 @@ def parse_draw_result(
         raise BallSetEvidenceError("draw result table is missing front/back cells")
 
     def parse_zone(cell: str, *, count: int, maximum: int, label: str) -> tuple[int, ...]:
-        values = tuple(int(value) for value in re.findall(r"\\d+", cell))
+        values = tuple(int(value) for value in re.findall(r"\d+", cell))
         if (len(values) != count or len(set(values)) != count
                 or any(value < 1 or value > maximum for value in values)):
             raise BallSetEvidenceError(
