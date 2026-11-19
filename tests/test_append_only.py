@@ -49,4 +49,12 @@ class AppendOnlyTests(unittest.TestCase):
   published=[json.loads(x) for x in self.out.read_text().splitlines()]
   self.assertEqual(published[0]["source_id"],"sha256:fixture")
 
-if __name__=="__main__": unittest.main()
+ def test_output_must_not_overwrite_current_dataset(self):
+  self.prep(self.old+[row("26132","2026-11-18")])
+  with self.assertRaisesRegex(AppendOnlyError,"paths must be distinct"):
+   reconcile_append_only(self.cur,self.can,self.man,self.cur,self.receipt)
+ def test_receipt_must_not_overwrite_candidate_manifest(self):
+  self.prep(self.old)
+  with self.assertRaisesRegex(AppendOnlyError,"paths must be distinct"):
+   reconcile_append_only(self.cur,self.can,self.man,self.out,self.man)
+\nif __name__=="__main__": unittest.main()
