@@ -233,7 +233,7 @@ def create_forecast_event(
         if abs(sum(zones["back_inclusion_probabilities"]) - BACK_PICK) > 1e-9:
             raise ForecastLedgerError(f"{model} back probability mass is invalid")
 
-    return {
+    event = {
         "event_type": "pre_draw_forecast",
         "generated_at": now.astimezone(timezone.utc).isoformat(),
         "target_draw_id": target_draw_id,
@@ -247,6 +247,8 @@ def create_forecast_event(
         "model_configuration": {"expanding_alpha": alpha, "ewma_half_life_draws": half_life},
         "models": models,
     }
+    _validate_forecast_payload(event)
+    return event
 
 
 def append_forecast(
