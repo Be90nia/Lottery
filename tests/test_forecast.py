@@ -78,6 +78,39 @@ class ForecastLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(ForecastLedgerError, "SHA-256"):
             create_forecast_event(self.rows, **kwargs)
 
+    def test_nonfinite_boolean_and_string_model_controls_are_rejected(self):
+        for field, value in (
+            ("alpha", True), ("alpha", float("nan")), ("alpha", float("inf")),
+            ("half_life", False), ("half_life", float("nan")), ("half_life", "100"),
+        ):
+            with self.subTest(field=field, value=value):
+                with self.assertRaisesRegex(ForecastLedgerError, "finite positive"):
+                    create_forecast_event(self.rows, **dict(self.kwargs, **{field: value}))
+
+    def test_append_rejects_malformed_event_before_writing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            event = create_forecast_event(self.rows, **self.kwargs)
+            malformed = dict(event, event_type="not_a_forecast")
+            with self.assertRaisesRegex(ForecastLedgerError, "invalid schema|event_type"):
+                append_forecast(ledger, malformed)
+            self.assertFalse(ledger.exists())
+
+    def test_verifier_rejects_semantically_invalid_event_with_recomputed_hash(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            event = create_forecast_event(self.rows, **self.kwargs)
+            body = {
+                "sequence": 1,
+                "previous_event_hash": "0" * 64,
+                **event,
+            }
+            body["models"]["uniform"]["front_inclusion_probabilities"][0] = True
+            body["event_hash"] = _event_hash(body)
+            ledger.write_text(json.dumps(body) + "\\n", encoding="utf-8")
+            with self.assertRaisesRegex(ForecastLedgerError, "invalid uniform front"):
+                verify_ledger(ledger)
+
     def test_append_and_verify_hash_chain(self):
         with tempfile.TemporaryDirectory() as temp:
             ledger = Path(temp) / "forecast.jsonl"
