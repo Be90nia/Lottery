@@ -62,13 +62,13 @@ python scripts/fetch_history.py --snapshots-dir data/raw/user-supplied --require
 python scripts/validate_dataset.py
 python scripts/validate_legacy_prizes.py
 python scripts/reconcile_sources.py
-python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl --simulations 999 --seed 20261118
+python scripts/analyze_baseline.py data/candidates/pinned-draws-20261118.jsonl --simulations 999 --seed 20261118
 python -m unittest discover -s tests -v
 ```
 
-The collector writes immutable raw page snapshots and SHA-256 manifests under `data/raw/sporttery/`, then writes normalized JSON Lines to `data/processed/draws.jsonl`. `--max-pages` is a diagnostic safety cap: if the final allowed page is full, the run fails closed rather than publishing a potentially truncated dataset. An observed short/empty terminal page is not independent proof of upstream completeness. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
+Each fetch writes immutable raw page snapshots and SHA-256 manifests under a unique `data/raw/sporttery/<run_id>/` directory and returns that exact directory in the JSON summary as `raw_dir`. Import only that directory with `--snapshots-dir`; do not combine pages from different fetch runs. Fetch and import output paths are write-once, so choose a new output path for each run. `--max-pages` is a diagnostic safety cap: if the final allowed page is full, the run fails closed rather than publishing a potentially truncated dataset. An observed short/empty terminal page is not independent proof of upstream completeness. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
 
-The live endpoint has not yet passed this repository's end-to-end verification. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset. If an authorized party supplies raw JSON response snapshots, they can be imported offline with `--snapshots-dir`; use `--require-manifests` to require matching per-file SHA-256 sidecars with the exact Sporttery API endpoint, timezone-aware retrieval timestamp, HTTP 200, and matching raw filename. This checks consistency of supplied metadata, not cryptographic source authenticity or uncertain field semantics.
+The live endpoint has not yet passed this repository's end-to-end verification. The current importer marks source pagination completeness as unverified, and the append-only publication gate refuses to append until official total-page/total-record metadata is reconciled. See [source notes](docs/SOURCES.md) and the [append-only publication gate](docs/APPEND_ONLY_DRAW_PUBLICATION.md) before treating fetched records as a trusted research dataset. If an authorized party supplies raw JSON response snapshots, they can be imported offline with `--snapshots-dir`; use `--require-manifests` to require matching per-file SHA-256 sidecars with the exact Sporttery API endpoint, timezone-aware retrieval timestamp, HTTP 200, and matching raw filename. This checks consistency of supplied metadata, not cryptographic source authenticity or uncertain field semantics.
 
 ## Legacy historical candidate data
 
@@ -79,6 +79,21 @@ Monte Carlo frequency baseline details are documented in [research methods](docs
 
 
 The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into the legacy candidate.
+
+### Model regression receipts (LOT-073)
+
+Build and verify a deterministic paired evaluation receipt from chronological per-target scores. The gate compares a candidate against both the champion and uniform baseline using front/back Brier and log-loss with paired moving-block bootstrap intervals. It requires at least 200 ordered targets and 1,000 replicates. Even a pass is human-review-only; it cannot promote or serve a model.
+
+```bash
+python scripts/evaluation_receipt.py build scores.json \
+  --candidate-model-id candidate-v2 --champion-model-id champion-v1 \
+  --dataset-sha256 <64-character-dataset-sha256> \
+  --code-commit <40-character-code-commit> \
+  --protocol-version frozen-v1 --output receipts/candidate-v2.json
+python scripts/evaluation_receipt.py verify receipts/candidate-v2.json
+```
+
+The CLI writes receipts atomically and refuses to overwrite an existing receipt. See [the model regression receipt protocol](docs/MODEL_REGRESSION_RECEIPTS.md).
 
 ### Prospective forecast logging
 
@@ -104,8 +119,9 @@ eligibility, archival, and analysis rules. The prospective test has not started.
 Generate legal candidate combinations from a draw-history JSONL file:
 
 ```bash
-python scripts/run_mvp.py --dataset data/candidates/legacy_draws.jsonl \
-  --tickets-per-strategy 5 --seed 20261119 --output mvp-output.json
+python scripts/run_mvp.py --dataset data/candidates/pinned-draws-20261118.jsonl \
+  --tickets-per-strategy 5 --seed 20261119 \\
+  --code-commit "$(git rev-parse HEAD)" --output mvp-output.json
 ```
 
 The one-command runner validates the input, generates the three-lane batch, and atomically writes a machine-readable receipt alongside the batch. The receipt makes explicit that source authentication, automatic sync, model training, and promotion were not performed by this command. The lower-level `scripts/generate_tickets.py` command remains available for direct candidate generation.
@@ -115,9 +131,7 @@ lanes: legal uniform sampling, expanding-frequency weights, and EWMA weights
 (3N tickets total; N is limited to 1..100 per lane). Every zone is sampled
 without replacement. The output records the exact input SHA-256, canonical
 training fingerprint, deterministic run/ticket IDs, master and lane seeds,
-training cutoff, and per-lane counts. The tool does not
-authenticate the input dataset: the checked-in legacy history remains an
-unverified candidate. These marginal-weighted tickets are exploratory
+training cutoff, and per-lane counts. The tool does not authenticate the input dataset. The default pinned candidate contains 2,949 draws through 2026-11-16 (draw 26131); its manifest trust status is `manifest_complete_not_officially_authenticated`, not official authentication. The older 2,901-row legacy history remains available for reproducing historical benchmark results. These marginal-weighted tickets are exploratory
 combinations, not a calibrated joint model, physical ball-set labels, or
 predictions with demonstrated advantage. See the output's limitations field.
 
@@ -171,7 +185,7 @@ Run all 595 front-zone and 66 back-zone pair tests under the legal uniform-draw
 null, with one Holm correction family across all 661 hypotheses:
 
 ```bash
-python scripts/analyze_pairs.py data/candidates/legacy_draws.jsonl \
+python scripts/analyze_pairs.py data/candidates/pinned-draws-20261118.jsonl \
   --output pair-cooccurrence.json
 ```
 
@@ -182,7 +196,7 @@ manipulation; the binomial null assumes independence across draws.
 ### Chronological train/validation/test splits
 
 ```bash
-python scripts/split_dataset.py data/candidates/legacy_draws.jsonl \
+python scripts/split_dataset.py data/candidates/pinned-draws-20261118.jsonl \
   --output-dir data/splits/legacy-70-15-15
 ```
 

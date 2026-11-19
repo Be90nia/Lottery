@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page, fetch_history, ingest_snapshot_directory
+from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page, _snapshot, fetch_history, ingest_snapshot_directory
 from lottery.validate import validate_records
 
 
@@ -100,22 +100,42 @@ class ParsePageTests(unittest.TestCase):
             (raw_dir / f"page-00001-{digest[:12]}.manifest.json").write_text(
                 json.dumps({
                     "source": "Sporttery public historical draw API",
-                    "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85",
+                    "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1",
                     "retrieved_at": "2026-11-18T00:00:00+00:00",
                     "http_status": 200,
                     "sha256": digest,
                     "raw_file": name,
+                    "page_no": 1,
+                    "run_id": "a" * 32,
                 }),
                 encoding="utf-8",
             )
             output = root / "processed" / "draws.jsonl"
             report = ingest_snapshot_directory(raw_dir, output, require_manifests=True)
             self.assertTrue(report["provenance_complete"])
+            self.assertIs(report["source_completeness_verified"], False)
+            self.assertIsNone(report["completeness_evidence"])
             self.assertEqual(report["validation"]["records"], 1)
             self.assertEqual(report["trust_status"], "manifest_complete_not_officially_authenticated")
             row = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(row["source_unsort_drawresult"], "03 01 05 02 04 02 01")
             self.assertTrue(output.with_suffix(".jsonl.manifest.json").exists())
+
+    def test_offline_import_refuses_existing_output_or_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_dir = root / "raw"
+            raw_dir.mkdir()
+            raw = self.payload()
+            digest = hashlib.sha256(raw).hexdigest()
+            name = f"page-00001-{digest[:12]}.json"
+            url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1"
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, "a" * 32)
+            output = root / "draws.jsonl"
+            output.write_text("prior output", encoding="utf-8")
+            with self.assertRaisesRegex(IngestionError, "already exists"):
+                ingest_snapshot_directory(raw_dir, output, require_manifests=True)
+            self.assertEqual(output.read_text(encoding="utf-8"), "prior output")
 
     def test_offline_snapshot_import_rejects_tampered_manifest_hash(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -208,6 +228,16 @@ class FetchPaginationSafetyTests(unittest.TestCase):
             "lotteryDrawResult": "01 02 03 04 05 01 02",
         }
 
+    def test_fetch_refuses_to_overwrite_existing_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "draws.jsonl"
+            output.write_text("prior data", encoding="utf-8")
+            with patch("lottery.ingest._fetch_page", side_effect=AssertionError("network must not run")):
+                with self.assertRaisesRegex(IngestionError, "already exists"):
+                    fetch_history(output, root / "raw")
+            self.assertEqual(output.read_text(encoding="utf-8"), "prior data")
+
     def test_full_page_at_max_pages_fails_closed_without_publishing(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -217,7 +247,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
                 with self.assertRaisesRegex(IngestionError, "potentially truncated"):
                     fetch_history(output, raw_dir, page_size=1, max_pages=1, delay_seconds=0)
             self.assertFalse(output.exists())
-            self.assertEqual(len([path for path in raw_dir.glob("*.json") if not path.name.endswith(".manifest.json")]), 1)
+            self.assertEqual(len([path for path in raw_dir.rglob("*.json") if not path.name.endswith(".manifest.json")]), 1)
 
     def test_empty_first_page_fails_closed_without_publishing(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -238,6 +268,56 @@ class FetchPaginationSafetyTests(unittest.TestCase):
             self.assertEqual(result["pagination_end_reason"], "short_page")
             self.assertFalse(result["source_completeness_verified"])
             self.assertEqual(result["trust_status"], "manifest_complete_not_officially_authenticated")
+            self.assertEqual(Path(result["raw_dir"]).parent, root / "raw")
+            self.assertTrue(Path(result["raw_dir"]).is_dir())
+
+
+    def test_repeated_fetch_runs_get_separate_snapshot_directories(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_parent = root / "raw"
+            payload = self.payload([self.row()])
+            with patch("lottery.ingest._fetch_page", return_value=(payload, 200, "application/json")):
+                first = fetch_history(root / "one.jsonl", raw_parent, page_size=2, delay_seconds=0)
+                second = fetch_history(root / "two.jsonl", raw_parent, page_size=2, delay_seconds=0)
+            self.assertNotEqual(first["raw_dir"], second["raw_dir"])
+            self.assertEqual(len(list(Path(first["raw_dir"]).glob("*.manifest.json"))), 1)
+            self.assertEqual(len(list(Path(second["raw_dir"]).glob("*.manifest.json"))), 1)
+
+    def test_import_rejects_snapshots_from_mixed_fetch_runs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_dir = root / "raw"
+            raw_dir.mkdir()
+            url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1"
+            _snapshot(self.payload([self.row("26131")]), 1, 200, "application/json", raw_dir, url, "a" * 32)
+            _snapshot(self.payload([self.row("26132")]), 2, 200, "application/json", raw_dir, url.replace("pageNo=1", "pageNo=2"), "b" * 32)
+            with self.assertRaisesRegex(IngestionError, "one contiguous page sequence from one fetch run"):
+                ingest_snapshot_directory(raw_dir, root / "out.jsonl", require_manifests=True)
+
+class ImmutableSnapshotTests(unittest.TestCase):
+    def test_identical_snapshot_does_not_rewrite_original_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            raw_dir = Path(temp)
+            raw = json.dumps({"success": True, "value": {"list": []}}).encode()
+            url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1"
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, "run-one")
+            manifest = next(raw_dir.glob("*.manifest.json"))
+            original = manifest.read_bytes()
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, "run-two")
+            self.assertEqual(manifest.read_bytes(), original)
+            self.assertEqual(len([path for path in raw_dir.glob("*.json") if not path.name.endswith(".manifest.json")]), 1)
+
+    def test_corrupted_content_addressed_snapshot_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            raw_dir = Path(temp)
+            raw = b'{"success":true,"value":{"list":[]}}'
+            url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1"
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, "run-one")
+            body = next(path for path in raw_dir.glob("*.json") if not path.name.endswith(".manifest.json"))
+            body.write_bytes(b"tampered")
+            with self.assertRaisesRegex(IngestionError, "corruption"):
+                _snapshot(raw, 1, 200, "application/json", raw_dir, url, "run-two")
 
 if __name__ == "__main__":
     unittest.main()

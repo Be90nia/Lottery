@@ -13,7 +13,7 @@ import tempfile
 from typing import Any
 
 from .tickets import generate_ticket_candidates
-from .validate import validate_jsonl
+from .validate import validate_records
 
 
 def run_mvp(
@@ -29,9 +29,34 @@ def run_mvp(
     """Validate one historical input and atomically publish a candidate batch receipt."""
     if dataset_path.resolve() == output_path.resolve():
         raise ValueError("output_path must not overwrite the input dataset")
-    validation = validate_jsonl(dataset_path)
+    if output_path.exists():
+        raise ValueError("output_path already exists; choose a new path to preserve prior run evidence")
     raw = dataset_path.read_bytes()
-    rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
+    try:
+        lines = raw.decode("utf-8").splitlines()
+        if not lines or any(not line.strip() for line in lines):
+            raise ValueError("dataset must be non-empty JSONL without blank lines")
+        rows = [json.loads(line) for line in lines]
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"dataset is not valid UTF-8 JSONL: {exc}") from exc
+    validation = validate_records(rows)
+    dataset_manifest_path = dataset_path.with_suffix(dataset_path.suffix + ".manifest.json")
+    dataset_trust_status = "not_authenticated_by_this_tool"
+    dataset_manifest_sha256 = None
+    if dataset_manifest_path.exists():
+        manifest_bytes = dataset_manifest_path.read_bytes()
+        try:
+            dataset_manifest = json.loads(manifest_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"dataset manifest is invalid: {exc}") from exc
+        if (not isinstance(dataset_manifest, dict)
+                or dataset_manifest.get("output_sha256") != hashlib.sha256(raw).hexdigest()
+                or dataset_manifest.get("validation") != validation
+                or dataset_manifest.get("provenance_complete") is not True
+                or dataset_manifest.get("trust_status") != "manifest_complete_not_officially_authenticated"):
+            raise ValueError("dataset manifest does not verify this input or has an unsupported trust status")
+        dataset_trust_status = dataset_manifest["trust_status"]
+        dataset_manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
     batch = generate_ticket_candidates(
         rows,
         tickets_per_strategy=tickets_per_strategy,
@@ -41,14 +66,23 @@ def run_mvp(
     )
     dataset_sha256 = hashlib.sha256(raw).hexdigest()
     commit = code_commit or os.environ.get("GITHUB_SHA")
-    if commit is not None and not re.fullmatch(r"[0-9a-f]{40}", commit):
+    if commit is None:
+        raise ValueError("code_commit is required; pass --code-commit or run in GitHub Actions")
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("code_commit must be a full 40-character lowercase Git SHA")
 
+    batch["strategy_semantics"] = {
+        "type": "historical_marginal_sampling_heuristics",
+        "physical_ball_set_models": "not_implemented",
+        "physical_ball_set_blocker": "verified per-draw labels and equipment-regime chronology are unresolved",
+        "predictive_efficacy_claim": "none",
+    }
     batch["dataset"] = {
         "path": str(dataset_path),
         "sha256": dataset_sha256,
         "validation": validation,
-        "trust_status": "not_authenticated_by_this_tool",
+        "trust_status": dataset_trust_status,
+        "manifest_sha256": dataset_manifest_sha256,
     }
     # Recompute the batch digest after attaching the exact byte-level input evidence.
     batch_bytes = json.dumps(
@@ -64,10 +98,13 @@ def run_mvp(
         "batch_sha256": hashlib.sha256(batch_bytes).hexdigest(),
         "requested_tickets_per_strategy": tickets_per_strategy,
         "published_ticket_count": batch["total_tickets"],
-        "data_trust_status": "not_authenticated_by_this_tool",
+        "data_trust_status": dataset_trust_status,
+        "dataset_manifest_sha256": dataset_manifest_sha256,
         "automatic_sync_status": "not_attempted",
         "model_training_status": "not_performed",
         "model_promotion_status": "not_performed",
+        "strategy_scope": "historical_marginal_sampling_heuristics_not_physical_ball_sets",
+        "predictive_efficacy_claim": "none",
     }
     document = {"schema_version": 1, "receipt": receipt, "batch": batch}
     rendered = json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
@@ -81,7 +118,8 @@ def run_mvp(
             handle.write(rendered)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, output_path)
+        os.link(temporary, output_path)
+        temporary.unlink(missing_ok=True)
     except Exception:
         temporary.unlink(missing_ok=True)
         raise

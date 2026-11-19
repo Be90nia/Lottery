@@ -53,3 +53,15 @@ Negative means the candidate model is better; positive means worse.
 - The marginal Bernoulli score is not a calibrated joint probability for a complete 5+2 ticket.
 - Do not access or tune against the isolated prospective 500-draw holdout.
 - Before model promotion: authenticate the dataset; freeze model and evaluation protocol; complete the dedicated #41 comparison and checkpoint/resume work; require robust improvement over uniform on both zones or a preregistered, explicitly scoped claim; and retain the full score ledger and uncertainty report.
+
+
+The current one-command MVP smoke run uses the pinned 2,949-row candidate snapshot ending at draw 26131 (2026-11-16), SHA-256 `9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa`. Its manifest trust status remains `manifest_complete_not_officially_authenticated`; this is a fresher candidate input, not an official-authentication claim. The older 2,901-row legacy candidate remains available for the historical benchmark reproduction.
+
+
+## Latest pinned-input smoke (2026-11-19)
+
+GitHub Actions run `44472730901` completed successfully and uploaded `ticket-mvp-candidates` (artifact SHA-256 `8adadd3b680de4047c9b88b6c3a2b53ad72f1affa31f0a61f5e356545a0fdfef`). It generated 15 candidate tickets: five each for `uniform`, `expanding`, and `ewma`, from 2,949 records spanning draw `07001` through `26131` (2026-11-16). Dataset SHA-256: `9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa`; adjacent manifest SHA-256: `21e225e772d9c3192eb5878d3546e20d2560ea826ec5ee21bfabf300ceedb315`. Trust status remains `manifest_complete_not_officially_authenticated`. Receipt status is `candidate_batch_generated`; automatic sync, model training, and model promotion were not performed.
+
+The machine-readable batch/receipt now explicitly labels the three lanes as historical marginal-sampling heuristics, sets `physical_ball_set_models: not_implemented`, and records `predictive_efficacy_claim: none`. This prevents the three heuristic lanes from being mistaken for the three physical ball sets.
+
+Latest smoke receipt details: code commit `66b107c885f7aa70a17ffdbef2e2e4bea29be5aa`; batch SHA-256 `f9f5e5ee39ada986fe986e576f9ee203b784eb38d4eba654a14b0a5091b3c575`. The 15 tickets remain five per heuristic lane, and the receipt carries `physical_ball_set_models: not_implemented` / `predictive_efficacy_claim: none`.

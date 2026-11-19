@@ -46,8 +46,9 @@ jobs:
         env:
           PYTHONPATH: src
         run: |
+          RAW_DIR="$(python -c 'import json; print(json.load(open("sync-run/fetch-output.json", encoding="utf-8"))["raw_dir"])')"
           python scripts/fetch_history.py \
-            --snapshots-dir sync-run/raw \
+            --snapshots-dir "$RAW_DIR" \
             --require-manifests \
             --output sync-run/processed/candidate.jsonl
       - name: Write machine-readable sync receipt

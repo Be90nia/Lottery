@@ -91,17 +91,23 @@ def build_evaluation_receipt(
         raise EvaluationGateError("protocol_version must be a non-empty string")
     if scope not in ("rolling_origin", "shadow"):
         raise EvaluationGateError("scope must be rolling_origin or shadow; prospective holdout is forbidden")
-    if (type(min_targets) is not int or min_targets < 2
-            or type(replicates) is not int or replicates < 100
-            or type(block_length) is not int or block_length < 1
-            or type(seed) is not int):
-        raise EvaluationGateError("invalid frozen evaluation thresholds or seed")
+    if (type(min_targets) is not int or min_targets < 200
+            or type(replicates) is not int or replicates < 1000
+            or type(block_length) is not int or block_length < 50
+            or block_length > min_targets // 2
+            or type(seed) is not int or seed < 0):
+        raise EvaluationGateError(
+            "frozen gate requires >=200 targets, >=1000 replicates, "
+            "50<=block_length<=min_targets/2, and a non-negative integer seed"
+        )
 
     rows = list(score_rows)
     if len(rows) < min_targets:
         raise EvaluationGateError(f"incomplete coverage: {len(rows)} targets; need {min_targets}")
     targets = []
     seen = set()
+    previous_target_number = None
+    previous_target_number = None
     deltas = {
         reference: {zone: {metric: [] for metric in METRICS} for zone in ZONES}
         for reference in ("champion", "uniform")
@@ -110,10 +116,13 @@ def build_evaluation_receipt(
         if not isinstance(row, dict):
             raise EvaluationGateError(f"score row {index} must be an object")
         target = row.get("target_draw_id")
-        if not isinstance(target, str) or not target or target in seen:
-            raise EvaluationGateError(f"score row {index} has a missing or duplicate target")
-        if targets and target <= targets[-1]:
+        if (not isinstance(target, str) or len(target) != 5
+                or not target.isdigit() or target in seen):
+            raise EvaluationGateError(f"score row {index} has a missing, malformed, or duplicate target")
+        target_number = int(target)
+        if previous_target_number is not None and target_number <= previous_target_number:
             raise EvaluationGateError("score rows must be in strictly increasing draw-ID order")
+        previous_target_number = target_number
         seen.add(target)
         targets.append(target)
         models = row.get("model_scores")
@@ -163,6 +172,13 @@ def build_evaluation_receipt(
         "protocol_version": protocol_version,
         "scope": scope,
         "target_count": len(targets),
+        "score_rows_sha256": hashlib.sha256(_canonical({"score_rows": rows})).hexdigest(),
+        "evaluation_config": {
+            "min_targets": min_targets,
+            "bootstrap_replicates": replicates,
+            "block_length_draws": block_length,
+            "bootstrap_seed": seed,
+        },
         "first_target_draw_id": targets[0],
         "last_target_draw_id": targets[-1],
         "target_draw_ids_sha256": hashlib.sha256(
@@ -186,6 +202,67 @@ def verify_evaluation_receipt(receipt: dict[str, Any]) -> bool:
         raise EvaluationGateError("receipt hash mismatch")
     if body.get("schema") != RECEIPT_SCHEMA:
         raise EvaluationGateError("unsupported receipt schema")
+    if body.get("scope") not in ("rolling_origin", "shadow"):
+        raise EvaluationGateError("receipt scope is forbidden or invalid")
+    _validate_sha(body.get("dataset_sha256"), "dataset_sha256")
+    _validate_sha(body.get("score_rows_sha256"), "score_rows_sha256")
+    _validate_sha(body.get("target_draw_ids_sha256"), "target_draw_ids_sha256")
+    config = body.get("evaluation_config")
+    if (not isinstance(config, dict) or type(config.get("min_targets")) is not int
+            or config["min_targets"] < 200
+            or type(config.get("bootstrap_replicates")) is not int
+            or config["bootstrap_replicates"] < 1000
+            or type(config.get("block_length_draws")) is not int
+            or config["block_length_draws"] < 50
+            or config["block_length_draws"] > config["min_targets"] // 2
+            or type(config.get("bootstrap_seed")) is not int
+            or config["bootstrap_seed"] < 0
+            or type(body.get("target_count")) is not int
+            or body["target_count"] < config["min_targets"]):
+        raise EvaluationGateError("receipt evaluation configuration is invalid")
+    code_commit = body.get("code_commit")
+    if (not isinstance(code_commit, str) or len(code_commit) != 40
+            or any(char not in "0123456789abcdef" for char in code_commit)):
+        raise EvaluationGateError("receipt code_commit is invalid")
+    candidate_id = body.get("candidate_model_id")
+    champion_id = body.get("champion_model_id")
+    if (not isinstance(candidate_id, str) or not candidate_id.strip()
+            or not isinstance(champion_id, str) or not champion_id.strip()
+            or candidate_id == champion_id):
+        raise EvaluationGateError("receipt model IDs are invalid")
+    if not isinstance(body.get("protocol_version"), str) or not body["protocol_version"].strip():
+        raise EvaluationGateError("receipt protocol version is invalid")
+    comparisons = body.get("comparisons")
+    if not isinstance(comparisons, dict) or set(comparisons) != {"champion", "uniform"}:
+        raise EvaluationGateError("receipt comparisons are incomplete")
+    all_strictly_better = True
+    for reference in ("champion", "uniform"):
+        if not isinstance(comparisons[reference], dict) or set(comparisons[reference]) != set(ZONES):
+            raise EvaluationGateError("receipt comparison zones are incomplete")
+        for zone in ZONES:
+            zone_results = comparisons[reference][zone]
+            if not isinstance(zone_results, dict) or set(zone_results) != set(METRICS):
+                raise EvaluationGateError("receipt comparison metrics are incomplete")
+            for metric in METRICS:
+                result = zone_results[metric]
+                if not isinstance(result, dict):
+                    raise EvaluationGateError("receipt bootstrap result is invalid")
+                lower, upper, mean = (
+                    result.get("ci_95_lower"), result.get("ci_95_upper"),
+                    result.get("mean_delta"),
+                )
+                if (any(type(value) not in (int, float) or not math.isfinite(value)
+                        for value in (lower, upper, mean))
+                        or lower > upper
+                        or result.get("replicates") != config["bootstrap_replicates"]
+                        or result.get("block_length_draws") != config["block_length_draws"]
+                        or result.get("seed") != config["bootstrap_seed"]):
+                    raise EvaluationGateError("receipt bootstrap result/configuration mismatch")
+                if upper >= 0:
+                    all_strictly_better = False
+    expected_decision = "eligible_for_human_review" if all_strictly_better else "rejected_or_inconclusive"
+    if body.get("decision") != expected_decision:
+        raise EvaluationGateError("receipt decision does not match paired interval results")
     if body.get("production_ready") is not False or body.get("automatic_promotion") is not False:
         raise EvaluationGateError("evaluation receipt cannot authorize production or promotion")
     return True

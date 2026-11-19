@@ -27,6 +27,15 @@
 - Model selection never reads the final holdout.
 - Metrics are computed on exactly the declared evaluation period.
 
+## Model regression receipt tests (LOT-073)
+- Identical input produces byte-identical receipt hashes.
+- Candidate must beat both champion and uniform on front/back Brier and log-loss under paired moving-block bootstrap intervals.
+- Incomplete, duplicated, mismatched, or non-finite target scores fail closed.
+- Prospective holdout scope is rejected.
+- Receipt tampering is detected.
+- CLI build/verify is deterministic and refuses to overwrite an existing receipt.
+- A passing receipt remains human-review-only and cannot authorize production or automatic promotion.
+
 ## Integration tests
 - Ingestion from saved fixtures without network access.
 - End-to-end raw-to-canonical pipeline.
