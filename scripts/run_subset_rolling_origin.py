@@ -13,6 +13,13 @@ import os
 import random
 import numpy
 import scipy
+
+if numpy.__version__ != PINNED_NUMPY_VERSION or scipy.__version__ != PINNED_SCIPY_VERSION:
+    raise SystemExit(
+        "exact-subset research requires NumPy "
+        f"{PINNED_NUMPY_VERSION} and SciPy {PINNED_SCIPY_VERSION}; "
+        f"found NumPy {numpy.__version__} and SciPy {scipy.__version__}"
+    )
 from pathlib import Path
 
 from lottery.backtest import _probabilities
