@@ -114,7 +114,10 @@ def reconcile_append_only(
         if (not isinstance(item, dict)
                 or item.get("provenance_complete") is not True
                 or not isinstance(item.get("sha256"), str)
-                or len(item["sha256"]) != 64):
+                or len(item["sha256"]) != 64
+                or any(ch not in "0123456789abcdef" for ch in item["sha256"])
+                or not isinstance(item.get("raw_file"), str)
+                or not item["raw_file"]):
             raise PublicationError("candidate manifest contains an invalid snapshot entry")
 
     current_by_id = {row["draw_id"]: row for row in current}
@@ -135,7 +138,7 @@ def reconcile_append_only(
         if row["draw_id"] not in current_by_id
     ]
     for row in additions:
-        if (row["draw_date"], row["draw_id"]) <= current_last:
+        if row["draw_date"] <= current_last[0]:
             raise PublicationError(
                 f"new draw {row['draw_id']} is not strictly later than current history"
             )
