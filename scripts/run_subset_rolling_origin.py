@@ -55,12 +55,10 @@ def _moving_block_bootstrap(values: list[float], seed: int) -> dict:
             sample.extend(values[start:start + BOOTSTRAP_BLOCK])
         means.append(sum(sample[:n]) / n)
     observed = sum(values) / n
-    p_value = (1 + sum(value >= 0.0 for value in means)) / (BOOTSTRAP_REPLICATES + 1)
     return {
         "observed_mean_delta_candidate_minus_uniform": observed,
         "ci_95_lower": _percentile(means, 0.025),
         "ci_95_upper": _percentile(means, 0.975),
-        "one_sided_bootstrap_p_value": p_value,
         "replicates": BOOTSTRAP_REPLICATES,
         "block_length_draws": BOOTSTRAP_BLOCK,
         "seed": seed,
