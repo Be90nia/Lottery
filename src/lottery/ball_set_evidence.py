@@ -20,6 +20,7 @@ from .validate import validate_records, DatasetValidationError
 COLLECTOR_VERSION = "0.1.0"
 PARSER_VERSION = "0.1.0"
 OBSERVATION_SCHEMA = "lottery.ball-set-observation/v1"
+ZERO_HASH = "0" * 64
 ALLOWED_HOSTS = {"www.js-lottery.com", "api.js-lottery.com"}
 DRAW_TITLE = re.compile(r"超级大乐透第\s*(\d{5})\s*期开奖公告")
 DRAW_DATE = re.compile(r"开奖日期\s*[：:]\s*(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日")
@@ -209,6 +210,7 @@ def _read_ledger(ledger_path: Path) -> list[dict[str, Any]]:
     if not ledger_path.exists():
         return []
     observations = []
+    previous_event_hash = ZERO_HASH
     allowed_statuses = {
         "primary_verified", "official_label_pending_inventory", "missing_label",
         "unsupported_label", "conflict", "source_revision_requires_review",
@@ -233,6 +235,15 @@ def _read_ledger(ledger_path: Path) -> list[dict[str, Any]]:
                     or item.get("observation_status") not in allowed_statuses
                     or item.get("reported_set_index") not in (None, 1, 2, 3)):
                 raise BallSetEvidenceError(f"observation ledger record has invalid fields at line {line_no}")
+            if item.get("prev_hash") != previous_event_hash:
+                raise BallSetEvidenceError(f"observation ledger hash chain is broken at line {line_no}")
+            event_hash = item.get("event_hash")
+            event_body = {key: value for key, value in item.items() if key != "event_hash"}
+            if not isinstance(event_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", event_hash):
+                raise BallSetEvidenceError(f"observation ledger event hash is invalid at line {line_no}")
+            if _canonical_hash(event_body) != event_hash:
+                raise BallSetEvidenceError(f"observation ledger event hash mismatch at line {line_no}")
+            previous_event_hash = event_hash
             source = item.get("source")
             if not isinstance(source, dict) or source.get("authority_class") not in ("A1", "A2"):
                 raise BallSetEvidenceError(f"observation ledger source authority is invalid at line {line_no}")
@@ -392,10 +403,13 @@ def _archive_observation(
     }
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     with ledger_lock(ledger_path):
-        existing_ids = {item["observation_id"] for item in _read_ledger(ledger_path)}
+        current_ledger = _read_ledger(ledger_path)
+        existing_ids = {item["observation_id"] for item in current_ledger}
         if observation_id not in existing_ids:
-            with ledger_path.open("a", encoding="utf-8", newline="\n") as handle:
-                handle.write(json.dumps(observation, ensure_ascii=False, sort_keys=True) + "\n")
+            observation["prev_hash"] = current_ledger[-1]["event_hash"] if current_ledger else ZERO_HASH
+            observation["event_hash"] = _canonical_hash(observation)
+            with ledger_path.open("a", encoding="utf-8", newline="\\n") as handle:
+                handle.write(json.dumps(observation, ensure_ascii=False, sort_keys=True) + "\\n")
                 handle.flush()
                 import os
                 os.fsync(handle.fileno())
