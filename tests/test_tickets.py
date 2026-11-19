@@ -34,6 +34,14 @@ class TicketCandidateTests(unittest.TestCase):
             self.assertEqual(result["strategy_metadata"][strategy]["ticket_count"], 4)
             self.assertEqual(result["strategy_metadata"][strategy]["training_cutoff_draw_id"], self.rows[-1]["draw_id"])
             self.assertEqual(len(tickets), 4)
+            combinations = {
+                (tuple(ticket["front_numbers"]), tuple(ticket["back_numbers"]))
+                for ticket in tickets
+            }
+            self.assertEqual(len(combinations), 4)
+            self.assertGreaterEqual(
+                result["strategy_metadata"][strategy]["duplicate_sampling_retries"], 0
+            )
             for ticket in tickets:
                 self.assertEqual(len(ticket["ticket_id"]), 24)
                 self.assertEqual(len(ticket["front_numbers"]), 5)
