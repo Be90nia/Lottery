@@ -154,7 +154,9 @@ def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
                 raise ValueError(f"checkpoint {score_key} NLL invalid for converged fit")
         elif score is not None:
             raise ValueError(f"checkpoint {score_key} score must be null when fit did not converge")
-\n\ndef _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: bool,
+
+
+def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: bool,
                    seed: int, checkpoint_path: Path, snapshot_digest: str) -> dict:
     table = build_uniform_feature_table(m, k, include_gap_variance=include_gap)
     model = ExponentialFamily(table)
