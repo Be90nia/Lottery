@@ -36,6 +36,79 @@ def _dot(left: Sequence[float], right: Sequence[float]) -> float:
     return sum(a * b for a, b in zip(left, right))
 
 
+def _strong_wolfe_search(
+    evaluate,
+    point: tuple[float, ...],
+    direction: tuple[float, ...],
+    initial_objective: float,
+    initial_gradient: tuple[float, ...],
+    *,
+    c1: float = 1e-4,
+    c2: float = 0.9,
+    max_iterations: int = 60,
+) -> tuple[tuple[float, ...], float, tuple[float, ...], float] | None:
+    """Deterministic strong-Wolfe line search for the unbounded L-BFGS-B case."""
+    derivative_zero = _dot(initial_gradient, direction)
+    if not isfinite(derivative_zero) or derivative_zero >= 0.0:
+        return None
+
+    def at(step: float):
+        trial = tuple(point[index] + step * direction[index] for index in range(len(point)))
+        try:
+            objective, gradient, unregularized = evaluate(trial)
+        except (ArithmeticError, ValueError, OverflowError):
+            return None
+        if (not isfinite(objective) or not isfinite(unregularized)
+                or any(not isfinite(value) for value in gradient)):
+            return None
+        return trial, objective, tuple(gradient), unregularized
+
+    def zoom(low: float, high: float, low_value):
+        low_objective = initial_objective if low == 0.0 else low_value[1]
+        for _ in range(max_iterations):
+            step = 0.5 * (low + high)
+            if step == low or step == high:
+                break
+            candidate = at(step)
+            if (candidate is None
+                    or candidate[1] > initial_objective + c1 * step * derivative_zero
+                    or candidate[1] >= low_objective):
+                high = step
+                continue
+            derivative = _dot(candidate[2], direction)
+            if abs(derivative) <= -c2 * derivative_zero:
+                return candidate
+            if derivative * (high - low) >= 0.0:
+                high = low
+            low = step
+            low_value = candidate
+            low_objective = candidate[1]
+        return None
+
+    previous_step = 0.0
+    previous_value = (point, initial_objective, initial_gradient, 0.0)
+    step = 1.0
+    for iteration in range(max_iterations):
+        candidate = at(step)
+        if candidate is None:
+            return zoom(previous_step, step, previous_value)
+        objective = candidate[1]
+        if (objective > initial_objective + c1 * step * derivative_zero
+                or (iteration > 0 and objective >= previous_value[1])):
+            return zoom(previous_step, step, previous_value)
+        derivative = _dot(candidate[2], direction)
+        if abs(derivative) <= -c2 * derivative_zero:
+            return candidate
+        if derivative >= 0.0:
+            return zoom(step, previous_step, candidate)
+        previous_step = step
+        previous_value = candidate
+        step *= 2.0
+        if not isfinite(step) or step > 1e12:
+            return None
+    return None
+
+
 @dataclass(frozen=True)
 class FitResult:
     terminal_status: str
@@ -185,11 +258,12 @@ class ExponentialFamily:
         gradient_tolerance: float = 1e-8,
         history_size: int = 10,
     ) -> FitResult:
-        """Fit mean-NLL + L2 using deterministic limited-memory BFGS.
+        """Fit mean-NLL + L2 using the unbounded L-BFGS-B specialization.
 
-        There are no box constraints in this model, so the unbounded L-BFGS
-        variant is equivalent to L-BFGS-B with no active bounds. Armijo
-        backtracking is used; terminal failure is retained, never hidden.
+        Parameters have no box constraints, so the L-BFGS-B active-set step
+        reduces to the ordinary limited-memory BFGS two-loop recursion. A
+        deterministic strong-Wolfe line search supplies the standard smooth,
+        unbounded search step. Terminal failures are retained, never hidden.
         """
         if not observations:
             raise ValueError("at least one training observation is required")
@@ -270,24 +344,18 @@ class ExponentialFamily:
                 y_history.clear()
                 rho_history.clear()
 
-            step = 1.0
-            accepted = None
-            for _ in range(60):
-                trial = tuple(theta[i] + step * direction[i] for i in range(self.dimension))
-                try:
-                    trial_objective, trial_gradient, trial_unregularized = self.objective_and_gradient(
-                        trial, observed_mean, regularization_lambda
-                    )
-                except (ArithmeticError, ValueError, OverflowError):
-                    step *= 0.5
-                    continue
-                if trial_objective <= objective + 1e-4 * step * directional_derivative:
-                    accepted = (trial, trial_objective, trial_gradient, trial_unregularized)
-                    break
-                step *= 0.5
+            accepted = _strong_wolfe_search(
+                lambda candidate: self.objective_and_gradient(
+                    candidate, observed_mean, regularization_lambda
+                ),
+                theta,
+                direction,
+                objective,
+                gradient,
+            )
             if accepted is None:
                 status = "line_search_failed"
-                message = "Armijo backtracking could not find an acceptable step"
+                message = "strong-Wolfe line search could not find an acceptable step"
                 iterations = iteration
                 break
 
@@ -328,6 +396,6 @@ class ExponentialFamily:
             iterations=iterations,
             regularization_lambda=regularization_lambda,
             objective_scale="mean_nll",
-            solver="deterministic_unbounded_lbfgs_armijo_v1",
+            solver="deterministic_unbounded_lbfgsb_strong_wolfe_v1",
             message=message,
         )
