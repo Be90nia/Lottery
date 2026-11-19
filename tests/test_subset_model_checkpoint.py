@@ -14,31 +14,20 @@ from run_subset_rolling_origin import (
 
 
 class ConfirmatoryGateTests(unittest.TestCase):
-    def test_solver_and_multiplicity_reviews_are_both_required(self):
-        self.assertFalse(_confirmatory_gate(
-            True, solver_policy_approved=False, multiplicity_policy_approved=True,
-            non_regression_policy_approved=True, non_regression_pass=True,
-        ))
-        self.assertFalse(_confirmatory_gate(
-            True, solver_policy_approved=True, multiplicity_policy_approved=False,
+    def test_all_four_policy_and_result_gates_are_required(self):
+        accepted = dict(
+            solver_policy_approved=True,
+            multiplicity_policy_approved=True,
             non_regression_policy_approved=True,
-        ))
-        self.assertTrue(_confirmatory_gate(
-            True, solver_policy_approved=True, multiplicity_policy_approved=True,
-            non_regression_policy_approved=True,
-        ))
-        self.assertFalse(_confirmatory_gate(
-            False, solver_policy_approved=True, multiplicity_policy_approved=True,
-            non_regression_policy_approved=True,
-        ))
-        self.assertFalse(_confirmatory_gate(
-            True, solver_policy_approved=True, multiplicity_policy_approved=True,
-            non_regression_policy_approved=False, non_regression_pass=True,
-        ))
-        self.assertFalse(_confirmatory_gate(
-            True, solver_policy_approved=True, multiplicity_policy_approved=True,
-            non_regression_policy_approved=True, non_regression_pass=False,
-        ))
+            non_regression_pass=True,
+        )
+        self.assertTrue(_confirmatory_gate(True, **accepted))
+        for field in accepted:
+            rejected = dict(accepted)
+            rejected[field] = False
+            with self.subTest(field=field):
+                self.assertFalse(_confirmatory_gate(True, **rejected))
+        self.assertFalse(_confirmatory_gate(False, **accepted))
 
 
 class CheckpointIntegrityTests(unittest.TestCase):
