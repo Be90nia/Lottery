@@ -1,10 +1,12 @@
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from lottery.mvp import run_mvp
 
@@ -89,8 +91,9 @@ class MvpOrchestratorTests(unittest.TestCase):
             root = Path(temp)
             dataset = root / "draws.jsonl"
             dataset.write_text("".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "code_commit is required"):
-                run_mvp(dataset, root / "out.json")
+            with patch.dict(os.environ, {}, clear=True):
+                with self.assertRaisesRegex(ValueError, "code_commit is required"):
+                    run_mvp(dataset, root / "out.json")
 
     def test_invalid_dataset_never_publishes_output(self):
         with tempfile.TemporaryDirectory() as temp:
