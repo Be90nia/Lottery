@@ -129,6 +129,17 @@ class OutcomeLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(OutcomeLedgerError, "already exists"):
             append_outcome(self.outcomes, event, self.forecasts)
 
+    def test_boolean_sequence_is_rejected_even_with_recomputed_hash(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        append_outcome(self.outcomes, event, self.forecasts)
+        record = json.loads(self.outcomes.read_text(encoding="utf-8"))
+        body = {key: value for key, value in record.items() if key != "event_hash"}
+        body["sequence"] = True
+        record = {**body, "event_hash": _event_hash(body)}
+        self.outcomes.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(OutcomeLedgerError, "sequence"):
+            verify_outcome_ledger(self.outcomes)
+
     def test_tampering_detected(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
         append_outcome(self.outcomes, event, self.forecasts)
