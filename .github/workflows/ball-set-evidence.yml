@@ -61,6 +61,7 @@ jobs:
             --archive-dir evidence-archive \
             --ledger evidence-archive/observations.jsonl \
             --receipt evidence-archive/receipt.json \
+            --draw-inventory data/candidates/legacy_draws.jsonl \
             --delay 0.5 \
             --max-forward-pages 2000
 
