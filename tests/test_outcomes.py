@@ -136,7 +136,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         body = {key: value for key, value in record.items() if key != "event_hash"}
         body["sequence"] = True
         record = {**body, "event_hash": _event_hash(body)}
-        self.outcomes.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        self.outcomes.write_text(json.dumps(record) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(OutcomeLedgerError, "sequence"):
             verify_outcome_ledger(self.outcomes)
 
