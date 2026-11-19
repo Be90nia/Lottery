@@ -100,7 +100,7 @@ class ParsePageTests(unittest.TestCase):
             (raw_dir / f"page-00001-{digest[:12]}.manifest.json").write_text(
                 json.dumps({
                     "source": "Sporttery public historical draw API",
-                    "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85",
+                    "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1",
                     "retrieved_at": "2026-11-18T00:00:00+00:00",
                     "http_status": 200,
                     "sha256": digest,
@@ -289,7 +289,7 @@ class FetchPaginationSafetyTests(unittest.TestCase):
             root = Path(temp)
             raw_dir = root / "raw"
             raw_dir.mkdir()
-            url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1"
+            url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1"
             _snapshot(self.payload([self.row("26131")]), 1, 200, "application/json", raw_dir, url, "a" * 32)
             _snapshot(self.payload([self.row("26132")]), 2, 200, "application/json", raw_dir, url.replace("pageNo=1", "pageNo=2"), "b" * 32)
             with self.assertRaisesRegex(IngestionError, "one contiguous page sequence from one fetch run"):
