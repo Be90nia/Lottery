@@ -9,7 +9,7 @@ on:
       - "scripts/run_mvp.py"
       - "tests/test_mvp.py"
       - "docs/TICKET_MVP_BATCH_CONTRACT.md"
-      - "data/candidates/legacy_draws.jsonl"
+      - "data/candidates/pinned-draws-20261118.jsonl"
       - ".github/workflows/ticket-mvp.yml"
   workflow_dispatch:
 
