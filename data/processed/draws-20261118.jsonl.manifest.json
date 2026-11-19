@@ -289,11 +289,11 @@
   "output_file": "draws-20261118.jsonl",
   "output_sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa",
   "trust_status": "manifest_complete_not_officially_authenticated",
-  "output_bytes": 1003831,
+  "output_bytes": 1003774,
   "output_digest_verification": {
     "algorithm": "SHA-256",
     "encoding": "UTF-8",
     "verified_against": "data/processed/draws-20261118.jsonl",
-    "verification_note": "Recomputed over the exact JSONL file bytes fetched from this branch; matches LOT-051 preregistered digest."
+    "verification_note": "Byte count corrected against the exact frozen JSONL blob at the source commit; SHA-256 and data bytes remain unchanged."
   }
 }
