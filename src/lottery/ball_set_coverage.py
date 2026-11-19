@@ -451,7 +451,7 @@ def write_ball_set_coverage_report(
         "",
         "| Domain | Observation versions | Explicit labels | Primary verified at capture | Pending inventory | Conflicts | Review required |",
         "|---|---:|---:|---:|---:|---:|---:|",
-    ]
+    ])
     for row in report["by_source_domain"]:
         lines.append(
             f"| {row['domain']} | {row['observation_versions']} | {row['explicit_label_versions']} | "
