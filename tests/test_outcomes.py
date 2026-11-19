@@ -9,7 +9,7 @@ import unittest
 from lottery.forecast import append_forecast, create_forecast_event, _event_hash
 from lottery.outcomes import (
     OutcomeLedgerError, append_outcome, create_outcome_event,
-    create_outcome_event_from_snapshot, score_ledgers, verify_outcome_ledger,
+    create_outcome_event_from_snapshot, main, score_ledgers, verify_outcome_ledger,
 )
 
 
@@ -269,3 +269,23 @@ class OutcomeSnapshotBindingTests(unittest.TestCase):
         kwargs = dict(self.kwargs, source_url="https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=86")
         with self.assertRaisesRegex(OutcomeLedgerError, "gameNo=85"):
             create_outcome_event_from_snapshot(self.forecasts, **kwargs)
+
+    def test_cli_rejects_manual_numbers_that_disagree_with_snapshot(self):
+        outcomes = self.root / "outcomes.jsonl"
+        argv = [
+            "outcome_ledger.py", "record",
+            "--forecasts", str(self.forecasts),
+            "--outcomes", str(outcomes),
+            "--target-draw-id", "2604",
+            "--published-at", "2026-02-02T20:30:00+08:00",
+            "--captured-at", "2026-02-02T20:31:00+08:00",
+            "--source-url", self.kwargs["source_url"],
+            "--snapshot", str(self.snapshot),
+            "--http-status", "200",
+            "--front", "1,2,3,4,5",
+            "--back", "1,2",
+        ]
+        from unittest.mock import patch
+        with patch("sys.argv", argv):
+            self.assertEqual(main(), 1)
+        self.assertFalse(outcomes.exists())
