@@ -156,12 +156,13 @@ def _logsumexp(values: Iterable[float]) -> float:
     items = tuple(values)
     if not items:
         return -math.inf
-    if any(not math.isfinite(value) for value in items):
-        if all(value == -math.inf for value in items):
-            return -math.inf
-        raise ValueError("log-sum-exp inputs must be finite or all negative infinity")
-    maximum = max(items)
-    return maximum + math.log(math.fsum(math.exp(value - maximum) for value in items))
+    if any(math.isnan(value) or value == math.inf for value in items):
+        raise ValueError("log-sum-exp inputs must be finite or negative infinity")
+    finite = tuple(value for value in items if value != -math.inf)
+    if not finite:
+        return -math.inf
+    maximum = max(finite)
+    return maximum + math.log(math.fsum(math.exp(value - maximum) for value in finite))
 
 
 def _validate_theta(theta: Sequence[float], dimension: int) -> tuple[float, ...]:
