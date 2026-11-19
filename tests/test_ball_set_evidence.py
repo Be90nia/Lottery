@@ -119,6 +119,7 @@ class BallSetArchiveTests(unittest.TestCase):
         self.inventory.write_text("".join(json.dumps(row) + "\n" for row in inventory_rows), encoding="utf-8")
         self.archive = self.root / "archive"
         self.ledger = self.root / "observations.jsonl"
+        self.draw_result_ledger = self.root / "draw-results.jsonl"
         self.receipt = self.root / "receipt.json"
 
     def tearDown(self):
@@ -129,6 +130,7 @@ class BallSetArchiveTests(unittest.TestCase):
             return collect_ball_set_evidence(
                 self.registry, self.archive, self.ledger,
                 receipt_path=self.receipt, draw_inventory_path=self.inventory,
+                draw_result_ledger_path=self.draw_result_ledger,
                 delay_seconds=0, max_forward_pages=max_pages,
             )
 
