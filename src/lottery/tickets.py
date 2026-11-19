@@ -106,6 +106,8 @@ def generate_ticket_candidates(
         "sampler_version": SAMPLER_VERSION,
         "calibration_version": CALIBRATION_VERSION,
         "calibration_tolerance": CALIBRATION_TOLERANCE,
+        "calibration_max_iterations": CALIBRATION_MAX_ITERATIONS,
+        "calibration_history_size": CALIBRATION_HISTORY_SIZE,
     }
     generation_run_id = hashlib.sha256(
         json.dumps(run_identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -151,6 +153,7 @@ def generate_ticket_candidates(
             "duplicate_ticket_count": sum(count - 1 for count in lane_counts.values()),
             "training_cutoff_draw_id": records[-1]["draw_id"],
             "sampling_method": "exact conditional-Poisson rejective sampling; with replacement across tickets",
+            "sampler_version": SAMPLER_VERSION,
             "front_marginal_calibration": front_calibration,
             "back_marginal_calibration": back_calibration,
         }
@@ -188,6 +191,7 @@ def generate_ticket_candidates(
         },
         "training_first_draw_id": records[0]["draw_id"],
         "training_last_draw_id": records[-1]["draw_id"],
+        "sampler_version": SAMPLER_VERSION,
         "model_configuration": {
             "expanding_alpha_pseudo_draws": alpha,
             "ewma_half_life_draws": half_life,
