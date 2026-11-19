@@ -46,8 +46,8 @@ def main() -> int:
             )
             temporary = Path(temporary_name)
             try:
-                with os.fdopen(descriptor, "w", encoding="utf-8", newline="\\n") as handle:
-                    handle.write(json.dumps(result, ensure_ascii=False, indent=2) + "\\n")
+                with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+                    handle.write(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
                     handle.flush()
                     os.fsync(handle.fileno())
                 os.replace(temporary, args.output)
