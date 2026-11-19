@@ -142,6 +142,13 @@ class OutcomeLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(OutcomeLedgerError, "no pre-draw forecast"):
             create_outcome_event(self.forecasts, **kwargs)
 
+    def test_append_rejects_outcome_date_not_matching_forecast(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        event["draw_date"] = "2026-02-03"
+        with self.assertRaisesRegex(OutcomeLedgerError, "draw date does not match"):
+            append_outcome(self.outcomes, event, forecast_path=self.forecasts)
+        self.assertFalse(self.outcomes.exists())
+
     def test_append_rejects_outcome_linked_to_unknown_forecast_hash(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
         event["forecast_event_hash"] = "f" * 64
