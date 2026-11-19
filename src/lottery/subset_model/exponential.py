@@ -13,7 +13,13 @@ from .uniform import UniformFeatureTable
 
 def _finite_vector(values: Sequence[float], name: str) -> tuple[float, ...]:
     try:
-        result = tuple(float(value) for value in values)
+        raw = tuple(values)
+    except TypeError as exc:
+        raise ValueError(f"{name} must be a finite numeric sequence") from exc
+    if any(type(value) not in (int, float) for value in raw):
+        raise ValueError(f"{name} must contain only int/float values (booleans and strings are invalid)")
+    try:
+        result = tuple(float(value) for value in raw)
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError(f"{name} must be a finite numeric sequence") from exc
     if any(not isfinite(value) for value in result):
@@ -161,8 +167,9 @@ class ExponentialFamily:
         observed = _finite_vector(observed_mean_features, "observed_mean_features")
         if len(observed) != self.dimension:
             raise ValueError("observed mean feature vector has the wrong dimension")
-        if not isfinite(regularization_lambda) or regularization_lambda < 0:
-            raise ValueError("regularization_lambda must be finite and nonnegative")
+        if (type(regularization_lambda) not in (int, float)
+                or not isfinite(regularization_lambda) or regularization_lambda < 0):
+            raise ValueError("regularization_lambda must be a finite nonnegative int/float (not bool)")
         log_z = self.log_partition(values)
         expected = self.expected_features(values)
         unregularized = log_z - _dot(values, observed)
@@ -197,10 +204,12 @@ class ExponentialFamily:
             raise ValueError("max_iterations must be a positive integer")
         if type(history_size) is not int or history_size < 1:
             raise ValueError("history_size must be a positive integer")
-        if not isfinite(gradient_tolerance) or gradient_tolerance <= 0:
-            raise ValueError("gradient_tolerance must be finite and positive")
-        if not isfinite(regularization_lambda) or regularization_lambda < 0:
-            raise ValueError("regularization_lambda must be finite and nonnegative")
+        if (type(gradient_tolerance) not in (int, float)
+                or not isfinite(gradient_tolerance) or gradient_tolerance <= 0):
+            raise ValueError("gradient_tolerance must be a finite positive int/float (not bool)")
+        if (type(regularization_lambda) not in (int, float)
+                or not isfinite(regularization_lambda) or regularization_lambda < 0):
+            raise ValueError("regularization_lambda must be a finite nonnegative int/float (not bool)")
 
         feature_rows = []
         for observation in observations:
