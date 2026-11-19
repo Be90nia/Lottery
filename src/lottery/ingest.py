@@ -261,6 +261,27 @@ def _parse_page(raw: bytes, page_no: int, source_id: str) -> list[Draw]:
     return rows
 
 
+def _pagination_metadata(raw: bytes, page_no: int) -> tuple[int, int] | None:
+    """Read source-reported total records/pages without treating absence as proof."""
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise IngestionError(f"page {page_no}: cannot read pagination metadata from invalid JSON") from exc
+    value = payload.get("value") if isinstance(payload, dict) else None
+    if not isinstance(value, dict):
+        return None
+    total = value.get("total")
+    total_pages = value.get("totalPage")
+    if total is None and total_pages is None:
+        return None
+    if (type(total) is not int or total < 1
+            or type(total_pages) is not int or total_pages < 1):
+        raise IngestionError(
+            f"page {page_no}: source pagination metadata must contain positive integer total and totalPage"
+        )
+    return total, total_pages
+
+
 def _add_draw(rows: dict[str, Draw], row: Draw) -> None:
     previous = rows.get(row.draw_id)
     if previous is not None:
@@ -305,6 +326,7 @@ def ingest_snapshot_directory(
     page_numbers: list[int] = []
     run_ids: set[str] = set()
     page_sizes: set[int] = set()
+    source_pagination: tuple[int, int] | None = None
     for path in snapshot_paths:
         raw = path.read_bytes()
         digest = hashlib.sha256(raw).hexdigest()
@@ -328,7 +350,14 @@ def ingest_snapshot_directory(
             if require_manifests:
                 raise IngestionError(f"{path}: required sidecar manifest is missing")
 
-        rows = _parse_page(raw, len(snapshot_reports) + 1, f"sha256:{digest}")
+        page_no_for_payload = len(snapshot_reports) + 1
+        page_pagination = _pagination_metadata(raw, page_no_for_payload)
+        if page_no_for_payload == 1:
+            source_pagination = page_pagination
+        elif (page_pagination is not None and source_pagination is not None
+                and page_pagination != source_pagination):
+            raise IngestionError("source pagination totals changed between pages")
+        rows = _parse_page(raw, page_no_for_payload, f"sha256:{digest}")
         for row in rows:
             _add_draw(all_rows, row)
         source_url = sidecar.get("url") if isinstance(sidecar, dict) else None
@@ -412,6 +441,44 @@ def ingest_snapshot_directory(
     from .validate import validate_records
     validation = validate_records([asdict(row) for row in ordered])
 
+    completeness_attestation = None
+    if require_manifests and provenance_complete and source_pagination is not None:
+        total_records, total_pages = source_pagination
+        if len(page_sizes) != 1:
+            raise IngestionError("source pagination totals require one consistent pageSize")
+        page_size = next(iter(page_sizes))
+        expected_pages = (total_records + page_size - 1) // page_size
+        if total_pages != expected_pages or total_pages != len(snapshot_reports):
+            raise IngestionError("source pagination totals do not match the archived page inventory")
+        if len(all_rows) != total_records or sum(item["records"] for item in snapshot_reports) != total_records:
+            raise IngestionError("source total records do not match the archived and deduplicated draw inventory")
+        attested_pages = []
+        for expected_page_no, item in enumerate(snapshot_reports, 1):
+            expected_records = (
+                page_size if expected_page_no < total_pages
+                else total_records - page_size * (total_pages - 1)
+            )
+            if item["page_no"] != expected_page_no or item["records"] != expected_records:
+                raise IngestionError(
+                    f"page {expected_page_no}: observed records do not match source pagination totals"
+                )
+            attested_pages.append({
+                "page_no": expected_page_no,
+                "raw_file": item["raw_file"],
+                "sha256": item["sha256"],
+                "records": item["records"],
+            })
+        completeness_attestation = {
+            "schema": "sporttery-pagination-attestation-v1",
+            "source_total_records": total_records,
+            "source_total_pages": total_pages,
+            "page_size": page_size,
+            "metadata_page_no": 1,
+            "total_records_pointer": "/value/total",
+            "total_pages_pointer": "/value/totalPage",
+            "pages": attested_pages,
+        }
+
     output_bytes = "".join(
         json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered
     ).encode("utf-8")
@@ -426,8 +493,11 @@ def ingest_snapshot_directory(
         # Complete per-page provenance does not prove that the upstream page
         # inventory itself was complete. Keep publication blocked until a
         # separately validated source-total reconciliation is implemented.
-        "source_completeness_verified": False,
-        "source_completeness_status": "unverified",
+        "source_completeness_verified": completeness_attestation is not None,
+        "source_completeness_status": (
+            "source_totals_reconciled" if completeness_attestation is not None else "unverified"
+        ),
+        "source_completeness_attestation": completeness_attestation,
         "validation": validation,
         "output_file": output.name,
         "output_sha256": hashlib.sha256(output_bytes).hexdigest(),
@@ -460,6 +530,7 @@ def fetch_history(
     all_rows: dict[str, Draw] = {}
     page_manifests: list[dict[str, Any]] = []
     pagination_end_reason: str | None = None
+    source_pagination: tuple[int, int] | None = None
     for page_no in range(1, (max_pages or 10**9) + 1):
         params = urllib.parse.urlencode({
             "gameNo": "85", "provinceId": "0", "pageSize": str(page_size),
@@ -472,18 +543,47 @@ def fetch_history(
         digest = _snapshot(
             raw, page_no, status, content_type, run_raw_dir, url, final_url, run_id
         )
+        page_pagination = _pagination_metadata(raw, page_no)
+        if page_no == 1:
+            source_pagination = page_pagination
+            if source_pagination is not None:
+                total_records, total_pages = source_pagination
+                if total_pages != (total_records + page_size - 1) // page_size:
+                    raise IngestionError("source total pages do not reconcile with total records and page size")
+        elif (page_pagination is not None and source_pagination is not None
+                and page_pagination != source_pagination):
+            raise IngestionError("source pagination totals changed between pages")
+
         rows = _parse_page(raw, page_no, digest)
         page_manifests.append({"page_no": page_no, "sha256": digest, "records": len(rows), "run_id": run_id})
-        if not rows:
-            if page_no == 1:
-                raise IngestionError("page 1: source returned no draws; refusing to publish an empty dataset")
-            pagination_end_reason = "empty_page"
-            break
-        for row in rows:
-            _add_draw(all_rows, row)
-        if len(rows) < page_size:
-            pagination_end_reason = "short_page"
-            break
+        if source_pagination is not None:
+            total_records, total_pages = source_pagination
+            if page_no > total_pages:
+                raise IngestionError("collector received more pages than source-reported totalPage")
+            expected_records = (
+                page_size if page_no < total_pages
+                else total_records - page_size * (total_pages - 1)
+            )
+            if len(rows) != expected_records:
+                raise IngestionError(
+                    f"page {page_no}: record count does not match source-reported pagination totals"
+                )
+            for row in rows:
+                _add_draw(all_rows, row)
+            if page_no == total_pages:
+                pagination_end_reason = "source_total_pages"
+                break
+        else:
+            if not rows:
+                if page_no == 1:
+                    raise IngestionError("page 1: source returned no draws; refusing to publish an empty dataset")
+                pagination_end_reason = "empty_page"
+                break
+            for row in rows:
+                _add_draw(all_rows, row)
+            if len(rows) < page_size:
+                pagination_end_reason = "short_page"
+                break
         if max_pages is not None and page_no >= max_pages:
             raise IngestionError(
                 f"pagination limit reached at page {page_no} while page was full; "
@@ -506,6 +606,8 @@ def fetch_history(
         "parser_version": PARSER_VERSION,
         "run_id": run_id,
         "pagination_end_reason": pagination_end_reason,
-        "source_completeness_verified": False,
+        "source_total_records": source_pagination[0] if source_pagination else None,
+        "source_total_pages": source_pagination[1] if source_pagination else None,
+        "source_completeness_verified": source_pagination is not None,
         "trust_status": "manifest_complete_not_officially_authenticated",
     }
