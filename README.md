@@ -135,6 +135,20 @@ active ledger and independently archive ledger heads. This mechanism prevents
 cooperating local processes from racing; it is not a distributed transaction
 or protection against a malicious writer.
 
+### Exact unordered-subset model
+
+The research model uses the pinned SciPy L-BFGS-B implementation. Install the
+reproducible numerical dependencies before running exact-subset fit/evaluation:
+
+```bash
+python -m pip install -e .
+```
+
+The solver version, stopping tolerances, and full rolling-origin protocol are
+recorded in the evaluation receipt. The model remains equipment-blind and is
+not production-ready while the pinned source snapshot is not officially
+authenticated and the prospective holdout remains sealed.
+
 ### Pair co-occurrence diagnostics
 
 Run all 595 front-zone and 66 back-zone pair tests under the legal uniform-draw
