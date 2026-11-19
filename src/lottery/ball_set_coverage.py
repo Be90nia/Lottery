@@ -328,6 +328,36 @@ def build_ball_set_coverage(
             "exclusion_reason": "inventory_crosswalk_pending" if evidence_status == "primary_verified" else evidence_status,
         })
     out_of_inventory = len(out_of_inventory_records)
+    out_of_inventory_draw_results = []
+    out_of_inventory_result_raw_verified = 0
+    out_of_inventory_result_raw_invalid = 0
+    for record in draw_result_records:
+        if record.get("draw_id") in inventory_by_id:
+            continue
+        verified_result = verify_draw_result_record(record, None, archive_dir)
+        result_status = verified_result["status"]
+        if result_status == "pending_inventory":
+            out_of_inventory_result_raw_verified += 1
+        elif result_status == "raw_evidence_invalid":
+            out_of_inventory_result_raw_invalid += 1
+        source = record.get("source", {})
+        out_of_inventory_draw_results.append({
+            "draw_id": record.get("draw_id"),
+            "draw_date": record.get("draw_date"),
+            "front_numbers": verified_result.get("front_numbers"),
+            "back_numbers": verified_result.get("back_numbers"),
+            "result_observation_id": record.get("result_observation_id"),
+            "draw_result_status": result_status,
+            "source_url": source.get("final_url"),
+            "body_sha256": source.get("body_sha256"),
+            "source_authority_class": source.get("authority_class"),
+            "raw_evidence_verified": result_status == "pending_inventory",
+            "inventory_crosswalk_status": "not_in_inventory",
+            "eligible": False,
+            "exclusion_reason": (
+                "inventory_crosswalk_pending" if result_status == "pending_inventory" else result_status
+            ),
+        })
     collector_receipt_path = archive_dir / "receipt.json"
     collector_receipt = None
     collector_receipt_raw = b""
@@ -454,6 +484,10 @@ def build_ball_set_coverage(
         "out_of_inventory_observation_count": out_of_inventory,
         "out_of_inventory_observations": out_of_inventory_records,
         "out_of_inventory_raw_objects_verified": out_of_inventory_raw_verified,
+        "out_of_inventory_draw_results": out_of_inventory_draw_results,
+        "out_of_inventory_draw_result_count": len(out_of_inventory_draw_results),
+        "out_of_inventory_draw_result_raw_objects_verified": out_of_inventory_result_raw_verified,
+        "out_of_inventory_draw_result_raw_objects_invalid": out_of_inventory_result_raw_invalid,
         "out_of_inventory_raw_objects_invalid": out_of_inventory_raw_invalid,
         "parser_versions": sorted(parser_versions | {PARSER_VERSION}),
         "source_domains": sorted(by_source_domain),
