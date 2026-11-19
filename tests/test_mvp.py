@@ -70,7 +70,7 @@ class MvpOrchestratorTests(unittest.TestCase):
             dataset.write_text("".join(json.dumps(draw(i)) + "\n" for i in range(1, 8)), encoding="utf-8")
             with patch.dict(os.environ, {"GITHUB_SHA": ""}):
                 with self.assertRaisesRegex(ValueError, "GITHUB_SHA"):
-                    run_mvp(dataset, output)
+                    run_mvp(dataset, output, code_commit="a" * 40)
             self.assertFalse(output.exists())
 
     def test_generation_identity_binds_code_commit(self):
