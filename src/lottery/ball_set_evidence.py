@@ -483,7 +483,7 @@ def main() -> int:
     parser.add_argument("--ledger", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--delay", type=float, default=0.5)
-    parser.add_argument("--max-forward-pages", type=int, default=1000)
+    parser.add_argument("--max-forward-pages", type=int, default=2000)
     args = parser.parse_args()
     try:
         receipt = collect_ball_set_evidence(
