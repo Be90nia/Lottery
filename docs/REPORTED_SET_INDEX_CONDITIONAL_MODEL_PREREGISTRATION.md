@@ -56,7 +56,9 @@ No hyperparameter search, feature search, or strategy selection is permitted on 
 - Secondary score: marginal inclusion Brier score and calibration residual.
 - Compare each non-uniform estimator with the uniform baseline on the same chronological targets within each index.
 - The planned family is 3 indices × 2 challengers × 2 zones = 12 comparisons; apply Holm correction across all 12.
-- Use paired moving-block bootstrap with block length 10, 10,000 replicates, seed `20261119`, for uncertainty intervals. Report target counts and the number of complete blocks; do not overstate precision when the number of blocks is small.
+- Use paired moving-block bootstrap with block length 10, 10,000 replicates, seed `20261119`, for 95% uncertainty intervals.
+- For each of the 12 primary exact-NLL comparisons, compute a one-sided paired block sign-flip randomization p-value from non-overlapping chronological 10-target block means (10,000 sign-flip replicates, deterministic comparison-specific seeds); discard only the trailing incomplete block for this p-value. Apply Holm correction across all 12 p-values at family-wise alpha 0.05.
+- Report target counts, complete-block counts, raw p-values, and Holm-adjusted p-values; if any comparison has fewer than 10 complete blocks, suppress inferential claims and report descriptively only.
 - Report per-index results and pooled descriptive results separately. No pooled result may conceal a weak or adverse index-specific result.
 
 ## 6. Holdout and promotion boundaries
