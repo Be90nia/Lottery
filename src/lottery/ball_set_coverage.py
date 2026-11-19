@@ -75,10 +75,12 @@ def _verify_observation(
             return "raw_evidence_invalid", None, source.get("final_url")
         manifest_path = _safe_raw_path(archive_dir, source.get("manifest_object_ref"))
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        for key in ("requested_url", "final_url", "retrieved_at_utc", "http_status",
-                    "content_type", "body_byte_length", "body_sha256", "raw_object_ref"):
-            if manifest.get(key) != source.get(key):
-                return "raw_evidence_invalid", None, source.get("final_url")
+        expected_manifest = {
+            key: value for key, value in source.items()
+            if key not in ("authority_class", "manifest_object_ref")
+        }
+        if manifest != expected_manifest:
+            return "raw_evidence_invalid", None, source.get("final_url")
         identity = {
             "draw_id": observation.get("draw_id"),
             "source_url": source.get("final_url"),
