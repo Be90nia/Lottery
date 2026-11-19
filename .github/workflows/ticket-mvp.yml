@@ -4,7 +4,11 @@ on:
   pull_request:
     paths:
       - "src/lottery/tickets.py"
+      - "src/lottery/mvp.py"
       - "scripts/generate_tickets.py"
+      - "scripts/run_mvp.py"
+      - "tests/test_mvp.py"
+      - "docs/TICKET_MVP_BATCH_CONTRACT.md"
       - "data/candidates/legacy_draws.jsonl"
       - ".github/workflows/ticket-mvp.yml"
   workflow_dispatch:
