@@ -274,6 +274,8 @@ def ingest_snapshot_directory(
             "sha256": digest,
             "bytes": len(raw),
             "records": len(rows),
+            "page_no": sidecar.get("page_no") if isinstance(sidecar, dict) else None,
+            "run_id": sidecar.get("run_id") if isinstance(sidecar, dict) else None,
             "sidecar_manifest": sidecar_path.name if sidecar is not None else None,
             "provenance_complete": bool(required_provenance),
         })
