@@ -277,6 +277,11 @@ def ingest_snapshot_directory(
         "snapshot_sha256": [item["sha256"] for item in snapshot_reports],
         "snapshots": snapshot_reports,
         "provenance_complete": provenance_complete,
+        # Complete per-page provenance does not prove that the upstream page
+        # inventory itself was complete. Keep publication blocked until a
+        # separately validated source-total reconciliation is implemented.
+        "source_completeness_verified": False,
+        "source_completeness_status": "unverified",
         "validation": validation,
         "output_file": output.name,
         "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
