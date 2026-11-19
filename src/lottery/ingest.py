@@ -194,6 +194,7 @@ def ingest_snapshot_directory(
     provenance_complete = True
     page_numbers: list[int] = []
     run_ids: set[str] = set()
+    page_sizes: set[int] = set()
     for path in snapshot_paths:
         raw = path.read_bytes()
         digest = hashlib.sha256(raw).hexdigest()
@@ -224,6 +225,12 @@ def ingest_snapshot_directory(
         parsed_url = urllib.parse.urlsplit(source_url) if isinstance(source_url, str) else None
         query = urllib.parse.parse_qs(parsed_url.query) if parsed_url is not None else {}
         retrieved_at = sidecar.get("retrieved_at") if isinstance(sidecar, dict) else None
+        page_size_text = query.get("pageSize", [None])[0]
+        page_size_valid = (
+            isinstance(page_size_text, str)
+            and page_size_text.isdigit()
+            and 1 <= int(page_size_text) <= 100
+        )
         timestamp_valid = False
         if isinstance(retrieved_at, str):
             try:
@@ -239,6 +246,9 @@ def ingest_snapshot_directory(
             and parsed_url.hostname == "webapi.sporttery.cn"
             and parsed_url.path == "/gateway/lottery/getHistoryPageListV1.qry"
             and query.get("gameNo") == ["85"]
+            and query.get("provinceId") == ["0"]
+            and query.get("isVerify") == ["1"]
+            and page_size_valid
             and type(sidecar.get("page_no")) is int
             and sidecar.get("page_no") >= 1
             and query.get("pageNo") == [str(sidecar.get("page_no"))]
@@ -258,6 +268,7 @@ def ingest_snapshot_directory(
         else:
             page_numbers.append(sidecar["page_no"])
             run_ids.add(sidecar["run_id"])
+            page_sizes.add(int(page_size_text))
         snapshot_reports.append({
             "raw_file": path.name,
             "sha256": digest,
@@ -276,6 +287,8 @@ def ingest_snapshot_directory(
             )
         if len(run_ids) != 1:
             raise IngestionError("strict snapshot import requires all pages from one fetch run")
+        if len(page_sizes) != 1:
+            raise IngestionError("strict snapshot import requires one consistent pageSize")
 
     ordered = sorted(all_rows.values(), key=lambda row: (row.draw_date, row.draw_id))
     from .validate import validate_records
