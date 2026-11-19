@@ -245,6 +245,8 @@ def conditional_poisson_marginals(log_weights: Sequence[float], k: int) -> tuple
         probability = math.exp(log_weight + log_excluded - log_z)
         if not math.isfinite(probability) or probability < 0.0 or probability > 1.0 + 1e-12:
             raise ArithmeticError("invalid inclusion marginal")
+        if 0 < k < m and (probability == 0.0 or probability >= 1.0):
+            raise ArithmeticError("finite log weights produced a marginal outside float64 interior range")
         marginals.append(min(1.0, probability))
     if abs(math.fsum(marginals) - k) > 1e-10:
         raise ArithmeticError("inclusion marginals do not sum to selection size")
