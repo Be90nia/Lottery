@@ -114,16 +114,15 @@ class BallSetCoverageTests(unittest.TestCase):
 
 
     def test_conflict_record_excludes_draw_from_verified_view(self):
-        self.collect(page(3))
-        records = [json.loads(line) for line in self.ledger.read_text().splitlines()]
-        conflict = dict(records[0])
-        conflict["observation_id"] = "synthetic-conflict-id"
-        conflict["observation_status"] = "conflict"
-        with self.ledger.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(conflict) + "\n")
+        raw = page(3).replace(
+            "本期使用第3套摇奖球".encode("utf-8"),
+            "本期使用第3套摇奖球 本期使用第2套摇奖球".encode("utf-8"),
+        )
+        self.collect(raw)
         report = self.report()
         self.assertEqual(report["per_draw"][0]["status"], "conflicting_official_sources")
         self.assertEqual(report["summary"]["primary_verified_draws"], 0)
+
 
     def test_tampered_raw_object_is_excluded(self):
         self.collect(page(3))
