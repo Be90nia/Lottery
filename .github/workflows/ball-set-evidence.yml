@@ -13,8 +13,8 @@ on:
       - "tests/test_validate.py"
       - "scripts/collect_ball_set_evidence.py"
       - "scripts/build_ball_set_coverage.py"
-      - "data/candidates/pinned-draws-20261118.jsonl"
-      - "data/candidates/pinned-draws-20261118.jsonl.manifest.json"
+      - "data/ball_set/draw-inventory-20261118.jsonl"
+      - "data/ball_set/draw-inventory-20261118.jsonl.manifest.json"
 
 permissions:
   actions: read
@@ -70,7 +70,7 @@ jobs:
             --archive-dir evidence-archive \
             --ledger evidence-archive/observations.jsonl \
             --receipt evidence-archive/receipt.json \
-            --draw-inventory data/candidates/pinned-draws-20261118.jsonl \
+            --draw-inventory data/ball_set/draw-inventory-20261118.jsonl \
             --delay 1.0 \
             --max-forward-pages 2000
 
@@ -108,7 +108,7 @@ jobs:
         continue-on-error: true
         run: |
           python scripts/build_ball_set_coverage.py \
-            --draw-inventory data/candidates/pinned-draws-20261118.jsonl \
+            --draw-inventory data/ball_set/draw-inventory-20261118.jsonl \
             --ledger evidence-archive/observations.jsonl \
             --archive-dir evidence-archive \
             --output-json evidence-archive/coverage/coverage.json \
