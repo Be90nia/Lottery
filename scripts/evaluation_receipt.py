@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build and verify immutable paired model-evaluation receipts."""
 from __future__ import annotations
-import argparse, json
+import argparse, json, os, tempfile
 from pathlib import Path
 import sys
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,8 +38,23 @@ def main() -> int:
                 champion_model_id=args.champion_model_id, dataset_sha256=args.dataset_sha256,
                 code_commit=args.code_commit, protocol_version=args.protocol_version,
                 scope=args.scope, min_targets=args.min_targets)
+            if args.output.resolve() == args.scores.resolve():
+                raise EvaluationGateError("receipt output must not overwrite the score input")
             args.output.parent.mkdir(parents=True, exist_ok=True)
-            args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=args.output.name + ".", suffix=".tmp", dir=args.output.parent
+            )
+            temporary = Path(temporary_name)
+            try:
+                with os.fdopen(descriptor, "w", encoding="utf-8", newline="\\n") as handle:
+                    handle.write(json.dumps(result, ensure_ascii=False, indent=2) + "\\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, args.output)
+            except Exception:
+                temporary.unlink(missing_ok=True)
+                raise
+
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, EvaluationGateError, ValueError) as exc:
