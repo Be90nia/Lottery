@@ -192,6 +192,8 @@ def ingest_snapshot_directory(
     all_rows: dict[str, Draw] = {}
     snapshot_reports: list[dict[str, Any]] = []
     provenance_complete = True
+    page_numbers: list[int] = []
+    run_ids: set[str] = set()
     for path in snapshot_paths:
         raw = path.read_bytes()
         digest = hashlib.sha256(raw).hexdigest()
@@ -237,6 +239,11 @@ def ingest_snapshot_directory(
             and parsed_url.hostname == "webapi.sporttery.cn"
             and parsed_url.path == "/gateway/lottery/getHistoryPageListV1.qry"
             and query.get("gameNo") == ["85"]
+            and type(sidecar.get("page_no")) is int
+            and sidecar.get("page_no") >= 1
+            and query.get("pageNo") == [str(sidecar.get("page_no"))]
+            and isinstance(sidecar.get("run_id"), str)
+            and bool(sidecar.get("run_id"))
             and timestamp_valid
             and sidecar.get("http_status") == 200
             and sidecar.get("sha256") == digest
@@ -248,6 +255,9 @@ def ingest_snapshot_directory(
                 raise IngestionError(
                     f"{sidecar_path}: manifest lacks complete official-source provenance"
                 )
+        else:
+            page_numbers.append(sidecar["page_no"])
+            run_ids.add(sidecar["run_id"])
         snapshot_reports.append({
             "raw_file": path.name,
             "sha256": digest,
@@ -256,6 +266,16 @@ def ingest_snapshot_directory(
             "sidecar_manifest": sidecar_path.name if sidecar is not None else None,
             "provenance_complete": bool(required_provenance),
         })
+
+    if require_manifests:
+        expected_pages = list(range(1, len(snapshot_paths) + 1))
+        if sorted(page_numbers) != expected_pages:
+            raise IngestionError(
+                "snapshot page inventory is not contiguous from page 1; "
+                f"expected {expected_pages}, found {sorted(page_numbers)}"
+            )
+        if len(run_ids) != 1:
+            raise IngestionError("strict snapshot import requires all pages from one fetch run")
 
     ordered = sorted(all_rows.values(), key=lambda row: (row.draw_date, row.draw_id))
     from .validate import validate_records
