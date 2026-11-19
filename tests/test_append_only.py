@@ -159,6 +159,16 @@ class AppendOnlyTests(unittest.TestCase):
                 self.output, self.manifest,
             )
 
+    def test_unverified_source_completeness_cannot_claim_no_new_draws(self):
+        self.prepare(self.old)
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        manifest["source_completeness_verified"] = False
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "pagination completeness is not independently verified"):
+            self.run_gate()
+        self.assertFalse(self.output.exists())
+        self.assertFalse(self.receipt.exists())
+
     def test_atomic_publication_primitive_never_clobbers_existing_path(self):
         target = self.root / "atomic.json"
         _atomic_write_new(target, b"first")
