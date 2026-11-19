@@ -9,6 +9,7 @@ from lottery.ball_set_evidence import (
     BallSetEvidenceError,
     collect_ball_set_evidence,
     parse_announcement,
+    parse_draw_result,
     _next_draw_id, _RedirectTracker, _archive_raw_response, _canonical_hash, _read_ledger,
 )
 
@@ -30,6 +31,25 @@ def page(draw_id="26128", date="2026年11月9日", label=3, newer=None, footer=T
     ).encode("utf-8")
 
 
+def page_with_draw_result(
+    draw_id="26131",
+    date="2026年11月16日",
+    label=1,
+    order_front="14 22 11 27 23",
+    order_back="10 08",
+    result_front="11 14 22 23 27",
+    result_back="08 10",
+):
+    raw = page(draw_id=draw_id, date=date, label=label).decode("utf-8")
+    table = (
+        "<table>"
+        "<tr><td>本期出球顺序：</td><td>" + order_front + "</td><td>" + order_back + "</td></tr>"
+        "<tr><td>本期开奖号码：</td><td>" + result_front + "</td><td>" + result_back + "</td></tr>"
+        "</table>"
+    )
+    return raw.replace("</body>", table + "</body>").encode("utf-8")
+
+
 def fetched(url, body, status=200):
     return {
         "requested_url": url, "final_url": url, "redirect_chain": [],
@@ -49,6 +69,35 @@ class BallSetParserTests(unittest.TestCase):
             self.assertEqual(parsed.observation_status, "primary_verified")
             self.assertEqual(parsed.matched_text, f"本期使用第{index}套摇奖球")
             self.assertTrue(parsed.authority_footer_present)
+
+    def test_parse_official_draw_numbers_and_order(self):
+        parsed = parse_draw_result(
+            page_with_draw_result(),
+            "https://www.js-lottery.com/cms/post-148224.html",
+        )
+        self.assertEqual(parsed.front_numbers, (11, 14, 22, 23, 27))
+        self.assertEqual(parsed.back_numbers, (8, 10))
+        self.assertEqual(parsed.front_draw_order, (14, 22, 11, 27, 23))
+        self.assertEqual(parsed.back_draw_order, (10, 8))
+
+    def test_draw_order_must_match_sorted_result(self):
+        with self.assertRaisesRegex(BallSetEvidenceError, "do not match"):
+            parse_draw_result(
+                page_with_draw_result(order_front="01 02 03 04 05"),
+                "https://www.js-lottery.com/cms/post-148224.html",
+            )
+
+    def test_draw_result_rejects_duplicates_and_out_of_range_values(self):
+        with self.assertRaisesRegex(BallSetEvidenceError, "distinct values"):
+            parse_draw_result(
+                page_with_draw_result(result_front="01 02 02 04 05"),
+                "https://www.js-lottery.com/cms/post-148224.html",
+            )
+        with self.assertRaisesRegex(BallSetEvidenceError, "1..12"):
+            parse_draw_result(
+                page_with_draw_result(result_back="08 13"),
+                "https://www.js-lottery.com/cms/post-148224.html",
+            )
 
     def test_missing_label_stays_unknown(self):
         parsed = parse_announcement(page(label=None), BASE)
