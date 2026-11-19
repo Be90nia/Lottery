@@ -100,9 +100,11 @@ eligibility, archival, and analysis rules. The prospective test has not started.
 Generate legal candidate combinations from a draw-history JSONL file:
 
 ```bash
-python scripts/generate_tickets.py data/candidates/legacy_draws.jsonl \
-  --tickets 5 --seed 20261119 --output ticket-candidates.json
+python scripts/run_mvp.py --dataset data/candidates/legacy_draws.jsonl \
+  --tickets-per-strategy 5 --seed 20261119 --output mvp-output.json
 ```
+
+The one-command runner validates the input, generates the three-lane batch, and atomically writes a machine-readable receipt alongside the batch. The receipt makes explicit that source authentication, automatic sync, model training, and promotion were not performed by this command. The lower-level `scripts/generate_tickets.py` command remains available for direct candidate generation.
 
 The command emits N tickets in each of three explicitly separate strategy
 lanes: legal uniform sampling, expanding-frequency weights, and EWMA weights
