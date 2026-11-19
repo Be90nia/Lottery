@@ -18,6 +18,13 @@ class ReportedSetIndexError(ValueError):
     pass
 
 
+PILOT_PROTOCOL_VERSION = "reported-set-index-pilot-v1"
+PILOT_EXPECTED_SET_COUNTS = {"1": 360, "2": 347, "3": 360}
+PILOT_EXPECTED_RECORD_COUNT = 1067
+PILOT_EXPECTED_FIRST_DRAW = "19101"
+PILOT_EXPECTED_LAST_DRAW = "26131"
+
+
 def _canonical(value: dict[str, Any]) -> bytes:
     return json.dumps(
         value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
@@ -154,14 +161,25 @@ def build_reported_set_index_view(
         raise ReportedSetIndexError("primary_verified count differs from the derived view")
     if set_counts != summary.get("set_index_counts"):
         raise ReportedSetIndexError("set-index counts differ from the coverage summary")
+    if (set_counts != PILOT_EXPECTED_SET_COUNTS
+            or len(view_rows) != PILOT_EXPECTED_RECORD_COUNT):
+        raise ReportedSetIndexError(
+            "reported-index counts differ from the frozen pilot preregistration; version the protocol before evaluation"
+        )
 
     view_rows.sort(key=lambda row: (row["draw_date"], row["draw_id"]))
+    if (view_rows[0]["draw_id"] != PILOT_EXPECTED_FIRST_DRAW
+            or view_rows[-1]["draw_id"] != PILOT_EXPECTED_LAST_DRAW):
+        raise ReportedSetIndexError(
+            "reported-index draw window differs from the frozen pilot preregistration"
+        )
     output_bytes = b"".join(
         (json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
         for row in view_rows
     )
     manifest = {
         "schema_version": "lottery.reported-set-index-view/v1",
+        "pilot_protocol_version": PILOT_PROTOCOL_VERSION,
         "inventory_sha256": inventory_sha,
         "inventory_trust_status": coverage["inventory_trust_status"],
         "coverage_report_sha256": report_hash,
