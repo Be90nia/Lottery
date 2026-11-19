@@ -212,6 +212,49 @@ def verify_evaluation_receipt(receipt: dict[str, Any]) -> bool:
             or type(body.get("target_count")) is not int
             or body["target_count"] < config["min_targets"]):
         raise EvaluationGateError("receipt evaluation configuration is invalid")
+    code_commit = body.get("code_commit")
+    if (not isinstance(code_commit, str) or len(code_commit) != 40
+            or any(char not in "0123456789abcdef" for char in code_commit)):
+        raise EvaluationGateError("receipt code_commit is invalid")
+    candidate_id = body.get("candidate_model_id")
+    champion_id = body.get("champion_model_id")
+    if (not isinstance(candidate_id, str) or not candidate_id.strip()
+            or not isinstance(champion_id, str) or not champion_id.strip()
+            or candidate_id == champion_id):
+        raise EvaluationGateError("receipt model IDs are invalid")
+    if not isinstance(body.get("protocol_version"), str) or not body["protocol_version"].strip():
+        raise EvaluationGateError("receipt protocol version is invalid")
+    comparisons = body.get("comparisons")
+    if not isinstance(comparisons, dict) or set(comparisons) != {"champion", "uniform"}:
+        raise EvaluationGateError("receipt comparisons are incomplete")
+    all_strictly_better = True
+    for reference in ("champion", "uniform"):
+        if not isinstance(comparisons[reference], dict) or set(comparisons[reference]) != set(ZONES):
+            raise EvaluationGateError("receipt comparison zones are incomplete")
+        for zone in ZONES:
+            zone_results = comparisons[reference][zone]
+            if not isinstance(zone_results, dict) or set(zone_results) != set(METRICS):
+                raise EvaluationGateError("receipt comparison metrics are incomplete")
+            for metric in METRICS:
+                result = zone_results[metric]
+                if not isinstance(result, dict):
+                    raise EvaluationGateError("receipt bootstrap result is invalid")
+                lower, upper, mean = (
+                    result.get("ci_95_lower"), result.get("ci_95_upper"),
+                    result.get("mean_delta"),
+                )
+                if (any(type(value) not in (int, float) or not math.isfinite(value)
+                        for value in (lower, upper, mean))
+                        or lower > upper
+                        or result.get("replicates") != config["bootstrap_replicates"]
+                        or result.get("block_length_draws") != config["block_length_draws"]
+                        or result.get("seed") != config["bootstrap_seed"]):
+                    raise EvaluationGateError("receipt bootstrap result/configuration mismatch")
+                if upper >= 0:
+                    all_strictly_better = False
+    expected_decision = "eligible_for_human_review" if all_strictly_better else "rejected_or_inconclusive"
+    if body.get("decision") != expected_decision:
+        raise EvaluationGateError("receipt decision does not match paired interval results")
     if body.get("production_ready") is not False or body.get("automatic_promotion") is not False:
         raise EvaluationGateError("evaluation receipt cannot authorize production or promotion")
     return True
