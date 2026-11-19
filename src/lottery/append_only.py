@@ -5,12 +5,15 @@ import argparse
 import hashlib
 import json
 import os
+import re
+import urllib.parse
 import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .ingest import IngestionError, _parse_page
 from .validate import DatasetValidationError, validate_records
 
 
@@ -79,12 +82,210 @@ def _atomic_write_new(path: Path, content: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _json_pointer(payload: Any, pointer: str) -> Any:
+    if not isinstance(pointer, str) or not pointer.startswith("/") or pointer == "/":
+        raise AppendOnlyError("pagination metadata JSON pointer is invalid")
+    current = payload
+    for raw_token in pointer[1:].split("/"):
+        token = raw_token.replace("~1", "/").replace("~0", "~")
+        if isinstance(current, dict) and token in current:
+            current = current[token]
+        elif isinstance(current, list) and token.isdigit() and int(token) < len(current):
+            current = current[int(token)]
+        else:
+            raise AppendOnlyError(f"pagination metadata pointer does not resolve: {pointer}")
+    return current
+
+
+def _verify_source_completeness_attestation(
+    manifest: dict[str, Any],
+    candidate: list[dict[str, Any]],
+    snapshots_dir: Path,
+) -> dict[str, Any]:
+    attestation = manifest.get("source_completeness_attestation")
+    required_attestation_keys = {
+        "schema", "source_total_records", "source_total_pages", "page_size",
+        "metadata_page_no", "total_records_pointer", "total_pages_pointer", "pages",
+    }
+    if not isinstance(attestation, dict) or set(attestation) != required_attestation_keys:
+        raise AppendOnlyError(
+            "source pagination completeness attestation is missing or has an invalid schema"
+        )
+    if attestation.get("schema") != "sporttery-pagination-attestation-v1":
+        raise AppendOnlyError("unsupported source pagination attestation schema")
+    if type(attestation.get("source_total_records")) is not int or attestation["source_total_records"] < 1:
+        raise AppendOnlyError("source total record count must be a positive integer")
+    if type(attestation.get("source_total_pages")) is not int or attestation["source_total_pages"] < 1:
+        raise AppendOnlyError("source total page count must be a positive integer")
+    if type(attestation.get("page_size")) is not int or not 1 <= attestation["page_size"] <= 100:
+        raise AppendOnlyError("attested page size must be an integer in 1..100")
+    if attestation.get("metadata_page_no") != 1:
+        raise AppendOnlyError("pagination totals must be attested from source page 1")
+    total_records = attestation["source_total_records"]
+    total_pages = attestation["source_total_pages"]
+    page_size = attestation["page_size"]
+    if total_pages != (total_records + page_size - 1) // page_size:
+        raise AppendOnlyError("source total pages do not reconcile with total records and page size")
+    if manifest.get("source_completeness_verified") is not True:
+        raise AppendOnlyError(
+            "source pagination completeness is not independently verified; refusing publication"
+        )
+    if manifest.get("provenance_complete") is not True:
+        raise AppendOnlyError("source pagination attestation requires complete page provenance")
+    if not snapshots_dir.is_dir():
+        raise AppendOnlyError("raw snapshot directory is missing")
+
+    pages = attestation.get("pages")
+    snapshots = manifest.get("snapshots")
+    if (not isinstance(pages, list) or len(pages) != total_pages
+            or not isinstance(snapshots, list) or len(snapshots) != total_pages):
+        raise AppendOnlyError("attested page inventory does not match source total pages")
+    if manifest.get("snapshot_count") != total_pages:
+        raise AppendOnlyError("candidate snapshot_count does not match source total pages")
+    if manifest.get("snapshot_sha256") != [page.get("sha256") for page in pages if isinstance(page, dict)]:
+        raise AppendOnlyError("candidate snapshot SHA inventory does not match pagination attestation")
+
+    source_rows: list[dict[str, Any]] = []
+    seen_draw_ids: set[str] = set()
+    run_ids: set[str] = set()
+    verified_pages: list[dict[str, Any]] = []
+    metadata_payload: dict[str, Any] | None = None
+    api_path = "/gateway/lottery/getHistoryPageListV1.qry"
+
+    for expected_page_no, (page, snapshot) in enumerate(zip(pages, snapshots), 1):
+        if (not isinstance(page, dict)
+                or set(page) != {"page_no", "raw_file", "sha256", "records"}
+                or type(page.get("page_no")) is not int
+                or page["page_no"] != expected_page_no):
+            raise AppendOnlyError("attested page numbers must be contiguous from page 1")
+        if not isinstance(snapshot, dict):
+            raise AppendOnlyError("snapshot manifest entry must be an object")
+        raw_file = page.get("raw_file")
+        digest = page.get("sha256")
+        records = page.get("records")
+        if (not isinstance(raw_file, str) or Path(raw_file).name != raw_file
+                or not raw_file.endswith(".json")
+                or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
+                or type(records) is not int or records < 1):
+            raise AppendOnlyError(f"page {expected_page_no}: attestation entry is invalid")
+        if (snapshot.get("page_no") != expected_page_no
+                or snapshot.get("raw_file") != raw_file
+                or snapshot.get("sha256") != digest
+                or snapshot.get("records") != records
+                or snapshot.get("provenance_complete") is not True):
+            raise AppendOnlyError(f"page {expected_page_no}: snapshot manifest differs from attestation")
+
+        raw_path = snapshots_dir / raw_file
+        sidecar_path = snapshots_dir / f"{Path(raw_file).stem}.manifest.json"
+        if not raw_path.is_file() or not sidecar_path.is_file():
+            raise AppendOnlyError(f"page {expected_page_no}: raw snapshot or sidecar is missing")
+        raw = raw_path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != digest:
+            raise AppendOnlyError(f"page {expected_page_no}: raw snapshot SHA-256 mismatch")
+        try:
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            payload = json.loads(raw.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise AppendOnlyError(f"page {expected_page_no}: raw snapshot or sidecar is invalid JSON") from exc
+        if not isinstance(sidecar, dict) or not isinstance(payload, dict):
+            raise AppendOnlyError(f"page {expected_page_no}: raw snapshot and sidecar must be objects")
+        source_url = sidecar.get("url")
+        parsed = urllib.parse.urlsplit(source_url) if isinstance(source_url, str) else None
+        query = urllib.parse.parse_qs(parsed.query) if parsed is not None else {}
+        retrieved_at = sidecar.get("retrieved_at")
+        timestamp_valid = False
+        if isinstance(retrieved_at, str):
+            try:
+                retrieved = datetime.fromisoformat(retrieved_at.replace("Z", "+00:00"))
+                timestamp_valid = retrieved.tzinfo is not None and retrieved.utcoffset() is not None
+            except ValueError:
+                timestamp_valid = False
+        if (sidecar.get("source") != "Sporttery public historical draw API"
+                or sidecar.get("raw_file") != raw_file
+                or sidecar.get("sha256") != digest
+                or sidecar.get("bytes") != len(raw)
+                or type(sidecar.get("http_status")) is not int or sidecar.get("http_status") != 200
+                or type(sidecar.get("page_no")) is not int or sidecar.get("page_no") != expected_page_no
+                or not isinstance(sidecar.get("run_id"), str) or not sidecar.get("run_id")
+                or not timestamp_valid
+                or parsed is None or parsed.scheme != "https"
+                or parsed.hostname != "webapi.sporttery.cn" or parsed.path != api_path
+                or query.get("gameNo") != ["85"] or query.get("provinceId") != ["0"]
+                or query.get("isVerify") != ["1"]
+                or query.get("pageNo") != [str(expected_page_no)]
+                or query.get("pageSize") != [str(page_size)]):
+            raise AppendOnlyError(f"page {expected_page_no}: official-source sidecar provenance is invalid")
+        run_ids.add(sidecar["run_id"])
+
+        value = payload.get("value")
+        if not isinstance(value, dict) or not isinstance(value.get("list"), list):
+            raise AppendOnlyError(f"page {expected_page_no}: raw response has no value.list array")
+        if len(value["list"]) != records:
+            raise AppendOnlyError(f"page {expected_page_no}: attested record count differs from raw page")
+        expected_records = (
+            page_size if expected_page_no < total_pages
+            else total_records - page_size * (total_pages - 1)
+        )
+        if records != expected_records:
+            raise AppendOnlyError(f"page {expected_page_no}: page record count violates source pagination totals")
+        if expected_page_no == 1:
+            metadata_payload = payload
+        try:
+            parsed_rows = _parse_page(raw, expected_page_no, f"sha256:{digest}")
+        except IngestionError as exc:
+            raise AppendOnlyError(f"page {expected_page_no}: source page parsing failed: {exc}") from exc
+        for parsed_row in parsed_rows:
+            row_dict = {
+                "draw_id": parsed_row.draw_id,
+                "draw_date": parsed_row.draw_date,
+                "front_numbers": parsed_row.front_numbers,
+                "back_numbers": parsed_row.back_numbers,
+                "front_draw_order": parsed_row.front_draw_order,
+                "back_draw_order": parsed_row.back_draw_order,
+                "source_unsort_drawresult": parsed_row.source_unsort_drawresult,
+                "source_equipment_count": parsed_row.source_equipment_count,
+            }
+            if parsed_row.draw_id in seen_draw_ids:
+                raise AppendOnlyError(f"duplicate draw ID across source pages: {parsed_row.draw_id}")
+            seen_draw_ids.add(parsed_row.draw_id)
+            source_rows.append(row_dict)
+        verified_pages.append({"page_no": expected_page_no, "sha256": digest, "records": records})
+
+    if len(run_ids) != 1:
+        raise AppendOnlyError("all source pages must belong to one immutable fetch run")
+    if len(source_rows) != total_records or len(candidate) != total_records:
+        raise AppendOnlyError("source total records do not match parsed pages and candidate rows")
+    if metadata_payload is None:
+        raise AppendOnlyError("source page 1 metadata is missing")
+    if (type(_json_pointer(metadata_payload, attestation["total_records_pointer"])) is not int
+            or _json_pointer(metadata_payload, attestation["total_records_pointer"]) != total_records
+            or type(_json_pointer(metadata_payload, attestation["total_pages_pointer"])) is not int
+            or _json_pointer(metadata_payload, attestation["total_pages_pointer"]) != total_pages):
+        raise AppendOnlyError("source page 1 pagination metadata does not match attested totals")
+
+    source_rows.sort(key=lambda row: (row["draw_date"], row["draw_id"]))
+    if [_semantic(row) for row in source_rows] != [_semantic(row) for row in candidate]:
+        raise AppendOnlyError("candidate rows do not exactly reconcile to the attested raw source pages")
+
+    return {
+        "schema": attestation["schema"],
+        "source_total_records": total_records,
+        "source_total_pages": total_pages,
+        "page_size": page_size,
+        "verified_page_sha256": [page["sha256"] for page in verified_pages],
+        "attestation_sha256": hashlib.sha256(
+            json.dumps(attestation, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest(),
+    }
+
+
 def reconcile_append_only(
     current_path: Path,
     candidate_path: Path,
     candidate_manifest_path: Path,
     output_path: Path,
     receipt_path: Path,
+    snapshots_dir: Path,
 ) -> dict[str, Any]:
     protected = [current_path, candidate_path, candidate_manifest_path]
     destinations = [output_path, receipt_path]
@@ -99,6 +300,9 @@ def reconcile_append_only(
         )
     if receipt_path.exists():
         raise AppendOnlyError(f"refusing to overwrite existing receipt: {receipt_path}")
+    snapshot_root = snapshots_dir.resolve()
+    if any(path.is_relative_to(snapshot_root) for path in resolved_outputs):
+        raise AppendOnlyError("publication outputs must not be placed inside the raw snapshot directory")
 
     current = _read(current_path)
     candidate = _read(candidate_path)
@@ -110,10 +314,9 @@ def reconcile_append_only(
         raise AppendOnlyError("candidate manifest must be an object")
     if manifest.get("output_sha256") != _hash(candidate_path):
         raise AppendOnlyError("candidate manifest output_sha256 does not match candidate bytes")
-    if manifest.get("source_completeness_verified") is not True:
-        raise AppendOnlyError(
-            "source pagination completeness is not independently verified; refusing publication"
-        )
+    source_attestation_receipt = _verify_source_completeness_attestation(
+        manifest, candidate, snapshots_dir
+    )
     if (
         manifest.get("trust_status") != "manifest_complete_not_officially_authenticated"
         or manifest.get("provenance_complete") is not True
@@ -186,6 +389,7 @@ def reconcile_append_only(
         "candidate_sha256": _hash(candidate_path),
         "candidate_manifest_sha256": _hash(candidate_manifest_path),
         "candidate_snapshot_count": manifest.get("snapshot_count"),
+        "source_completeness_attestation": source_attestation_receipt,
         "candidate_trust_status": manifest["trust_status"],
         "output_sha256": output_sha,
         "previous_records": len(current),
@@ -209,11 +413,12 @@ def main() -> int:
     parser.add_argument("--candidate-manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
+    parser.add_argument("--snapshots-dir", type=Path, required=True)
     args = parser.parse_args()
     try:
         result = reconcile_append_only(
             args.current, args.candidate, args.candidate_manifest,
-            args.output, args.receipt,
+            args.output, args.receipt, args.snapshots_dir,
         )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
