@@ -3,12 +3,13 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, Mock, patch
 
 from lottery.ball_set_evidence import (
     BallSetEvidenceError,
     collect_ball_set_evidence,
     parse_announcement,
+    fetch_announcement,
     _next_draw_id, _RedirectTracker, _archive_raw_response, _canonical_hash, _read_ledger,
 )
 
@@ -37,6 +38,32 @@ def fetched(url, body, status=200):
         "http_status": status, "content_type": "text/html; charset=utf-8",
         "body": body, "headers": {},
     }
+
+
+class BallSetFetchRetryTests(unittest.TestCase):
+    def test_retries_transient_read_timeout_and_preserves_successful_response(self):
+        first_opener = Mock()
+        first_opener.open.side_effect = TimeoutError("The read operation timed out")
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.headers = {"Content-Type": "text/html; charset=utf-8"}
+        response.geturl.return_value = BASE
+        response.read.return_value = page()
+        second_opener = Mock()
+        second_opener.open.return_value = response
+
+        with (
+            patch("lottery.ball_set_evidence.build_opener", side_effect=[first_opener, second_opener]),
+            patch("lottery.ball_set_evidence.time.sleep") as sleep,
+        ):
+            result = fetch_announcement(BASE)
+
+        self.assertEqual(result["http_status"], 200)
+        self.assertEqual(result["body"], page())
+        first_opener.open.assert_called_once()
+        second_opener.open.assert_called_once()
+        sleep.assert_called_once_with(1.0)
 
 
 class BallSetParserTests(unittest.TestCase):
