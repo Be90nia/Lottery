@@ -166,7 +166,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     expected = len(rows) - MIN_TRAIN
     header = {
         "record_type": "header", "schema": "lot-055-checkpoint-v2",
-        "snapshot_sha256": snapshot_digest, "code_commit": os.environ.get("GITHUB_SHA", "local"),
+        "snapshot_sha256": snapshot_digest, "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
         "zone": zone,
         "minimum_training_rows": MIN_TRAIN, "first_target": rows[MIN_TRAIN]["draw_id"],
         "last_target": rows[-1]["draw_id"], "models": ["uniform", "expanding", "ewma", "exponential_family"],
