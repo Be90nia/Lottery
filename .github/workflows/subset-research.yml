@@ -8,12 +8,6 @@ on:
         type: boolean
         required: false
         default: true
-  pull_request:
-    paths:
-      - "scripts/run_subset_rolling_origin.py"
-      - "src/lottery/subset_model/**"
-      - ".github/workflows/subset-research.yml"
-
 permissions:
   contents: read
   actions: read
