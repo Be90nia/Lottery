@@ -11,6 +11,7 @@ import json
 import math
 import os
 import random
+import numpy
 import scipy
 from pathlib import Path
 
@@ -252,6 +253,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                 observations[:idx],
                 max_iterations=CANDIDATE_MAX_ITERATIONS,
                 gradient_tolerance=CANDIDATE_GRADIENT_TOLERANCE,
+                history_size=10,
             )
             statuses = {"candidate": fit.terminal_status}
             scores = {"uniform": uniform_nll}
@@ -364,6 +366,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "objective_scale": "mean_nll", "regularization_lambda": 1.0,
         "solver": "scipy.optimize.L-BFGS-B",
         "solver_version": scipy.__version__,
+        "numpy_version": numpy.__version__,
         "solver_options": {
             "max_iterations": CANDIDATE_MAX_ITERATIONS,
             "max_function_evaluations": CANDIDATE_MAX_ITERATIONS * 100,
