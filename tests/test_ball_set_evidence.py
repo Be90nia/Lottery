@@ -18,6 +18,12 @@ BASE = "https://www.js-lottery.com/cms/post-148224.html"
 def page(draw_id="26128", date="2026年11月9日", label=3, newer=None, footer=True):
     label_text = f"<p>本期使用第{label}套摇奖球</p>" if label is not None else ""
     footer_text = "<footer>江苏省体育彩票管理中心版权所有</footer>" if footer else ""
+    results = {
+        "26128": "本期开奖号码：03 13 20 25 34 09 12",
+        "26129": "本期开奖号码：02 12 14 17 33 07 08",
+        "26130": "本期开奖号码：01 08 17 24 32 02 10",
+    }
+    result_text = f"<p>{results.get(draw_id, results['26128'])}</p>"
     link = ""
     if newer:
         next_id, href = newer
@@ -25,7 +31,7 @@ def page(draw_id="26128", date="2026年11月9日", label=3, newer=None, footer=T
     return (
         "<html><body>"
         f"<h1>中国体育彩票超级大乐透第{draw_id}期开奖公告</h1>"
-        f"<p>开奖日期：{date}</p>{label_text}{link}{footer_text}"
+        f"<p>开奖日期：{date}</p>{label_text}{result_text}{link}{footer_text}"
         "</body></html>"
     ).encode("utf-8")
 
