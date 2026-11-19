@@ -56,25 +56,14 @@ def _moving_block_bootstrap(values: list[float], seed: int) -> dict:
         means.append(sum(sample[:n]) / n)
     observed = sum(values) / n
     return {
-        "observed_mean_delta_candidate_minus_uniform": observed,
+        "observed_mean_delta_candidate_minus_reference": observed,
         "ci_95_lower": _percentile(means, 0.025),
         "ci_95_upper": _percentile(means, 0.975),
         "replicates": BOOTSTRAP_REPLICATES,
         "block_length_draws": BOOTSTRAP_BLOCK,
         "seed": seed,
-        "method": "non-circular moving-block bootstrap on chronological paired differences",
+        "method": "paired non-circular moving-block bootstrap on chronological score differences",
     }
-
-
-def _holm_adjust(p_values: dict[str, float]) -> dict[str, float]:
-    ordered = sorted(p_values.items(), key=lambda item: item[1])
-    adjusted = {}
-    running = 0.0
-    count = len(ordered)
-    for index, (name, value) in enumerate(ordered):
-        running = max(running, min(1.0, (count - index) * value))
-        adjusted[name] = running
-    return adjusted
 
 
 def _load_and_validate(path: Path) -> tuple[list[dict], str]:
