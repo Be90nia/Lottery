@@ -9,7 +9,7 @@ from lottery.ball_set_evidence import (
     BallSetEvidenceError,
     collect_ball_set_evidence,
     parse_announcement,
-    _next_draw_id, _RedirectTracker,
+    _next_draw_id, _RedirectTracker, _archive_raw_response, _canonical_hash, _read_ledger,
 )
 
 BASE = "https://www.js-lottery.com/cms/post-148224.html"
@@ -242,6 +242,41 @@ class BallSetArchiveTests(unittest.TestCase):
         with self.assertRaisesRegex(BallSetEvidenceError, "event hash mismatch"):
             self.collect(lambda url: fetched(url, page()))
 
+
+    def test_retrieval_manifest_is_write_once_for_same_capture_key(self):
+        with tempfile.TemporaryDirectory() as temp:
+            archive = Path(temp)
+            body = page(label=2)
+            capture = fetched(BASE, body)
+            first = _archive_raw_response(capture, archive, "Jiangsu Provincial Sports Lottery Management Center")
+            manifest_path = archive / first["manifest_object_ref"]
+            original = manifest_path.read_bytes()
+            second = _archive_raw_response(capture, archive, "Jiangsu Provincial Sports Lottery Management Center")
+            self.assertEqual(manifest_path.read_bytes(), original)
+            self.assertEqual(first, second)
+
+    def test_conflicting_retrieval_manifest_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as temp:
+            archive = Path(temp)
+            capture = fetched(BASE, page(label=2))
+            first = _archive_raw_response(capture, archive, "Jiangsu Provincial Sports Lottery Management Center")
+            manifest_path = archive / first["manifest_object_ref"]
+            original = manifest_path.read_bytes()
+            changed = dict(capture)
+            changed["headers"] = {"ETag": '"revision-2"'}
+            with self.assertRaisesRegex(BallSetEvidenceError, "manifest conflicts"):
+                _archive_raw_response(changed, archive, "Jiangsu Provincial Sports Lottery Management Center")
+            self.assertEqual(manifest_path.read_bytes(), original)
+
+    def test_boolean_set_index_is_rejected_even_with_recomputed_event_hash(self):
+        self.collect(lambda url: fetched(url, page(label=3)))
+        record = json.loads(self.ledger.read_text(encoding="utf-8").splitlines()[0])
+        record["reported_set_index"] = True
+        body = {key: value for key, value in record.items() if key != "event_hash"}
+        record["event_hash"] = _canonical_hash(body)
+        self.ledger.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        with self.assertRaisesRegex(BallSetEvidenceError, "invalid fields"):
+            _read_ledger(self.ledger)
 
 if __name__ == "__main__":
     unittest.main()
