@@ -31,15 +31,13 @@ jobs:
       - name: Restore cumulative evidence archive
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
-          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           mkdir -p evidence-archive
           previous="$(gh run list --workflow ball-set-evidence.yml --branch "$BRANCH" --limit 20 \
             --json databaseId,status \
-            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed")) | first // empty')"
+            --jq 'map(select(.status == "completed")) | first // empty')"
           if [ -z "$previous" ]; then
             echo "No previous completed archive artifact; initialize from the configured seed page."
             exit 0
