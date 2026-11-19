@@ -205,7 +205,7 @@ class BallSetCoverageTests(unittest.TestCase):
         record["reported_set_index"] = 2
         body = {key: value for key, value in record.items() if key != "event_hash"}
         record["event_hash"] = _canonical_hash(body)
-        self.ledger.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        self.ledger.write_text(json.dumps(record) + "\n", encoding="utf-8")
         report = self.report()
         self.assertEqual(report["per_draw"][0]["status"], "parse_error")
         self.assertEqual(report["summary"]["primary_verified_draws"], 0)
