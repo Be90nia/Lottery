@@ -13,7 +13,7 @@ import tempfile
 from typing import Any
 
 from .tickets import generate_ticket_candidates
-from .validate import validate_jsonl
+from .validate import validate_records
 
 
 def run_mvp(
@@ -31,9 +31,15 @@ def run_mvp(
         raise ValueError("output_path must not overwrite the input dataset")
     if output_path.exists():
         raise ValueError("output_path already exists; choose a new path to preserve prior run evidence")
-    validation = validate_jsonl(dataset_path)
     raw = dataset_path.read_bytes()
-    rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
+    try:
+        lines = raw.decode("utf-8").splitlines()
+        if not lines or any(not line.strip() for line in lines):
+            raise ValueError("dataset must be non-empty JSONL without blank lines")
+        rows = [json.loads(line) for line in lines]
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"dataset is not valid UTF-8 JSONL: {exc}") from exc
+    validation = validate_records(rows)
     batch = generate_ticket_candidates(
         rows,
         tickets_per_strategy=tickets_per_strategy,
