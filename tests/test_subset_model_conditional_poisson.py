@@ -119,6 +119,20 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
                         (0.3, 0.4, 0.5, 0.8), 2, history_size=history_size
                     )
 
+    def test_backward_sampler_rejects_invalid_rng_values(self):
+        class InvalidRng:
+            def __init__(self, value):
+                self.value = value
+
+            def random(self):
+                return self.value
+
+        model = ConditionalPoisson((0.3, -0.2, 0.7, -0.4, 0.1), 2)
+        for value in (False, True, -0.1, 1.0, float("nan"), "0.5"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "rng.random"):
+                    model.sample(InvalidRng(value))
+
     def test_backward_sampler_returns_distinct_legal_items_and_replays(self):
         model = ConditionalPoisson((0.3, -0.2, 0.7, -0.4, 0.1, 0.8), 3)
         left_rng = random.Random(20261118)
