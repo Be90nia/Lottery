@@ -130,16 +130,19 @@ def _parse_page(raw: bytes, page_no: int, source_id: str) -> list[Draw]:
         back_order = None
         if raw_order:
             order_parts = raw_order.split()
-            if len(order_parts) != 7:
-                raise IngestionError(f"draw {draw_id}: draw order must contain exactly 7 numbers")
-            try:
-                order = [int(part) for part in order_parts]
-            except ValueError as exc:
-                raise IngestionError(f"draw {draw_id}: draw order contains a non-integer") from exc
-            if (len(set(order[:5])) != 5 or set(order[:5]) != set(front)
-                    or len(set(order[5:])) != 2 or set(order[5:]) != set(back)):
-                raise IngestionError(f"draw {draw_id}: draw order does not match selected numbers by zone")
-            front_order, back_order = order[:5], order[5:]
+            # lotteryDrawResult is the canonical 5+2 result. Historical
+            # lotteryUnsortDrawresult is auxiliary provenance and has schema
+            # drift; malformed auxiliary values must not block ingestion.
+            if len(order_parts) == 7:
+                try:
+                    order = [int(part) for part in order_parts]
+                except ValueError:
+                    order = None
+                if order is not None and (
+                    len(set(order[:5])) == 5 and set(order[:5]) == set(front)
+                    and len(set(order[5:])) == 2 and set(order[5:]) == set(back)
+                ):
+                    front_order, back_order = order[:5], order[5:]
         rows.append(Draw(
             draw_id=draw_id,
             draw_date=draw_date,

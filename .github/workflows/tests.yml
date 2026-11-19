@@ -19,8 +19,25 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Validate imported legacy draw candidate
         run: python scripts/validate_dataset.py data/candidates/legacy_draws.jsonl
+      - name: Verify official draw-order/equipment crosswalk sample
+        run: |
+          python scripts/verify_official_order_crosswalks.py \
+            --candidate data/candidates/legacy_draws.jsonl \
+            --crosswalks data/metadata_verification/official_order_crosswalks_20261118.json
       - name: Audit imported legacy prize rows
         run: python scripts/validate_legacy_prizes.py --output prize-reconciliation.json
+      - name: Reconcile official snapshot prizes against legacy candidate
+        run: |
+          python scripts/reconcile_official_legacy_prizes.py \
+            --official data/processed/prizes-20261118.jsonl \
+            --legacy-glob data/candidates/legacy_prizes_part_*.jsonl \
+            --output official-legacy-prize-reconciliation.json
+      - name: Audit official awardType promotion draws against legacy flags
+        run: |
+          python scripts/audit_promotion_flags.py \
+            --official data/processed/prizes-20261118.jsonl \
+            --legacy-draws data/candidates/legacy_draws.jsonl \
+            --output official-legacy-promotion-audit.json
       - name: Reconcile legacy candidate with independent CSV snapshot
         run: python scripts/reconcile_sources.py
       - name: Run legal-draw Monte Carlo baseline smoke test
@@ -44,6 +61,11 @@ jobs:
           python scripts/backtest_models.py data/candidates/legacy_draws.jsonl \
             --min-train 300 --alpha 100 --half-life 100 \
             --output rolling-origin-benchmark.json
+      - name: Run exploratory benchmark on official selected-number snapshot
+        run: |
+          python scripts/backtest_models.py data/processed/draws-20261118.jsonl \
+            --min-train 300 --alpha 100 --half-life 100 \
+            --output official-snapshot-rolling-origin-benchmark.json
       - name: Upload research reports
         uses: actions/upload-artifact@v4
         with:
@@ -54,7 +76,10 @@ jobs:
             pair-cooccurrence.json
             chronological-split/
             rolling-origin-benchmark.json
+            official-snapshot-rolling-origin-benchmark.json
             prize-reconciliation.json
+            official-legacy-prize-reconciliation.json
+            official-legacy-promotion-audit.json
           retention-days: 30
 
   windows-ledger-locks:

@@ -1,0 +1,36 @@
+{
+  "schema": "lottery-prize-source-quarantine/v1",
+  "snapshot_date": "2026-11-18",
+  "status": "minimum_known_conflicts_not_exhaustive",
+  "affected_draw_ids": [
+    "07001",
+    "07002",
+    "07003",
+    "07004",
+    "07005",
+    "07006",
+    "07007",
+    "07008",
+    "07009",
+    "07010",
+    "07011",
+    "17045",
+    "17052",
+    "17062",
+    "17063"
+  ],
+  "reason": "Minimum known conflicts between archived Sporttery API prize rows and contemporaneous provincial result announcements; see docs/OFFICIAL_API_PROVINCIAL_PRIZE_CONFLICTS_2026-11-18.md and docs/EARLY_2007_ADDITIONAL_PRIZE_AUDIT_2026-11-18.md",
+  "handling": {
+    "payout_calculation": "exclude_until_adjudicated",
+    "prize_model_targets": "exclude_until_adjudicated",
+    "prize_derived_features": "exclude_until_adjudicated",
+    "raw_source_retention": "preserve_all_sources_without_overwrite"
+  },
+  "limitations": [
+    "Issues 07001-07004 are supported by contemporaneous national sports-media result reports rather than a located provincial-administration page; their additional tables list only first/second/third prize, while API fourth/fifth additional rows duplicate basic-tier counts and amounts. Retain this lower source-confidence distinction in any adjudication.",
+    "Issues 07005-07011 are cross-checked against contemporaneous Jiangsu Sports Lottery administration announcements; the API fourth-/fifth-prize additional rows duplicate basic-tier amounts and counts, while the official main-game additional tables list only first/second/third prize. Issue 07008 also has a third-prize additional amount conflict.",
+    "This is a minimum known-conflict list, not an exhaustive scan of the historical archive.",
+    "Draw-number/date records are not quarantined by this prize-specific list.",
+    "A source conflict does not by itself establish which source is correct."
+  ]
+}
