@@ -89,7 +89,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         body = {key: value for key, value in record.items() if key != "event_hash"}
         body["draw_date"] = "2026-02-03"
         record = {**body, "event_hash": _event_hash(body)}
-        self.outcomes.write_text(json.dumps(record) + "\\n", encoding="utf-8")
+        self.outcomes.write_text(json.dumps(record) + "\n", encoding="utf-8")
         with self.assertRaisesRegex(OutcomeLedgerError, "draw date does not match"):
             score_ledgers(self.forecasts, self.outcomes)
 
