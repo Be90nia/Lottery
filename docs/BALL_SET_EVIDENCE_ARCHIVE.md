@@ -15,7 +15,7 @@ python scripts/collect_ball_set_evidence.py \
   --registry config/ball_set_source_registry.json \
   --archive-dir data/evidence/ball-set-archive \
   --ledger data/evidence/ball-set-observations.jsonl \
-  --receipt data/evidence/ball-set-receipt.json \\
+  --receipt data/evidence/ball-set-receipt.json \
   --draw-inventory data/candidates/legacy_draws.jsonl
 ```
 
