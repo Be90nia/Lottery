@@ -36,11 +36,14 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
           document = json.loads(Path("mvp-output.json").read_text(encoding="utf-8"))
           report = document["batch"]
           receipt = document["receipt"]
           assert receipt["status"] == "candidate_batch_generated"
+          assert receipt["code_commit"] == os.environ["GITHUB_SHA"]
+          assert report["code_commit"] == os.environ["GITHUB_SHA"]
           assert receipt["published_ticket_count"] == 15
           assert receipt["data_trust_status"] == "not_authenticated_by_this_tool"
           assert receipt["automatic_sync_status"] == "not_attempted"
