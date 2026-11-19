@@ -107,6 +107,7 @@ def build_evaluation_receipt(
     targets = []
     seen = set()
     previous_target_number = None
+    previous_target_number = None
     deltas = {
         reference: {zone: {metric: [] for metric in METRICS} for zone in ZONES}
         for reference in ("champion", "uniform")
@@ -115,10 +116,13 @@ def build_evaluation_receipt(
         if not isinstance(row, dict):
             raise EvaluationGateError(f"score row {index} must be an object")
         target = row.get("target_draw_id")
-        if not isinstance(target, str) or not target or target in seen:
-            raise EvaluationGateError(f"score row {index} has a missing or duplicate target")
-        if targets and target <= targets[-1]:
+        if (not isinstance(target, str) or len(target) != 5
+                or not target.isdigit() or target in seen):
+            raise EvaluationGateError(f"score row {index} has a missing, malformed, or duplicate target")
+        target_number = int(target)
+        if previous_target_number is not None and target_number <= previous_target_number:
             raise EvaluationGateError("score rows must be in strictly increasing draw-ID order")
+        previous_target_number = target_number
         seen.add(target)
         targets.append(target)
         models = row.get("model_scores")
