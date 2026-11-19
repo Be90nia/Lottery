@@ -55,7 +55,7 @@
 Python 3.10+ is sufficient; the initial collector uses only the standard library.
 
 ```bash
-python scripts/fetch_history.py --max-pages 2
+python scripts/fetch_history.py
 python scripts/fetch_history.py --snapshots-dir data/raw/user-supplied --require-manifests --output data/processed/from-snapshots.jsonl
 python scripts/validate_dataset.py
 python scripts/validate_legacy_prizes.py
@@ -64,7 +64,7 @@ python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl --simulati
 python -m unittest discover -s tests -v
 ```
 
-Remove `--max-pages 2` to request all available pages. The collector writes immutable raw page snapshots and SHA-256 manifests under `data/raw/sporttery/`, then writes normalized JSON Lines to `data/processed/draws.jsonl`. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
+The collector writes immutable raw page snapshots and SHA-256 manifests under `data/raw/sporttery/`, then writes normalized JSON Lines to `data/processed/draws.jsonl`. `--max-pages` is a diagnostic safety cap: if the final allowed page is full, the run fails closed rather than publishing a potentially truncated dataset. An observed short/empty terminal page is not independent proof of upstream completeness. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
 
 The live endpoint has not yet passed this repository's end-to-end verification. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset. If an authorized party supplies raw JSON response snapshots, they can be imported offline with `--snapshots-dir`; use `--require-manifests` to require matching per-file SHA-256 sidecars with the exact Sporttery API endpoint, timezone-aware retrieval timestamp, HTTP 200, and matching raw filename. This checks consistency of supplied metadata, not cryptographic source authenticity or uncertain field semantics.
 
