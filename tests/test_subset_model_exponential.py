@@ -58,6 +58,18 @@ class ExponentialFamilyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.model.log_partition((float("nan"),) * self.model.dimension)
 
+    def test_sampler_moves_to_next_cell_at_exact_cdf_boundary(self):
+        class BoundaryRng:
+            def random(self):
+                return 0.1
+
+        table = build_uniform_feature_table(5, 2, include_gap_variance=False)
+        model = ExponentialFamily(table)
+        support = tuple(enumerate_support(5, 2))
+        # Uniform weights give ten cells of weight one. A draw of 0.1
+        # lands exactly on the first cumulative boundary and belongs to cell 2.
+        self.assertEqual(model.sample((0.0,) * model.dimension, BoundaryRng()), support[1])
+
     def test_fit_returns_recomputed_converged_diagnostics(self):
         observations = [
             (1, 2, 3), (1, 2, 4), (1, 3, 5), (2, 4, 6),
