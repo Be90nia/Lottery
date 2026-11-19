@@ -115,6 +115,24 @@ class MvpOrchestratorTests(unittest.TestCase):
             self.assertEqual(document["receipt"]["published_ticket_count"], 6)
             self.assertEqual(document["batch"]["total_tickets"], 6)
 
+    def test_dataset_is_read_once_for_validation_and_generation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            dataset = root / "draws.jsonl"
+            output = root / "mvp.json"
+            dataset.write_text("".join(json.dumps(draw(i)) + "\\n" for i in range(1, 8)), encoding="utf-8")
+            original_read_bytes = Path.read_bytes
+            calls = []
+
+            def counted_read_bytes(path):
+                if path == dataset:
+                    calls.append(path)
+                return original_read_bytes(path)
+
+            with patch.object(Path, "read_bytes", counted_read_bytes):
+                run_mvp(dataset, output, code_commit="d" * 40)
+            self.assertEqual(calls, [dataset])
+
     def test_invalid_dataset_never_publishes_output(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
