@@ -68,6 +68,12 @@ class BallSetParserTests(unittest.TestCase):
     def test_non_official_host_is_rejected(self):
         with self.assertRaisesRegex(BallSetEvidenceError, "not an approved official"):
             parse_announcement(page(), "https://example.com/fake.html")
+    def test_meta_charset_is_used_when_header_has_none(self):
+        html = page(label=2).decode("utf-8")
+        raw = ('<meta charset="gbk">' + html).encode("gbk")
+        parsed = parse_announcement(raw, BASE, "text/html")
+        self.assertEqual(parsed.reported_set_index, 2)
+
 
     def test_missing_draw_id_or_date_is_rejected(self):
         with self.assertRaisesRegex(BallSetEvidenceError, "missing an explicit"):
