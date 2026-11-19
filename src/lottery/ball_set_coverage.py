@@ -539,7 +539,8 @@ def main() -> int:
         protected = {args.draw_inventory.resolve(), args.ledger.resolve(), (args.archive_dir / "receipt.json").resolve()}
         raw_root = (args.archive_dir / "raw").resolve()
         if any(path.resolve().is_relative_to(raw_root) for path in (
-            args.output_json, args.output_csv, args.output_markdown
+            args.output_json, args.output_csv, args.output_per_set_csv,
+            args.output_per_year_csv, args.output_markdown
         )):
             raise BallSetCoverageError("coverage outputs cannot be written into the raw evidence object directory")
         protected.update(path.resolve() for path in raw_root.rglob("*") if path.is_file()) if raw_root.exists() else None
