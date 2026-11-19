@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import tempfile
 from typing import Any
 
 from .tickets import generate_ticket_candidates
@@ -26,6 +27,8 @@ def run_mvp(
     code_commit: str | None = None,
 ) -> dict[str, Any]:
     """Validate one historical input and atomically publish a candidate batch receipt."""
+    if dataset_path.resolve() == output_path.resolve():
+        raise ValueError("output_path must not overwrite the input dataset")
     validation = validate_jsonl(dataset_path)
     raw = dataset_path.read_bytes()
     rows = [json.loads(line) for line in raw.decode("utf-8").splitlines()]
@@ -37,9 +40,6 @@ def run_mvp(
         half_life=half_life,
     )
     dataset_sha256 = hashlib.sha256(raw).hexdigest()
-    batch_bytes = json.dumps(
-        batch, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
     commit = code_commit or os.environ.get("GITHUB_SHA")
     if commit is not None and not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("code_commit must be a full 40-character lowercase Git SHA")
@@ -72,12 +72,19 @@ def run_mvp(
     document = {"schema_version": 1, "receipt": receipt, "batch": batch}
     rendered = json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output_path.with_suffix(output_path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(rendered)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, output_path)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=output_path.name + ".", suffix=".tmp", dir=output_path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(rendered)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, output_path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
     return document
 
 
