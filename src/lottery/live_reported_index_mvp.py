@@ -101,7 +101,14 @@ def build_live_reported_index_mvp(
     candidate_manifest, candidate_manifest_raw = _read_json(candidate_manifest_path)
     candidate_sha = _sha(candidate_raw)
     candidate_manifest_sha = _sha(candidate_manifest_raw)
-    if (candidate_manifest.get("output_sha256") != candidate_sha
+    candidate_manifest_body = {
+        key: value for key, value in candidate_manifest.items() if key != "manifest_sha256"
+    }
+    if (candidate_manifest.get("manifest_sha256") != _sha(_canonical(candidate_manifest_body))
+            or candidate_manifest.get("output_file") != candidate_dataset_path.name
+            or candidate_manifest.get("output_bytes") != len(candidate_raw)
+            or candidate_manifest.get("appended_record_count") != len(candidate_manifest.get("appended_draw_ids", []))
+            or candidate_manifest.get("output_sha256") != candidate_sha
             or candidate_manifest.get("validation") != candidate_validation
             or candidate_manifest.get("provenance_complete") is not True
             or candidate_manifest.get("trust_status") != TRUST_STATUS
