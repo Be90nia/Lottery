@@ -221,7 +221,10 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     expected = len(rows) - MIN_TRAIN
     header = {
         "record_type": "header", "schema": "lot-055-checkpoint-v2",
-        "snapshot_sha256": snapshot_digest, "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
+        "snapshot_sha256": snapshot_digest,
+        "snapshot_source_commit": os.environ.get("RESEARCH_SNAPSHOT_COMMIT", "unverified-local-input"),
+        "snapshot_trust_status": os.environ.get("RESEARCH_SNAPSHOT_TRUST_STATUS", "not_verified_by_runner"),
+        "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
         "zone": zone,
         "minimum_training_rows": MIN_TRAIN, "first_target": rows[MIN_TRAIN]["draw_id"],
         "last_target": rows[-1]["draw_id"], "models": ["uniform", "expanding", "ewma", "exponential_family"],
@@ -402,6 +405,8 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
     result = {
         "run_type": "LOT-055-equipment-blind-exact-subset-rolling-origin",
         "snapshot_sha256": digest, "snapshot_rows": len(rows),
+        "snapshot_source_commit": os.environ.get("RESEARCH_SNAPSHOT_COMMIT", "unverified-local-input"),
+        "snapshot_trust_status": os.environ.get("RESEARCH_SNAPSHOT_TRUST_STATUS", "not_verified_by_runner"),
         "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
         "snapshot_first_draw": rows[0]["draw_id"], "snapshot_last_draw": rows[-1]["draw_id"],
         "first_target_draw": rows[MIN_TRAIN]["draw_id"], "last_target_draw": rows[-1]["draw_id"],
