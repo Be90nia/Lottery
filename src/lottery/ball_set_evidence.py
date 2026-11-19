@@ -247,9 +247,12 @@ def _archive_raw_response(fetched: dict[str, Any], archive_dir: Path, authority_
         "collector_version": COLLECTOR_VERSION, "parser_version": PARSER_VERSION,
         "raw_object_ref": str(raw_path.relative_to(archive_dir)),
     }
-    manifest_path = raw_dir / f"{digest}.manifest.json"
-    if not manifest_path.exists():
-        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    retrieval_id = hashlib.sha256(
+        (fetched["requested_url"] + fetched["retrieved_at_utc"]).encode("utf-8")
+    ).hexdigest()[:16]
+    manifest_path = raw_dir / f"{digest}.{retrieval_id}.manifest.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    manifest["manifest_object_ref"] = str(manifest_path.relative_to(archive_dir))
     return manifest
 
 
