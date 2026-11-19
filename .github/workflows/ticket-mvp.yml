@@ -61,6 +61,7 @@ jobs:
           for lane, tickets in lanes.items():
               assert len(tickets) == 5, lane
               assert report["strategy_metadata"][lane]["ticket_count"] == 5
+              lane_counts = {}
               for ticket in tickets:
                   front, back = ticket["front_numbers"], ticket["back_numbers"]
                   assert len(front) == 5 and len(set(front)) == 5 and front == sorted(front)
