@@ -38,6 +38,7 @@ def canonical(value):
 
 
 def make_inputs(root, *, mismatch=False, new_draw_id="26132"):
+    root.mkdir(parents=True, exist_ok=True)
     inventory = [
         {
             "draw_id": "26130", "draw_date": "2026-11-14",
@@ -254,13 +255,15 @@ class JiangsuDrawCandidateTests(unittest.TestCase):
 
     def test_historical_result_mismatch_fails_closed(self):
         inputs = make_inputs(self.root / "mismatch", mismatch=True)
-        with self.assertRaisesRegex(JiangsuDrawCandidateError, "A2 draw-result mismatches"):
-            self.build(inputs)
+        with patch("lottery.jiangsu_draw_candidate._read_ledger", return_value=inputs["observations"]):
+            with self.assertRaisesRegex(JiangsuDrawCandidateError, "A2 draw-result mismatches"):
+                self.build(inputs)
 
     def test_nonsequential_new_draw_fails_closed(self):
         inputs = make_inputs(self.root / "gap", new_draw_id="26133")
-        with self.assertRaisesRegex(JiangsuDrawCandidateError, "not the next chronological draw"):
-            self.build(inputs)
+        with patch("lottery.jiangsu_draw_candidate._read_ledger", return_value=inputs["observations"]):
+            with self.assertRaisesRegex(JiangsuDrawCandidateError, "not the next chronological draw"):
+                self.build(inputs)
 
 
 if __name__ == "__main__":
