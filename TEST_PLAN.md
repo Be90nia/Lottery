@@ -27,11 +27,18 @@
 - Model selection never reads the final holdout.
 - Metrics are computed on exactly the declared evaluation period.
 
+## Model regression receipt tests (LOT-073)
+- Identical input produces byte-identical receipt hashes.
+- Candidate must beat both champion and uniform on front/back Brier and log-loss under paired block-bootstrap intervals.
+- Incomplete, duplicated, mismatched, or non-finite target scores fail closed.
+- Prospective holdout scope is rejected.
+- Receipt tampering is detected.
+- A passing receipt remains human-review-only and cannot authorize production or automatic promotion.
+
 ## Integration tests
 - Ingestion from saved fixtures without network access.
 - End-to-end raw-to-canonical pipeline.
 - Reproducible report build from a pinned dataset version.
 
 ## Release gate
-
 No release should publish predictive claims without an untouched chronological evaluation, a legal random baseline, uncertainty reporting, and reproducible artifacts.
