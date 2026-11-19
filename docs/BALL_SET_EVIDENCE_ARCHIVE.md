@@ -19,7 +19,7 @@ python scripts/collect_ball_set_evidence.py \
   --draw-inventory data/candidates/legacy_draws.jsonl
 ```
 
-The JSONL ledger is append-only and uses the shared OS-level ledger lock. Identical response bytes are idempotent. Changed bytes from the same URL create a new `source_revision_requires_review` observation and preserve the prior bytes; disagreement between official sources creates a conflict record. Missing labels remain `missing_label`. Draw ID/date mismatches and malformed pages fail closed.
+The JSONL ledger is append-only and uses the shared OS-level ledger lock. Identical response bytes are idempotent. Changed bytes from the same URL always create a new immutable observation version and preserve prior bytes. If draw date and explicit set label are unchanged, the version is `source_revision_same_semantics`; if either changes, it is `source_revision_requires_review` and blocks the verified view. Disagreement between official sources creates a conflict record. Missing labels remain `missing_label`. Draw ID/date mismatches and malformed pages fail closed.
 
 The scheduled workflow carries forward the latest cumulative archive artifact, cross-checks page draw IDs/dates against the checked-in candidate draw inventory, and uploads a new 90-day artifact. The inventory is still `candidate_unverified`, so a match is an identity/date crosswalk, not independent authentication of the draw result. This is a staging archive, **not yet the permanent canonical evidence store**. LOT-065 still requires durable content-addressed storage, independent backup, and restore verification before this archive can be treated as permanent canonical evidence.
 
