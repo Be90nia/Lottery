@@ -356,7 +356,7 @@ def build_ball_set_coverage(
         "out_of_inventory_observation_count": out_of_inventory,
         "out_of_inventory_observations": out_of_inventory_records,
         "parser_versions": sorted(parser_versions | {PARSER_VERSION}),
-        "source_domains": sorted(domain for domain in source_domains if domain),
+        "source_domains": sorted(by_source_domain),
         "summary": {
             "inventory_draws": len(inventory),
             "observed_draws": sum(1 for row in per_draw if row["status"] != "unobserved"),
