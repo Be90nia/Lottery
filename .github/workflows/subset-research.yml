@@ -2,6 +2,12 @@ name: exact-subset-research
 
 on:
   workflow_dispatch:
+    inputs:
+      resume_checkpoints:
+        description: "Restore checkpoint ledgers from the latest completed run of this exact code revision"
+        type: boolean
+        required: false
+        default: true
   pull_request:
     paths:
       - "scripts/run_subset_rolling_origin.py"
@@ -33,6 +39,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Restore prior checkpoint for the identical code revision
+        if: github.event_name != 'workflow_dispatch' || inputs.resume_checkpoints
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
