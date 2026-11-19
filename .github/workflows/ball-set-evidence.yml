@@ -95,6 +95,16 @@ jobs:
             echo "Previous run has no archive artifact; initialize from the configured seed page."
           fi
 
+      - name: Archive prior collector receipt
+        run: |
+          set -euo pipefail
+          if [ -f evidence-archive/receipt.json ]; then
+            mkdir -p evidence-archive/receipt-history
+            digest="$(sha256sum evidence-archive/receipt.json | awk '{print $1}')"
+            cp --no-clobber evidence-archive/receipt.json "evidence-archive/receipt-history/receipt-${digest}.json"
+            rm evidence-archive/receipt.json
+          fi
+
       - name: Collect official per-draw labels
         id: collect
         continue-on-error: true
