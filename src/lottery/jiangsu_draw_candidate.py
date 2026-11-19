@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from .ball_set_coverage import (
-    BallSetCoverageError,
     _read_jsonl as _coverage_read_jsonl,
     _safe_raw_path,
     _verify_observation,
@@ -146,7 +145,9 @@ def build_jiangsu_draw_candidate(
         state, set_index, final_url = _verify_observation(
             observation, {"draw_id": observation["draw_id"], "draw_date": observation["draw_date"]}, archive_dir
         )
-        if state != "primary_verified" or set_index != observation.get("reported_set_index"):
+        if (state != "primary_verified" or set_index != observation.get("reported_set_index")
+                or (expected_row.get("reported_set_index") is not None
+                    and set_index != expected_row.get("reported_set_index"))):
             raise JiangsuDrawCandidateError(
                 f"observation {observation_id} failed raw evidence/label verification: {state}"
             )
@@ -166,7 +167,11 @@ def build_jiangsu_draw_candidate(
         ids = frozen.get("observation_ids")
         if not isinstance(ids, list) or len(ids) != 1:
             raise JiangsuDrawCandidateError(f"frozen pilot draw {draw_id} lacks one unambiguous A2 observation")
-        observation, result, raw = verified_source_result(ids[0], base)
+        observation, result, raw = verified_source_result(
+            ids[0], {**base, "reported_set_index": frozen["reported_set_index"]}
+        )
+        if observation.get("observation_status") != "primary_verified":
+            raise JiangsuDrawCandidateError(f"frozen draw {draw_id} is not a primary-verified observation")
         if (list(result.front_numbers) != base["front_numbers"]
                 or list(result.back_numbers) != base["back_numbers"]):
             overlap_mismatches.append({
@@ -217,8 +222,11 @@ def build_jiangsu_draw_candidate(
         raise JiangsuDrawCandidateError("not every frozen pilot row was cross-verified against A2 draw results")
 
     out_of_inventory = coverage.get("out_of_inventory_observations")
-    if not isinstance(out_of_inventory, list):
-        raise JiangsuDrawCandidateError("coverage report has no out-of-inventory observation list")
+    if (not isinstance(out_of_inventory, list)
+            or len(out_of_inventory) != coverage.get("summary", {}).get("out_of_inventory_observation_count")):
+        raise JiangsuDrawCandidateError("coverage report out-of-inventory count is inconsistent")
+    if coverage.get("summary", {}).get("primary_verified_draws") != overlap_count:
+        raise JiangsuDrawCandidateError("coverage primary-verified count differs from A2 result cross-check")
     new_rows: list[dict[str, Any]] = []
     new_live_rows: list[dict[str, Any]] = []
     for item in out_of_inventory:
@@ -227,8 +235,14 @@ def build_jiangsu_draw_candidate(
                 or item.get("raw_evidence_verified") is not True):
             raise JiangsuDrawCandidateError("out-of-inventory evidence is not eligible for guarded append")
         observation, result, raw = verified_source_result(
-            item["observation_id"], {"draw_id": item["draw_id"], "draw_date": item["draw_date"]}
+            item["observation_id"], {
+                "draw_id": item["draw_id"],
+                "draw_date": item["draw_date"],
+                "reported_set_index": item["reported_set_index"],
+            }
         )
+        if observation.get("observation_status") != "official_label_pending_inventory":
+            raise JiangsuDrawCandidateError("out-of-inventory observation status changed during verification")
         source = observation["source"]
         digest = _sha(raw)
         new_row = {
