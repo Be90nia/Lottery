@@ -173,6 +173,16 @@ class BallSetCoverageTests(unittest.TestCase):
         self.assertEqual(report["per_draw"][0]["status"], "primary_verified")
 
 
+    def test_coverage_refuses_tampered_hash_chained_ledger(self):
+        self.collect(page(3))
+        records = self.ledger.read_text(encoding="utf-8").splitlines()
+        record = json.loads(records[0])
+        record["reported_set_index"] = 2
+        records[0] = json.dumps(record)
+        self.ledger.write_text("\n".join(records) + "\n", encoding="utf-8")
+        with self.assertRaisesRegex(BallSetCoverageError, "event hash mismatch"):
+            self.report()
+
 
 if __name__ == "__main__":
     unittest.main()
