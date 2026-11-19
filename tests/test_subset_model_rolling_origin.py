@@ -24,7 +24,9 @@ class OfficialSnapshotRollingOriginTests(unittest.TestCase):
         for zone in (result["front"], result["back"]):
             self.assertEqual(len(zone["target_records"]), 2649)
             self.assertTrue(zone["complete_coverage"], msg=zone["fit_status_counts"])
-            self.assertEqual(zone["scored_target_count"], 2649)
+            self.assertEqual(set(zone["scored_target_counts"]), {"uniform", "expanding", "ewma", "exponential_family"})
+            for model_name, count in zone["scored_target_counts"].items():
+                self.assertEqual(count, 2649, msg=f"{model_name} scored {count} targets")
         self.assertFalse(result["production_ready"])
 
 

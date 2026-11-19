@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import random
 from pathlib import Path
 
@@ -29,6 +30,17 @@ MIN_TRAIN = 300
 BOOTSTRAP_REPLICATES = 1000
 BOOTSTRAP_BLOCK = 50
 BOOTSTRAP_SEED = 20261118
+
+
+def _confirmatory_gate(
+    descriptive_ci_pass: bool, *, solver_policy_approved: bool,
+    multiplicity_policy_approved: bool,
+) -> bool:
+    return bool(
+        descriptive_ci_pass
+        and solver_policy_approved
+        and multiplicity_policy_approved
+    )
 
 
 def _percentile(values: list[float], probability: float) -> float:
@@ -99,6 +111,62 @@ def _load_and_validate(path: Path) -> tuple[list[dict], str]:
     return rows, digest
 
 
+
+def _checkpoint_record_hash(record: dict) -> str:
+    body = {key: value for key, value in record.items() if key != "record_sha256"}
+    encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
+                                uniform_nll: float) -> None:
+    expected_record_keys = {
+        "record_type", "target_draw_id", "training_count", "training_cutoff_draw_id",
+        "fit_statuses", "exact_set_nll", "candidate_iterations",
+        "candidate_gradient_infinity_norm", "record_sha256",
+    }
+    if (not isinstance(record, dict) or set(record) != expected_record_keys
+            or record.get("record_type") != "target"):
+        raise ValueError("checkpoint target record has invalid shape")
+    supplied_hash = record.get("record_sha256")
+    if not isinstance(supplied_hash, str) or supplied_hash != _checkpoint_record_hash(record):
+        raise ValueError("checkpoint target record SHA-256 mismatch")
+    if type(record.get("candidate_iterations")) is not int or record["candidate_iterations"] < 0:
+        raise ValueError("checkpoint candidate iteration count is invalid")
+    gradient = record.get("candidate_gradient_infinity_norm")
+    if type(gradient) not in (int, float) or not math.isfinite(gradient) or gradient < 0:
+        raise ValueError("checkpoint candidate gradient diagnostic is invalid")
+    expected_statuses = {"candidate", "expanding", "ewma"}
+    expected_scores = {"uniform", "expanding", "ewma", "exponential_family"}
+    if not isinstance(record.get("fit_statuses"), dict) or set(record["fit_statuses"]) != expected_statuses:
+        raise ValueError("checkpoint fit_statuses schema mismatch")
+    if not isinstance(record.get("exact_set_nll"), dict) or set(record["exact_set_nll"]) != expected_scores:
+        raise ValueError("checkpoint exact_set_nll schema mismatch")
+    if (record.get("target_draw_id") != row["draw_id"]
+            or record.get("training_count") != training_count):
+        raise ValueError("checkpoint target order/training count mismatch")
+    if not isinstance(record.get("training_cutoff_draw_id"), str) or not record["training_cutoff_draw_id"]:
+        raise ValueError("checkpoint training cutoff is missing")
+    if any(not isinstance(status, str) or not status for status in record["fit_statuses"].values()):
+        raise ValueError("checkpoint fit status must be a non-empty string")
+    scores = record["exact_set_nll"]
+    if type(scores["uniform"]) not in (int, float) or not math.isfinite(scores["uniform"]):
+        raise ValueError("checkpoint uniform NLL must be finite")
+    if abs(scores["uniform"] - uniform_nll) > 1e-10:
+        raise ValueError("checkpoint uniform NLL does not match legal support")
+    for status_key, score_key in (
+        ("candidate", "exponential_family"),
+        ("expanding", "expanding"),
+        ("ewma", "ewma"),
+    ):
+        score = scores[score_key]
+        if record["fit_statuses"][status_key] == "converged":
+            if type(score) not in (int, float) or not math.isfinite(score) or score < -1e-10:
+                raise ValueError(f"checkpoint {score_key} NLL invalid for converged fit")
+        elif score is not None:
+            raise ValueError(f"checkpoint {score_key} score must be null when fit did not converge")
+
+
 def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: bool,
                    seed: int, checkpoint_path: Path, snapshot_digest: str) -> dict:
     table = build_uniform_feature_table(m, k, include_gap_variance=include_gap)
@@ -108,8 +176,9 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     uniform_nll = math.log(math.comb(m, k))
     expected = len(rows) - MIN_TRAIN
     header = {
-        "record_type": "header", "schema": "lot-055-checkpoint-v1",
-        "snapshot_sha256": snapshot_digest, "zone": zone,
+        "record_type": "header", "schema": "lot-055-checkpoint-v2",
+        "snapshot_sha256": snapshot_digest, "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
+        "zone": zone,
         "minimum_training_rows": MIN_TRAIN, "first_target": rows[MIN_TRAIN]["draw_id"],
         "last_target": rows[-1]["draw_id"], "models": ["uniform", "expanding", "ewma", "exponential_family"],
         "alpha": 100.0, "ewma_half_life": 100.0,
@@ -125,16 +194,17 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
         for offset, line in enumerate(lines[1:]):
             record = json.loads(line)
             idx = MIN_TRAIN + offset
-            if (record.get("target_draw_id") != rows[idx]["draw_id"]
-                    or record.get("training_count") != idx
-                    or record.get("training_cutoff_draw_id") != rows[idx - 1]["draw_id"]):
-                raise ValueError(f"checkpoint order/cutoff mismatch at target index {idx}")
+            _validate_checkpoint_record(
+                record, row=rows[idx], training_count=idx,
+                uniform_nll=uniform_nll,
+            )
+            if record.get("training_cutoff_draw_id") != rows[idx - 1]["draw_id"]:
+                raise ValueError(f"checkpoint cutoff mismatch at target index {idx}")
             records.append(record)
     else:
         with checkpoint_path.open("x", encoding="utf-8") as handle:
             handle.write(json.dumps(header, sort_keys=True) + "\n")
             handle.flush()
-            import os
             os.fsync(handle.fileno())
 
     status_counts = {name: {} for name in ("candidate", "expanding", "ewma")}
@@ -173,12 +243,19 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                 "candidate_iterations": fit.iterations,
                 "candidate_gradient_infinity_norm": fit.gradient_infinity_norm,
             }
+            record["record_sha256"] = _checkpoint_record_hash(record)
             checkpoint.write(json.dumps(record, sort_keys=True, allow_nan=False) + "\n")
             checkpoint.flush()
-            import os
             os.fsync(checkpoint.fileno())
+            _validate_checkpoint_record(
+                record, row=rows[idx], training_count=idx,
+                uniform_nll=uniform_nll,
+            )
             records.append(record)
             count_status(record)
+            completed = idx - MIN_TRAIN + 1
+            if completed % 50 == 0 or completed == expected:
+                print(f"EXACT_SUBSET_PROGRESS zone={zone} completed={completed}/{expected}", flush=True)
 
     references = ("uniform", "expanding", "ewma")
     deltas = {name: [] for name in references}
@@ -219,15 +296,26 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
                            BOOTSTRAP_SEED, checkpoint_dir / "front.jsonl", digest)
     back = _evaluate_zone(rows, "back", BACK_POPULATION, BACK_SELECTION, False,
                           BOOTSTRAP_SEED + 1, checkpoint_dir / "back.jsonl", digest)
-    passed = all(
+    # This branch still uses the diagnostic Armijo solver and does not yet
+    # implement the frozen null-centered six-comparison Holm procedure.
+    # Keep the confirmatory gate closed even if all descriptive CIs look favorable.
+    solver_policy_approved = False
+    multiplicity_policy_approved = False
+    descriptive_ci_pass = all(
         zone["complete_coverage"] and all(
             zone["paired_candidate_minus_baseline"][ref] is not None
             and zone["paired_candidate_minus_baseline"][ref]["ci_95_upper"] < 0.0
             for ref in ("uniform", "expanding", "ewma"))
         for zone in (front, back))
+    passed = _confirmatory_gate(
+        descriptive_ci_pass,
+        solver_policy_approved=solver_policy_approved,
+        multiplicity_policy_approved=multiplicity_policy_approved,
+    )
     result = {
         "run_type": "LOT-055-equipment-blind-exact-subset-rolling-origin",
         "snapshot_sha256": digest, "snapshot_rows": len(rows),
+        "code_commit": os.environ.get("RESEARCH_CODE_COMMIT", os.environ.get("GITHUB_SHA", "local")),
         "snapshot_first_draw": rows[0]["draw_id"], "snapshot_last_draw": rows[-1]["draw_id"],
         "first_target_draw": rows[MIN_TRAIN]["draw_id"], "last_target_draw": rows[-1]["draw_id"],
         "target_count_per_zone": len(rows) - MIN_TRAIN, "minimum_training_rows": MIN_TRAIN,
@@ -237,10 +325,16 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "solver_policy_note": "Solver differs from initial L-BFGS-B proposal; diagnostic pending policy review.",
         "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "block_length": BOOTSTRAP_BLOCK,
                       "seed": BOOTSTRAP_SEED, "method": "paired non-circular moving-block percentile CI"},
-        "front": front, "back": back, "confirmatory_candidate_pass": bool(passed),
+        "front": front, "back": back,
+        "descriptive_ci_pass": bool(descriptive_ci_pass),
+        "solver_policy_approved": solver_policy_approved,
+        "multiplicity_policy_approved": multiplicity_policy_approved,
+        "confirmatory_candidate_pass": bool(passed),
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
-                        "no LOT-042 access", "no promotion or serving", "solver policy review outstanding"],
+                        "no LOT-042 access", "no promotion or serving",
+                        "solver policy review outstanding",
+                        "null-centered six-comparison Holm procedure not implemented"],
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
