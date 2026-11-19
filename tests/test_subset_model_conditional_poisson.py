@@ -78,12 +78,22 @@ class ConditionalPoissonDPTests(unittest.TestCase):
             ) / (2 * epsilon)
             self.assertAlmostEqual(marginals[index], finite_difference, places=7)
 
-    def test_extreme_finite_weights_remain_stable(self):
-        model = ConditionalPoisson((1000.0, -1000.0, 500.0, -500.0, 0.0), 2)
+    def test_extreme_finite_weights_remain_stable_when_representable(self):
+        model = ConditionalPoisson((30.0, -30.0, 20.0, -20.0, 0.0), 2)
         self.assertTrue(math.isfinite(model.log_normalizer))
         marginals = model.inclusion_marginals()
-        self.assertTrue(all(math.isfinite(value) and 0.0 <= value <= 1.0 for value in marginals))
+        self.assertTrue(all(math.isfinite(value) and 0.0 < value < 1.0 for value in marginals))
         self.assertAlmostEqual(sum(marginals), 2.0, places=10)
+
+    def test_unrepresentable_open_interval_marginal_fails_closed(self):
+        model = ConditionalPoisson((1000.0, -1000.0, 500.0, -500.0, 0.0), 2)
+        with self.assertRaisesRegex(ArithmeticError, "representable open interval"):
+            model.inclusion_marginals()
+
+    def test_common_large_log_weight_offset_is_centered_safely(self):
+        model = ConditionalPoisson((1e308, 1e308, 1e308, 1e308), 2)
+        self.assertTrue(math.isfinite(model._centered_log_normalizer))
+        self.assertEqual(model.inclusion_marginals(), (0.5, 0.5, 0.5, 0.5))
 
 
 class ConditionalPoissonCalibrationTests(unittest.TestCase):
