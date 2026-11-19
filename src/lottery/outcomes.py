@@ -199,6 +199,40 @@ def create_outcome_event(
     }
 
 
+
+def create_outcome_event_from_snapshot(
+    forecast_path: Path, *, target_draw_id: str, published_at: str,
+    captured_at: str, source_url: str, snapshot_path: Path,
+    http_status: int, recorded_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Build an outcome only when the exact official response contains that draw."""
+    if http_status != 200:
+        raise OutcomeLedgerError("source HTTP status must be 200")
+    parsed = urlparse(source_url)
+    if (parsed.scheme != "https" or parsed.hostname != "webapi.sporttery.cn"
+            or parsed.path != "/gateway/lottery/getHistoryPageListV1.qry"):
+        raise OutcomeLedgerError("source URL must be the official Sporttery history endpoint")
+    raw = snapshot_path.read_bytes()
+    digest = hashlib.sha256(raw).hexdigest()
+    try:
+        from .ingest import _parse_page
+        rows = _parse_page(raw, 1, f"sha256:{digest}")
+    except (OSError, ValueError) as exc:
+        raise OutcomeLedgerError(f"official source snapshot failed parsing: {exc}") from exc
+    matches = [row for row in rows if row.draw_id == target_draw_id]
+    if len(matches) != 1:
+        raise OutcomeLedgerError(
+            f"snapshot must contain exactly one record for target {target_draw_id}; found {len(matches)}"
+        )
+    observed = matches[0]
+    return create_outcome_event(
+        forecast_path, target_draw_id=target_draw_id,
+        published_at=published_at, captured_at=captured_at,
+        source_url=source_url, source_sha256=digest, http_status=http_status,
+        front_numbers=observed.front_numbers, back_numbers=observed.back_numbers,
+        recorded_at=recorded_at,
+    )
+
 def append_outcome(path: Path, event: dict[str, Any]) -> dict[str, Any]:
     path.parent.mkdir(parents=True, exist_ok=True)
     _validate_outcome_payload(event)
@@ -285,12 +319,14 @@ def main() -> int:
             result = score_ledgers(args.forecasts, args.outcomes)
         else:
             raw = args.snapshot.read_bytes()
-            event = create_outcome_event(
+            event = create_outcome_event_from_snapshot(
                 args.forecasts, target_draw_id=args.target_draw_id,
                 published_at=args.published_at, captured_at=args.captured_at,
-                source_url=args.source_url, source_sha256=hashlib.sha256(raw).hexdigest(),
-                http_status=args.http_status, front_numbers=args.front, back_numbers=args.back,
+                source_url=args.source_url, snapshot_path=args.snapshot,
+                http_status=args.http_status,
             )
+            if sorted(args.front) != event["front_numbers"] or sorted(args.back) != event["back_numbers"]:
+                raise OutcomeLedgerError("CLI numbers do not match the selected result in the raw source snapshot")
             result = append_outcome(args.outcomes, event)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
