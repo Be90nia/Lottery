@@ -142,6 +142,7 @@ def build_reported_set_index_view(
             "observation_ledger_sha256": ledger_sha,
             "equipment_regime_id": None,
             "physical_ball_set_id": None,
+            "eligible_for_reported_index_pilot": True,
             "eligible_for_physical_model": False,
             "training_eligibility": "blocked_regime_unresolved",
             "model_scope": "reported_set_index_only_not_physical_identity",
@@ -175,6 +176,8 @@ def build_reported_set_index_view(
         "date_end": view_rows[-1]["draw_date"] if view_rows else None,
         "output_sha256": _sha(output_bytes),
         "training_eligibility": "blocked_regime_unresolved",
+        "reported_index_pilot_status": "preregistered_research_only",
+        "physical_model_eligibility": "blocked_regime_unresolved",
         "physical_identity_claim": "none",
         "model_scope": "reported_set_index_only_not_physical_identity",
     }
