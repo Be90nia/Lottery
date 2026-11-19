@@ -73,11 +73,27 @@ def _verify_observation(
         digest = _sha_bytes(raw)
         if digest != source.get("body_sha256") or len(raw) != source.get("body_byte_length"):
             return "raw_evidence_invalid", None, source.get("final_url")
+        manifest_path = _safe_raw_path(archive_dir, source.get("manifest_object_ref"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        for key in ("requested_url", "final_url", "retrieved_at_utc", "http_status",
+                    "content_type", "body_byte_length", "body_sha256", "raw_object_ref"):
+            if manifest.get(key) != source.get(key):
+                return "raw_evidence_invalid", None, source.get("final_url")
+        identity = {
+            "draw_id": observation.get("draw_id"),
+            "source_url": source.get("final_url"),
+            "body_sha256": source.get("body_sha256"),
+        }
+        expected_id = _sha_bytes(json.dumps(
+            identity, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8"))
+        if observation.get("observation_id") != expected_id:
+            return "raw_evidence_invalid", None, source.get("final_url")
         final_url = source.get("final_url")
         if not isinstance(final_url, str):
             return "parse_error", None, None
         parsed = parse_announcement(raw, final_url, source.get("content_type", ""))
-    except (OSError, BallSetEvidenceError, ValueError) as exc:
+    except (OSError, BallSetEvidenceError, ValueError, json.JSONDecodeError) as exc:
         return "parse_error", None, source.get("final_url")
     if parsed.draw_id != observation.get("draw_id") or parsed.draw_date != observation.get("draw_date"):
         return "draw_mismatch", None, source.get("final_url")
@@ -86,6 +102,12 @@ def _verify_observation(
     parser = observation.get("parser")
     if not isinstance(parser, dict) or parser.get("matched_text") != parsed.matched_text:
         return "parse_error", None, source.get("final_url")
+    locator = parser.get("evidence_locator")
+    if parsed.matched_text is not None:
+        if (not isinstance(locator, dict)
+                or locator.get("text_character_start") != parsed.evidence_start
+                or locator.get("text_character_end") != parsed.evidence_end):
+            return "parse_error", None, source.get("final_url")
     if parsed.observation_status == "conflict":
         return "conflict", None, final_url
     if parsed.observation_status == "missing_label":
