@@ -174,7 +174,10 @@ def _validate_numbers(values: list[int], size: int, pick: int, field: str) -> No
 
 
 def _forecast_events(path: Path) -> dict[str, dict[str, Any]]:
-    verify_ledger(path)
+    try:
+        verify_ledger(path)
+    except ForecastLedgerError as exc:
+        raise OutcomeLedgerError(f"forecast ledger is invalid: {exc}") from exc
     events = _read_events(path)
     result = {}
     for line_no, event in enumerate(events, 1):
