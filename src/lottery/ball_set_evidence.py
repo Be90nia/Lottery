@@ -364,7 +364,8 @@ def _archive_observation(
 
 def collect_ball_set_evidence(
     registry_path: Path, archive_dir: Path, ledger_path: Path, *,
-    receipt_path: Path, delay_seconds: float = 0.5, max_forward_pages: int = 1000,
+    receipt_path: Path, draw_inventory_path: Path, delay_seconds: float = 0.5,
+    max_forward_pages: int = 2000,
 ) -> dict[str, Any]:
     if delay_seconds < 0 or type(max_forward_pages) is not int or max_forward_pages < 1:
         raise ValueError("invalid delay or max_forward_pages")
