@@ -35,6 +35,7 @@ def write_manifest(candidate, manifest_path):
         "output_sha256": hashlib.sha256(candidate.read_bytes()).hexdigest(),
         "trust_status": "manifest_complete_not_officially_authenticated",
         "provenance_complete": True,
+        "source_completeness_verified": True,
         "snapshot_count": 1,
         "validation": {"records": len(candidate.read_text().splitlines())},
     }), encoding="utf-8")
@@ -122,6 +123,14 @@ class AppendOnlyTests(unittest.TestCase):
         manifest["trust_status"] = "candidate_unverified"
         self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
         with self.assertRaisesRegex(AppendOnlyError, "complete official-source"):
+            self.run_gate()
+
+    def test_unverified_source_pagination_is_rejected_even_with_complete_page_manifests(self):
+        self.prepare(self.old + [row("26132", "2026-11-18")])
+        manifest = json.loads(self.manifest.read_text(encoding="utf-8"))
+        manifest["source_completeness_verified"] = False
+        self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(AppendOnlyError, "pagination completeness is not independently verified"):
             self.run_gate()
 
     def test_source_reference_change_is_not_a_result_correction(self):
