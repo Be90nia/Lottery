@@ -167,40 +167,50 @@ class _RedirectTracker(HTTPRedirectHandler):
 
 def fetch_announcement(url: str, timeout: int = 20) -> dict[str, Any]:
     _allowed_url(url)
-    tracker = _RedirectTracker()
-    opener = build_opener(tracker)
-    request = Request(url, headers={
-        "Accept": "text/html,application/xhtml+xml",
-        "User-Agent": "LotteryResearchEvidenceCollector/0.1 (+public official-source archival)",
-    })
     retrieved_at = datetime.now(timezone.utc).isoformat()
-    try:
-        with opener.open(request, timeout=timeout) as response:
-            body = response.read()
-            status = response.status
-            content_type = response.headers.get("Content-Type", "")
-            final_url = response.geturl()
-            headers = response.headers
-    except HTTPError as exc:
-        _allowed_url(exc.geturl())
+    last_error: Exception | None = None
+    # Public announcement pages occasionally stall while streaming the HTML body.
+    # Retry transport failures only; HTTP responses (including 403/567/5xx) remain
+    # visible to the collector and are never silently treated as successful pages.
+    for attempt in range(3):
+        tracker = _RedirectTracker()
+        opener = build_opener(tracker)
+        request = Request(url, headers={
+            "Accept": "text/html,application/xhtml+xml",
+            "User-Agent": "LotteryResearchEvidenceCollector/0.1 (+public official-source archival)",
+        })
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                body = response.read()
+                status = response.status
+                content_type = response.headers.get("Content-Type", "")
+                final_url = response.geturl()
+                headers = response.headers
+        except HTTPError as exc:
+            _allowed_url(exc.geturl())
+            return {
+                "requested_url": url, "final_url": exc.geturl(), "redirect_chain": tracker.chain,
+                "retrieved_at_utc": retrieved_at, "http_status": exc.code,
+                "content_type": exc.headers.get("Content-Type", "") if exc.headers else "",
+                "body": exc.read(), "headers": exc.headers,
+            }
+        except (URLError, TimeoutError, OSError) as exc:
+            last_error = exc
+            if attempt < 2:
+                time.sleep(1.0 * (attempt + 1))
+                continue
+            break
+        _allowed_url(final_url)
+        if status != 200:
+            raise BallSetEvidenceError(f"unexpected HTTP status {status} for {url}")
+        if "html" not in content_type.lower():
+            raise BallSetEvidenceError(f"unexpected content type {content_type!r} for {url}")
         return {
-            "requested_url": url, "final_url": exc.geturl(), "redirect_chain": tracker.chain,
-            "retrieved_at_utc": retrieved_at, "http_status": exc.code,
-            "content_type": exc.headers.get("Content-Type", "") if exc.headers else "",
-            "body": exc.read(), "headers": exc.headers,
+            "requested_url": url, "final_url": final_url, "redirect_chain": tracker.chain,
+            "retrieved_at_utc": retrieved_at, "http_status": status,
+            "content_type": content_type, "body": body, "headers": headers,
         }
-    except (URLError, TimeoutError, OSError) as exc:
-        raise BallSetEvidenceError(f"official source request failed: {exc}") from exc
-    _allowed_url(final_url)
-    if status != 200:
-        raise BallSetEvidenceError(f"unexpected HTTP status {status} for {url}")
-    if "html" not in content_type.lower():
-        raise BallSetEvidenceError(f"unexpected content type {content_type!r} for {url}")
-    return {
-        "requested_url": url, "final_url": final_url, "redirect_chain": tracker.chain,
-        "retrieved_at_utc": retrieved_at, "http_status": status,
-        "content_type": content_type, "body": body, "headers": headers,
-    }
+    raise BallSetEvidenceError(f"official source request failed after 3 attempts: {last_error}") from last_error
 
 
 def _canonical_hash(value: dict[str, Any]) -> str:
