@@ -72,7 +72,7 @@ The live endpoint has not yet passed this repository's end-to-end verification. 
 
 ## Reported ball-set index evidence
 
-The scheduled [ball-set evidence workflow](.github/workflows/ball-set-evidence.yml) archives per-draw set-index announcements from the approved Jiangsu provincial source and builds a raw-evidence-backed coverage report plus a write-once reported-index view. The current verified view covers 1,067 draws in the 2019-08-31–2026-11-16 window (index counts 360 / 347 / 360). It excludes out-of-inventory observations and preserves `equipment_regime_id` and `physical_ball_set_id` as null.
+The scheduled [ball-set evidence workflow](.github/workflows/ball-set-evidence.yml) archives per-draw set-index announcements from the approved Jiangsu provincial source, builds a raw-evidence-backed coverage report and write-once reported-index view, runs the preregistered rolling-origin pilot, and emits 45 exploratory candidates (5 per estimator lane × 3 reported indices). The current verified view covers 1,067 draws in the 2019-08-31–2026-11-16 window (index counts 360 / 347 / 360). It excludes out-of-inventory observations and preserves `equipment_regime_id` and `physical_ball_set_id` as null.
 
 This is a **reported-index evidence view**, not a physical ball-set identity map. The existing regime eligibility remains blocked. The research-only pilot protocol is [preregistered here](docs/REPORTED_SET_INDEX_CONDITIONAL_MODEL_PREREGISTRATION.md); it does not access LOT-042 or authorize model promotion. See [the evidence archive guide](docs/BALL_SET_EVIDENCE_ARCHIVE.md).
 
