@@ -258,6 +258,8 @@ def build_ball_set_coverage(
             draw_result_status = "draw_result_mismatch"
         elif "draw_mismatch" in result_states:
             draw_result_status = "draw_mismatch"
+        elif "source_authority_unverified" in result_states:
+            draw_result_status = "source_authority_unverified"
         elif "raw_evidence_invalid" in result_states:
             draw_result_status = "raw_evidence_invalid"
         elif valid_result_sets:
@@ -380,6 +382,7 @@ def build_ball_set_coverage(
             "draw_result_inventory_matched": 0, "draw_result_mismatch": 0,
             "draw_result_missing_or_invalid": 0, "draw_result_conflict": 0,
             "draw_result_review_required": 0, "draw_result_raw_evidence_invalid": 0,
+            "draw_result_source_authority_unverified": 0,
         })
         bucket["inventory_draws"] += 1
         if item["status"] in bucket:
@@ -399,6 +402,8 @@ def build_ball_set_coverage(
             bucket["draw_result_review_required"] += 1
         elif result_status == "raw_evidence_invalid":
             bucket["draw_result_raw_evidence_invalid"] += 1
+        elif result_status == "source_authority_unverified":
+            bucket["draw_result_source_authority_unverified"] += 1
 
     per_set: dict[str, Any] = {}
     inventory_positions = {row["draw_id"]: i for i, row in enumerate(inventory)}
