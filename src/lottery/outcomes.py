@@ -260,9 +260,20 @@ def create_outcome_event_from_snapshot(
         recorded_at=recorded_at,
     )
 
-def append_outcome(path: Path, event: dict[str, Any]) -> dict[str, Any]:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def append_outcome(
+    path: Path, event: dict[str, Any], *, forecast_path: Path
+) -> dict[str, Any]:
     _validate_outcome_payload(event)
+    forecasts = _forecast_events(forecast_path)
+    forecast = forecasts.get(event["target_draw_id"])
+    if forecast is None or forecast.get("event_hash") != event["forecast_event_hash"]:
+        raise OutcomeLedgerError("outcome does not reference the current immutable forecast event")
+    target_time = _aware(forecast["target_draw_at"], "forecast target_draw_at")
+    if event["draw_date"] != target_time.date().isoformat():
+        raise OutcomeLedgerError("outcome draw date does not match forecast target draw date")
+    if _aware(event["published_at"], "published_at") < target_time:
+        raise OutcomeLedgerError("publication timestamp precedes target draw time")
+    path.parent.mkdir(parents=True, exist_ok=True)
     # Lock before reading the chain: sequence, previous hash, duplicate check,
     # and append must be one cross-process transaction.
     with ledger_lock(path):
@@ -355,7 +366,7 @@ def main() -> int:
             )
             if sorted(args.front) != event["front_numbers"] or sorted(args.back) != event["back_numbers"]:
                 raise OutcomeLedgerError("CLI numbers do not match the selected result in the raw source snapshot")
-            result = append_outcome(args.outcomes, event)
+            result = append_outcome(args.outcomes, event, forecast_path=args.forecasts)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, LedgerLockError) as exc:
