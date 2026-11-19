@@ -320,6 +320,8 @@ def build_ball_set_coverage(
             "observation_id": item.get("observation_id"),
             "observation_status": pending_status,
             "source_url": evidence_url or item.get("source", {}).get("final_url"),
+            "body_sha256": item.get("source", {}).get("body_sha256"),
+            "source_authority_class": item.get("source", {}).get("authority_class"),
             "inventory_crosswalk_status": "not_in_inventory",
             "raw_evidence_verified": evidence_status in (
                 "primary_verified", "missing_label", "unsupported_label"
