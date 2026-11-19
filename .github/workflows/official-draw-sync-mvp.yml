@@ -70,6 +70,8 @@ jobs:
               "code_commit": os.environ["GIT_SHA"],
               "fetch_summary": summary,
               "trust_status": "not_officially_authenticated",
+              "source_completeness_verified": bool(summary.get("source_completeness_verified", False)) if isinstance(summary, dict) else False,
+              "pagination_end_reason": summary.get("pagination_end_reason") if isinstance(summary, dict) else None,
               "canonical_dataset_modified": False,
               "model_training_or_promotion": False
           }
