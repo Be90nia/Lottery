@@ -480,7 +480,7 @@ def write_ball_set_coverage_report(
         "",
         "| Set | Verified draws | First draw | Last draw | Largest gap (positions) | Longest missing run | Largest gap (days) | Denominator |",
         "|---:|---:|---|---|---:|---:|---:|---|",
-    ]
+    ])
     for set_index, row in report["per_set"].items():
         lines.append(
             f"| {set_index} | {row['primary_verified_draws']} | "
