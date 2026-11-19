@@ -240,6 +240,15 @@ def build_ball_set_coverage(
         for item in observations if item.get("draw_id") not in inventory_by_id
     ]
     out_of_inventory = len(out_of_inventory_records)
+    collector_receipt_path = archive_dir / "receipt.json"
+    collector_receipt = None
+    collector_receipt_raw = b""
+    if collector_receipt_path.exists():
+        collector_receipt_raw = collector_receipt_path.read_bytes()
+        try:
+            collector_receipt = json.loads(collector_receipt_raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BallSetCoverageError(f"collector receipt is invalid: {exc}") from exc
     years: dict[str, dict[str, Any]] = {}
     for item in per_draw:
         year = item["draw_date"][:4]
@@ -288,6 +297,10 @@ def build_ball_set_coverage(
         "inventory_trust_status": "candidate_unverified",
         "inventory_validation": validation,
         "observation_ledger_sha256": _sha_bytes(ledger_raw),
+        "collector_receipt_sha256": _sha_bytes(collector_receipt_raw) if collector_receipt_raw else None,
+        "collector_receipt_status": collector_receipt.get("status") if collector_receipt else "missing",
+        "source_completeness_verified": collector_receipt.get("source_completeness_verified") if collector_receipt else None,
+        "latest_collected_draw_id": collector_receipt.get("latest_draw_id") if collector_receipt else None,
         "observation_count": len(observations),
         "out_of_inventory_observation_count": out_of_inventory,
         "out_of_inventory_observations": out_of_inventory_records,
@@ -351,6 +364,9 @@ def write_ball_set_coverage_report(
         f"- Inventory SHA-256: `{report['inventory_sha256']}`",
         f"- Inventory trust: `{report['inventory_trust_status']}`",
         f"- Observation ledger SHA-256: `{report['observation_ledger_sha256']}`",
+        f"- Collector receipt status: `{report['collector_receipt_status']}`",
+        f"- Source completeness verified: `{report['source_completeness_verified']}`",
+        f"- Latest collected draw: `{report['latest_collected_draw_id']}`",
         f"- Generated: {report['generated_at_utc']}",
         "",
         "## Summary",
