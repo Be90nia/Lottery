@@ -56,6 +56,10 @@ class TicketCandidateTests(unittest.TestCase):
             generate_ticket_candidates(self.rows, alpha=float("nan"))
         with self.assertRaisesRegex(ValueError, "finite and positive"):
             generate_ticket_candidates(self.rows, half_life=0)
+        with self.assertRaisesRegex(ValueError, "finite and positive"):
+            generate_ticket_candidates(self.rows, alpha=True)
+        with self.assertRaisesRegex(ValueError, "finite and positive"):
+            generate_ticket_candidates(self.rows, half_life=False)
 
 
     def test_cli_reads_dataset_and_writes_auditable_output(self):
