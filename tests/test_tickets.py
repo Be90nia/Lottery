@@ -1,5 +1,6 @@
 import hashlib
 import json
+import random
 import subprocess
 import sys
 import tempfile
@@ -54,7 +55,7 @@ class TicketCandidateTests(unittest.TestCase):
         self.assertEqual(receipt["terminal_status"], "converged")
         for actual, expected in zip(achieved, target):
             self.assertAlmostEqual(actual, expected, delta=1e-8)
-        rng = __import__("random").Random(17)
+        rng = random.Random(17)
         for _ in range(100):
             subset = _sample_ticket_subset(sampler, rng)
             self.assertEqual(len(subset), 2)
@@ -80,9 +81,6 @@ class TicketCandidateTests(unittest.TestCase):
         self.assertEqual(first["generation_run_id"], second["generation_run_id"])
 
     def test_duplicate_tickets_are_preserved_under_with_replacement_sampling(self):
-        def repeated_sample(_weights, count, _rng):
-            return [1, 2, 3, 4, 5] if count == 5 else [1, 2]
-
         def repeated_sample(sampler, _rng):
             return [1, 2, 3, 4, 5] if sampler.k == 5 else [1, 2]
 
