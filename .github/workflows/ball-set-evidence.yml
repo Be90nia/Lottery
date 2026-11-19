@@ -195,6 +195,39 @@ jobs:
             --archive-dir evidence-archive \
             --output-dir evidence-archive/coverage/reported-set-index
 
+      - name: Build A2-cross-checked append-only draw candidate and live index view
+        id: source_candidate
+        if: steps.collect.outcome == 'success' && steps.reported_view.outcome == 'success'
+        continue-on-error: true
+        run: |
+          REPORT_SHA="$(python -c 'import json; print(json.load(open("evidence-archive/coverage/coverage.json", encoding="utf-8"))["report_sha256"])')"
+          VIEW_STEM="reported-set-index-${REPORT_SHA:0:16}"
+          python scripts/build_jiangsu_draw_candidate.py \
+            --inventory data/ball_set/draw-inventory-20261118.jsonl \
+            --inventory-manifest data/ball_set/draw-inventory-20261118.jsonl.manifest.json \
+            --coverage evidence-archive/coverage/coverage.json \
+            --ledger evidence-archive/observations.jsonl \
+            --archive-dir evidence-archive \
+            --frozen-view "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.jsonl" \
+            --frozen-manifest "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.manifest.json" \
+            --output-dir evidence-archive/candidates \
+            --live-view-dir evidence-archive/coverage/reported-set-index-live \
+            --code-commit "$GITHUB_SHA"
+
+      - name: Generate standard MVP tickets from the A2-extended candidate dataset
+        id: standard_mvp
+        if: steps.source_candidate.outcome == 'success'
+        continue-on-error: true
+        run: |
+          REPORT_SHA="$(python -c 'import json; print(json.load(open("evidence-archive/coverage/coverage.json", encoding="utf-8"))["report_sha256"])')"
+          CANDIDATE="evidence-archive/candidates/jiangsu-draw-candidate-${REPORT_SHA:0:16}.jsonl"
+          python scripts/run_mvp.py \
+            --dataset "$CANDIDATE" \
+            --output "evidence-archive/candidates/standard-mvp-${REPORT_SHA:0:16}.json" \
+            --tickets-per-strategy 5 \
+            --seed 20261119 \
+            --code-commit "$GITHUB_SHA"
+
       - name: Run preregistered reported-index rolling-origin pilot
         id: pilot
         if: steps.collect.outcome == 'success' && steps.reported_view.outcome == 'success'
@@ -237,7 +270,7 @@ jobs:
           retention-days: 90
 
       - name: Fail visibly when evidence needs intervention
-        if: steps.collect.outcome == 'failure' || steps.coverage.outcome == 'failure' || steps.reported_view.outcome == 'failure' || steps.pilot.outcome == 'failure' || steps.candidates.outcome == 'failure'
+        if: steps.collect.outcome == 'failure' || steps.coverage.outcome == 'failure' || steps.reported_view.outcome == 'failure' || steps.source_candidate.outcome == 'failure' || steps.standard_mvp.outcome == 'failure' || steps.pilot.outcome == 'failure' || steps.candidates.outcome == 'failure'
         run: |
           echo "Ball-set evidence collection or coverage verification failed. The previous and newly captured evidence artifact was uploaded."
           exit 1
