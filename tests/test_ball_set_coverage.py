@@ -94,6 +94,17 @@ class BallSetCoverageTests(unittest.TestCase):
         report = self.report()
         self.assertEqual(report["per_draw"][0]["status"], "source_revision_requires_review")
         self.assertEqual(report["summary"]["primary_verified_draws"], 0)
+    def test_same_semantic_source_revision_keeps_label_verified(self):
+        original = page(3)
+        self.collect(original)
+        revised = original.replace(b"</body>", b"<!-- harmless page chrome revision --></body>")
+        self.collect(revised, retrieved="2026-11-19T01:00:00+00:00")
+        records = [json.loads(line) for line in self.ledger.read_text().splitlines()]
+        self.assertEqual(records[1]["observation_status"], "source_revision_same_semantics")
+        report = self.report()
+        self.assertEqual(report["per_draw"][0]["status"], "primary_verified")
+        self.assertEqual(report["per_draw"][0]["reported_set_index"], 3)
+
 
     def test_conflict_record_excludes_draw_from_verified_view(self):
         self.collect(page(3))
