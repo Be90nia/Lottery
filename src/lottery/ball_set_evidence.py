@@ -307,7 +307,13 @@ def _archive_observation(
                 "draw_id": parsed.draw_id, "body_sha256": digest}
 
     if supersedes:
-        status = "source_revision_requires_review"
+        prior_status = supersedes.get("observation_status")
+        same_semantics = (
+            supersedes.get("draw_date") == parsed.draw_date
+            and supersedes.get("reported_set_index") == parsed.reported_set_index
+            and prior_status not in ("conflict", "source_revision_requires_review", "draw_mismatch")
+        )
+        status = "source_revision_same_semantics" if same_semantics else "source_revision_requires_review"
     elif status == "primary_verified":
         other_labels = {
             item.get("reported_set_index") for item in ledger_before
