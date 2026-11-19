@@ -167,8 +167,9 @@ def reconcile_append_only(
             "candidate_validation": candidate_validation,
         }
     else:
-        if output_path.exists():
-            raise PublicationError("output_path already exists; refusing to overwrite a prior candidate")
+        output_manifest_path = output_path.with_suffix(output_path.suffix + ".manifest.json")
+        if output_path.exists() or output_manifest_path.exists():
+            raise PublicationError("output or output manifest already exists; refusing to overwrite a prior candidate")
         payload = _canonical_rows(merged)
         _atomic_write_new(output_path, payload)
         output_sha = hashlib.sha256(payload).hexdigest()
@@ -200,7 +201,7 @@ def reconcile_append_only(
             "promotion_authorized": False,
         }
         _atomic_write_new(
-            output_path.with_suffix(output_path.suffix + ".manifest.json"),
+            output_manifest_path,
             (json.dumps(output_manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8"),
         )
     _atomic_write_new(
