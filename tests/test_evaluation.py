@@ -9,7 +9,7 @@ from pathlib import Path
 from lottery.evaluation import (
     EvaluationGateError,
     build_evaluation_receipt,
-    verify_evaluation_receipt,
+    verify_evaluation_receipt, _digest,
 )
 
 
@@ -101,6 +101,24 @@ class EvaluationGateTests(unittest.TestCase):
     def test_holdout_scope_forbidden(self):
         with self.assertRaisesRegex(EvaluationGateError, "prospective holdout is forbidden"):
             self.build(scope="prospective_holdout")
+
+    def test_recomputed_receipt_hash_cannot_lower_frozen_threshold(self):
+        receipt = self.build()
+        changed = copy.deepcopy(receipt)
+        changed["evaluation_config"]["min_targets"] = 2
+        body = {key: value for key, value in changed.items() if key != "receipt_sha256"}
+        changed["receipt_sha256"] = _digest(body)
+        with self.assertRaisesRegex(EvaluationGateError, "evaluation configuration is invalid"):
+            verify_evaluation_receipt(changed)
+
+    def test_recomputed_receipt_hash_cannot_mismatch_bootstrap_configuration(self):
+        receipt = self.build()
+        changed = copy.deepcopy(receipt)
+        changed["comparisons"]["champion"]["front"]["brier"]["replicates"] = 10
+        body = {key: value for key, value in changed.items() if key != "receipt_sha256"}
+        changed["receipt_sha256"] = _digest(body)
+        with self.assertRaisesRegex(EvaluationGateError, "configuration mismatch"):
+            verify_evaluation_receipt(changed)
 
     def test_receipt_tampering_detected(self):
         receipt = self.build()
