@@ -7,7 +7,7 @@ authenticated; archive the exact source snapshot and its hash independently.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
 import math
@@ -77,6 +77,13 @@ def _validate_outcome_payload(event: dict[str, Any]) -> None:
     target = event.get("target_draw_id")
     if not isinstance(target, str) or not target:
         raise OutcomeLedgerError("outcome target_draw_id must be a non-empty string")
+    draw_date = event.get("draw_date")
+    if not isinstance(draw_date, str):
+        raise OutcomeLedgerError("outcome draw_date must be an ISO date")
+    try:
+        date.fromisoformat(draw_date)
+    except ValueError as exc:
+        raise OutcomeLedgerError("outcome draw_date must be an ISO date") from exc
     forecast_hash = event.get("forecast_event_hash")
     if (not isinstance(forecast_hash, str) or len(forecast_hash) != 64
             or any(c not in "0123456789abcdef" for c in forecast_hash)):
@@ -136,7 +143,10 @@ def _validate_numbers(values: list[int], size: int, pick: int, field: str) -> No
 
 
 def _forecast_events(path: Path) -> dict[str, dict[str, Any]]:
-    verify_ledger(path)
+    try:
+        verify_ledger(path)
+    except ForecastLedgerError as exc:
+        raise OutcomeLedgerError(f"forecast ledger is invalid: {exc}") from exc
     events = _read_events(path)
     result = {}
     for line_no, event in enumerate(events, 1):
@@ -164,7 +174,7 @@ def _forecast_events(path: Path) -> dict[str, dict[str, Any]]:
 
 
 def create_outcome_event(
-    forecast_path: Path, *, target_draw_id: str, published_at: str,
+    forecast_path: Path, *, target_draw_id: str, draw_date: str, published_at: str,
     captured_at: str, source_url: str, source_sha256: str, http_status: int,
     front_numbers: list[int], back_numbers: list[int],
     recorded_at: datetime | None = None,
@@ -179,6 +189,14 @@ def create_outcome_event(
     if recorded.tzinfo is None or recorded.utcoffset() is None:
         raise OutcomeLedgerError("recorded_at must include a timezone")
     target_time = _aware(forecast["target_draw_at"], "forecast target_draw_at")
+    if not isinstance(draw_date, str):
+        raise OutcomeLedgerError("draw_date must be an ISO date")
+    try:
+        observed_draw_date = date.fromisoformat(draw_date)
+    except ValueError as exc:
+        raise OutcomeLedgerError("draw_date must be an ISO date") from exc
+    if observed_draw_date != target_time.date():
+        raise OutcomeLedgerError("source draw date does not match forecast target draw date")
     if publication < target_time:
         raise OutcomeLedgerError("publication timestamp precedes target draw time")
     if capture < publication:
@@ -198,6 +216,7 @@ def create_outcome_event(
         "event_type": "post_draw_outcome",
         "recorded_at": recorded.astimezone(timezone.utc).isoformat(),
         "target_draw_id": target_draw_id,
+        "draw_date": observed_draw_date.isoformat(),
         "forecast_event_hash": forecast["event_hash"],
         "published_at": publication.isoformat(),
         "captured_at": capture.isoformat(),
@@ -236,13 +255,25 @@ def create_outcome_event_from_snapshot(
         forecast_path, target_draw_id=target_draw_id,
         published_at=published_at, captured_at=captured_at,
         source_url=source_url, source_sha256=digest, http_status=http_status,
+        draw_date=observed.draw_date,
         front_numbers=observed.front_numbers, back_numbers=observed.back_numbers,
         recorded_at=recorded_at,
     )
 
-def append_outcome(path: Path, event: dict[str, Any]) -> dict[str, Any]:
-    path.parent.mkdir(parents=True, exist_ok=True)
+def append_outcome(
+    path: Path, event: dict[str, Any], *, forecast_path: Path
+) -> dict[str, Any]:
     _validate_outcome_payload(event)
+    forecasts = _forecast_events(forecast_path)
+    forecast = forecasts.get(event["target_draw_id"])
+    if forecast is None or forecast.get("event_hash") != event["forecast_event_hash"]:
+        raise OutcomeLedgerError("outcome does not reference the current immutable forecast event")
+    target_time = _aware(forecast["target_draw_at"], "forecast target_draw_at")
+    if event["draw_date"] != target_time.date().isoformat():
+        raise OutcomeLedgerError("outcome draw date does not match forecast target draw date")
+    if _aware(event["published_at"], "published_at") < target_time:
+        raise OutcomeLedgerError("publication timestamp precedes target draw time")
+    path.parent.mkdir(parents=True, exist_ok=True)
     # Lock before reading the chain: sequence, previous hash, duplicate check,
     # and append must be one cross-process transaction.
     with ledger_lock(path):
@@ -271,9 +302,10 @@ def score_ledgers(forecast_path: Path, outcome_path: Path) -> dict[str, Any]:
         forecast = forecasts.get(target)
         if forecast is None or forecast.get("event_hash") != outcome.get("forecast_event_hash"):
             raise OutcomeLedgerError(f"outcome {target} does not link to its forecast event")
-        if _aware(outcome["published_at"], "published_at") < _aware(
-            forecast["target_draw_at"], "forecast target_draw_at"
-        ):
+        target_time = _aware(forecast["target_draw_at"], "forecast target_draw_at")
+        if outcome["draw_date"] != target_time.date().isoformat():
+            raise OutcomeLedgerError(f"outcome {target} draw date does not match its forecast target date")
+        if _aware(outcome["published_at"], "published_at") < target_time:
             raise OutcomeLedgerError(f"outcome {target} was published before its target draw time")
         zones = {}
         for model, probabilities in forecast["models"].items():
@@ -334,7 +366,7 @@ def main() -> int:
             )
             if sorted(args.front) != event["front_numbers"] or sorted(args.back) != event["back_numbers"]:
                 raise OutcomeLedgerError("CLI numbers do not match the selected result in the raw source snapshot")
-            result = append_outcome(args.outcomes, event)
+            result = append_outcome(args.outcomes, event, forecast_path=args.forecasts)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, LedgerLockError) as exc:

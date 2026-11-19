@@ -11,6 +11,8 @@ from lottery.forecast import (
     append_forecast,
     create_forecast_event,
     verify_ledger,
+    GENESIS_HASH,
+    _event_hash,
 )
 
 
@@ -60,6 +62,11 @@ class ForecastLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(ForecastLedgerError, "strictly in the future"):
             create_forecast_event(self.rows, **kwargs)
 
+    def test_target_id_must_follow_last_training_id(self):
+        kwargs = dict(self.kwargs, target_draw_id="26002")
+        with self.assertRaisesRegex(ForecastLedgerError, "target draw ID must follow"):
+            create_forecast_event(self.rows, **kwargs)
+
     def test_target_date_must_follow_training_data(self):
         kwargs = dict(self.kwargs, target_draw_at="2026-01-03T20:00:00+08:00", generated_at=datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc))
         with self.assertRaisesRegex(ForecastLedgerError, "later than every training"):
@@ -77,6 +84,27 @@ class ForecastLedgerTests(unittest.TestCase):
         kwargs = dict(self.kwargs, training_sha256="bad")
         with self.assertRaisesRegex(ForecastLedgerError, "SHA-256"):
             create_forecast_event(self.rows, **kwargs)
+
+    def test_alpha_and_half_life_require_finite_positive_non_boolean_numbers(self):
+        for kwargs in (
+            {"alpha": float("nan")},
+            {"alpha": True},
+            {"alpha": 0.0},
+            {"half_life": float("inf")},
+            {"half_life": False},
+            {"half_life": -1.0},
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaisesRegex(ForecastLedgerError, "finite positive"):
+                    create_forecast_event(self.rows, **dict(self.kwargs, **kwargs))
+
+    def test_target_draw_id_must_be_a_nonempty_string(self):
+        for value in (None, 123, ""):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ForecastLedgerError, "non-empty string"):
+                    create_forecast_event(
+                        self.rows, **dict(self.kwargs, target_draw_id=value)
+                    )
 
     def test_append_and_verify_hash_chain(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -97,6 +125,41 @@ class ForecastLedgerTests(unittest.TestCase):
             second = create_forecast_event(self.rows, **second_kwargs)
             self.assertEqual(append_forecast(ledger, second)["sequence"], 2)
             self.assertEqual(verify_ledger(ledger)["events"], 2)
+
+    def test_append_rejects_semantically_invalid_forecast_before_mutation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            event = create_forecast_event(self.rows, **self.kwargs)
+            invalid = json.loads(json.dumps(event))
+            invalid["models"]["uniform"]["front_inclusion_probabilities"][0] += 0.1
+            with self.assertRaisesRegex(ForecastLedgerError, "invalid uniform front"):
+                append_forecast(ledger, invalid)
+            self.assertFalse(ledger.exists())
+
+    def test_append_rejects_caller_supplied_chain_metadata(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            event = create_forecast_event(self.rows, **self.kwargs)
+            event["sequence"] = 999
+            event["previous_event_hash"] = "f" * 64
+            with self.assertRaisesRegex(ForecastLedgerError, "caller-supplied chain metadata"):
+                append_forecast(ledger, event)
+            self.assertFalse(ledger.exists())
+
+    def test_verifier_rejects_invalid_payload_even_with_recomputed_hash(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "forecast.jsonl"
+            event = create_forecast_event(self.rows, **self.kwargs)
+            body = {
+                "sequence": 1,
+                "previous_event_hash": GENESIS_HASH,
+                **event,
+            }
+            body["models"]["uniform"]["front_inclusion_probabilities"][0] += 0.1
+            record = {**body, "event_hash": _event_hash(body)}
+            ledger.write_text(json.dumps(record, sort_keys=True) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ForecastLedgerError, "invalid uniform front"):
+                verify_ledger(ledger)
 
     def test_duplicate_target_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -7,9 +7,10 @@ signature and cannot prove who created a record.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -45,6 +46,101 @@ def _event_hash(event_without_hash: dict[str, Any]) -> str:
     return hashlib.sha256(_canonical_json(event_without_hash)).hexdigest()
 
 
+def _aware_timestamp(value: Any, field: str) -> datetime:
+    if not isinstance(value, str):
+        raise ForecastLedgerError(f"{field} must be an ISO-8601 timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ForecastLedgerError(f"{field} must be an ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ForecastLedgerError(f"{field} must include a timezone")
+    return parsed
+
+
+def _validate_forecast_payload(event: dict[str, Any]) -> None:
+    payload_keys = {
+        "event_type", "generated_at", "target_draw_id", "target_draw_at",
+        "training_dataset_sha256", "training_draw_count",
+        "training_first_draw_id", "training_last_draw_id", "training_last_draw_date", "code_commit",
+        "model_configuration", "models",
+    }
+    allowed_keys = payload_keys | {"sequence", "previous_event_hash"}
+    if not isinstance(event, dict) or not payload_keys.issubset(event) or set(event) - allowed_keys:
+        raise ForecastLedgerError("forecast event has an invalid or incomplete schema")
+    if event.get("event_type") != "pre_draw_forecast":
+        raise ForecastLedgerError("forecast event_type must be pre_draw_forecast")
+    target = event.get("target_draw_id")
+    if not isinstance(target, str) or not target.strip():
+        raise ForecastLedgerError("target_draw_id must be a non-empty string")
+    generated = _aware_timestamp(event.get("generated_at"), "generated_at")
+    target_time = _aware_timestamp(event.get("target_draw_at"), "target_draw_at")
+    if generated >= target_time:
+        raise ForecastLedgerError("forecast must be generated strictly before target draw time")
+    digest = event.get("training_dataset_sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ForecastLedgerError("training dataset SHA-256 must be 64 lowercase hex characters")
+    commit = event.get("code_commit")
+    if not isinstance(commit, str) or not CODE_COMMIT_RE.fullmatch(commit):
+        raise ForecastLedgerError("code commit must be a full 40-character lowercase Git SHA")
+    count = event.get("training_draw_count")
+    if type(count) is not int or count < 1:
+        raise ForecastLedgerError("training_draw_count must be a positive integer")
+    for field in ("training_first_draw_id", "training_last_draw_id"):
+        value = event.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ForecastLedgerError(f"{field} must be a non-empty string")
+    if event["training_first_draw_id"] > event["training_last_draw_id"]:
+        raise ForecastLedgerError("training draw ID range is reversed")
+    if target <= event["training_last_draw_id"]:
+        raise ForecastLedgerError("target draw ID must follow the last training draw ID")
+    training_last_date_value = event.get("training_last_draw_date")
+    if not isinstance(training_last_date_value, str):
+        raise ForecastLedgerError("training_last_draw_date must be an ISO date")
+    try:
+        training_last_date = date.fromisoformat(training_last_date_value)
+    except ValueError as exc:
+        raise ForecastLedgerError("training_last_draw_date must be an ISO date") from exc
+    if target_time.date() <= training_last_date:
+        raise ForecastLedgerError("target draw date must follow the last training draw date")
+
+    configuration = event.get("model_configuration")
+    if not isinstance(configuration, dict) or set(configuration) != {
+        "expanding_alpha", "ewma_half_life_draws"
+    }:
+        raise ForecastLedgerError("model_configuration schema is invalid")
+    for field in ("expanding_alpha", "ewma_half_life_draws"):
+        value = configuration[field]
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            raise ForecastLedgerError(f"model_configuration {field} must be finite and positive")
+
+    models = event.get("models")
+    if not isinstance(models, dict) or set(models) != {"uniform", "expanding", "ewma"}:
+        raise ForecastLedgerError("forecast models must be exactly uniform, expanding, and ewma")
+    for model_name, zones in models.items():
+        if not isinstance(zones, dict) or set(zones) != {
+            "front_inclusion_probabilities", "back_inclusion_probabilities"
+        }:
+            raise ForecastLedgerError(f"{model_name} probability zones are invalid")
+        for field, size, pick in (
+            ("front_inclusion_probabilities", FRONT_SIZE, FRONT_PICK),
+            ("back_inclusion_probabilities", BACK_SIZE, BACK_PICK),
+        ):
+            probabilities = zones[field]
+            if (
+                not isinstance(probabilities, list)
+                or len(probabilities) != size
+                or any(
+                    type(value) not in (int, float)
+                    or not math.isfinite(value)
+                    or not 0.0 <= value <= 1.0
+                    for value in probabilities
+                )
+                or abs(sum(probabilities) - pick) > 1e-8
+            ):
+                raise ForecastLedgerError(f"invalid {model_name} {field}")
+
+
 def verify_ledger(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {"events": 0, "last_event_hash": GENESIS_HASH}
@@ -63,12 +159,16 @@ def verify_ledger(path: Path) -> dict[str, Any]:
                 raise ForecastLedgerError(f"line {line_no}: event must be an object")
             supplied_hash = event.get("event_hash")
             body = {key: value for key, value in event.items() if key != "event_hash"}
-            if body.get("sequence") != count + 1:
-                raise ForecastLedgerError(f"line {line_no}: sequence is not contiguous")
+            if type(body.get("sequence")) is not int or body.get("sequence") != count + 1:
+                raise ForecastLedgerError(f"line {line_no}: sequence is not a contiguous integer")
             if body.get("previous_event_hash") != previous_hash:
                 raise ForecastLedgerError(f"line {line_no}: previous hash does not match")
             if not isinstance(supplied_hash, str) or supplied_hash != _event_hash(body):
                 raise ForecastLedgerError(f"line {line_no}: event hash mismatch")
+            try:
+                _validate_forecast_payload(body)
+            except ForecastLedgerError as exc:
+                raise ForecastLedgerError(f"line {line_no}: {exc}") from exc
             target_id = body.get("target_draw_id")
             if not isinstance(target_id, str) or not target_id:
                 raise ForecastLedgerError(f"line {line_no}: missing target draw id")
@@ -93,23 +193,21 @@ def create_forecast_event(
 ) -> dict[str, Any]:
     records = _validate_rows(rows)
     validate_records(records)
-    if not target_draw_id.strip():
-        raise ForecastLedgerError("target draw id must not be empty")
-    if not re.fullmatch(r"[0-9a-f]{64}", training_sha256):
+    if not isinstance(target_draw_id, str) or not target_draw_id.strip():
+        raise ForecastLedgerError("target draw id must not be a non-empty string")
+    if not isinstance(training_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", training_sha256):
         raise ForecastLedgerError("training dataset SHA-256 must be 64 lowercase hex characters")
-    if not CODE_COMMIT_RE.fullmatch(code_commit):
+    if not isinstance(code_commit, str) or not CODE_COMMIT_RE.fullmatch(code_commit):
         raise ForecastLedgerError("code commit must be a full 40-character lowercase Git SHA")
-    if alpha <= 0 or half_life <= 0:
-        raise ForecastLedgerError("alpha and half-life must be positive")
+    if (
+        type(alpha) not in (int, float) or not math.isfinite(alpha) or alpha <= 0
+        or type(half_life) not in (int, float) or not math.isfinite(half_life) or half_life <= 0
+    ):
+        raise ForecastLedgerError("alpha and half-life must be finite positive numbers")
 
-    try:
-        target_time = datetime.fromisoformat(target_draw_at.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ForecastLedgerError("target draw timestamp must be ISO-8601 with timezone") from exc
-    if target_time.tzinfo is None or target_time.utcoffset() is None:
-        raise ForecastLedgerError("target draw timestamp must include a timezone")
+    target_time = _aware_timestamp(target_draw_at, "target draw timestamp")
     now = generated_at or datetime.now(timezone.utc)
-    if now.tzinfo is None or now.utcoffset() is None:
+    if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
         raise ForecastLedgerError("generated_at must include a timezone")
     if target_time <= now:
         raise ForecastLedgerError("target draw must be strictly in the future at forecast creation")
@@ -135,7 +233,7 @@ def create_forecast_event(
         if abs(sum(zones["back_inclusion_probabilities"]) - BACK_PICK) > 1e-9:
             raise ForecastLedgerError(f"{model} back probability mass is invalid")
 
-    return {
+    event = {
         "event_type": "pre_draw_forecast",
         "generated_at": now.astimezone(timezone.utc).isoformat(),
         "target_draw_id": target_draw_id,
@@ -144,16 +242,22 @@ def create_forecast_event(
         "training_draw_count": len(records),
         "training_first_draw_id": records[0]["draw_id"],
         "training_last_draw_id": records[-1]["draw_id"],
+        "training_last_draw_date": records[-1]["draw_date"],
         "code_commit": code_commit,
         "model_configuration": {"expanding_alpha": alpha, "ewma_half_life_draws": half_life},
         "models": models,
     }
+    _validate_forecast_payload(event)
+    return event
 
 
 def append_forecast(
     ledger_path: Path,
     event: dict[str, Any],
 ) -> dict[str, Any]:
+    if isinstance(event, dict) and ({"sequence", "previous_event_hash"} & set(event)):
+        raise ForecastLedgerError("caller-supplied chain metadata is forbidden")
+    _validate_forecast_payload(event)
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     # Serialize the complete read/verify/deduplicate/append transaction.
     with ledger_lock(ledger_path):

@@ -20,10 +20,10 @@ def draw(index):
 
 
 
-def _append_outcome_worker(path, event, barrier, results):
+def _append_outcome_worker(path, event, forecast_path, barrier, results):
     try:
         barrier.wait(timeout=15)
-        append_outcome(Path(path), event)
+        append_outcome(Path(path), event, forecast_path=Path(forecast_path))
         results.put("ok")
     except Exception as exc:
         results.put(type(exc).__name__ + ":" + str(exc))
@@ -45,6 +45,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         append_forecast(self.forecasts, forecast)
         self.kwargs = {
             "target_draw_id": "2604",
+            "draw_date": "2026-02-02",
             "published_at": "2026-02-02T20:30:00+08:00",
             "captured_at": "2026-02-02T20:31:00+08:00",
             "source_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85",
@@ -60,7 +61,7 @@ class OutcomeLedgerTests(unittest.TestCase):
 
     def test_record_verify_and_score(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
-        result = append_outcome(self.outcomes, event)
+        result = append_outcome(self.outcomes, event, forecast_path=self.forecasts)
         self.assertEqual(result["sequence"], 1)
         self.assertEqual(verify_outcome_ledger(self.outcomes)["events"], 1)
         report = score_ledgers(self.forecasts, self.outcomes)
@@ -75,6 +76,22 @@ class OutcomeLedgerTests(unittest.TestCase):
             report["scores"][0]["models"]["uniform"]["back"]["brier_per_number"],
             5 / 36, places=12,
         )
+
+    def test_rejects_outcome_draw_date_mismatch(self):
+        kwargs = dict(self.kwargs, draw_date="2026-02-03")
+        with self.assertRaisesRegex(OutcomeLedgerError, "does not match forecast target draw date"):
+            create_outcome_event(self.forecasts, **kwargs)
+
+    def test_score_rejects_correctly_hashed_outcome_with_wrong_draw_date(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        append_outcome(self.outcomes, event, forecast_path=self.forecasts)
+        record = json.loads(self.outcomes.read_text(encoding="utf-8"))
+        body = {key: value for key, value in record.items() if key != "event_hash"}
+        body["draw_date"] = "2026-02-03"
+        record = {**body, "event_hash": _event_hash(body)}
+        self.outcomes.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        with self.assertRaisesRegex(OutcomeLedgerError, "draw date does not match"):
+            score_ledgers(self.forecasts, self.outcomes)
 
     def test_rejects_publication_before_draw(self):
         kwargs = dict(self.kwargs, published_at="2026-02-02T19:59:00+08:00")
@@ -125,15 +142,29 @@ class OutcomeLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(OutcomeLedgerError, "no pre-draw forecast"):
             create_outcome_event(self.forecasts, **kwargs)
 
+    def test_append_rejects_outcome_date_not_matching_forecast(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        event["draw_date"] = "2026-02-03"
+        with self.assertRaisesRegex(OutcomeLedgerError, "draw date does not match"):
+            append_outcome(self.outcomes, event, forecast_path=self.forecasts)
+        self.assertFalse(self.outcomes.exists())
+
+    def test_append_rejects_outcome_linked_to_unknown_forecast_hash(self):
+        event = create_outcome_event(self.forecasts, **self.kwargs)
+        event["forecast_event_hash"] = "f" * 64
+        with self.assertRaisesRegex(OutcomeLedgerError, "does not reference"):
+            append_outcome(self.outcomes, event, forecast_path=self.forecasts)
+        self.assertFalse(self.outcomes.exists())
+
     def test_duplicate_outcome_rejected(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
-        append_outcome(self.outcomes, event)
+        append_outcome(self.outcomes, event, forecast_path=self.forecasts)
         with self.assertRaisesRegex(OutcomeLedgerError, "already exists"):
-            append_outcome(self.outcomes, event)
+            append_outcome(self.outcomes, event, forecast_path=self.forecasts)
 
     def test_tampering_detected(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
-        append_outcome(self.outcomes, event)
+        append_outcome(self.outcomes, event, forecast_path=self.forecasts)
         record = json.loads(self.outcomes.read_text(encoding="utf-8"))
         record["front_numbers"][0] = 35
         self.outcomes.write_text(json.dumps(record) + "\n", encoding="utf-8")
@@ -143,7 +174,7 @@ class OutcomeLedgerTests(unittest.TestCase):
 
     def test_scoring_rejects_outcome_linked_to_wrong_forecast_hash(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
-        append_outcome(self.outcomes, event)
+        append_outcome(self.outcomes, event, forecast_path=self.forecasts)
         record = json.loads(self.outcomes.read_text(encoding="utf-8"))
         body = {key: value for key, value in record.items() if key != "event_hash"}
         body["forecast_event_hash"] = "f" * 64
@@ -154,7 +185,7 @@ class OutcomeLedgerTests(unittest.TestCase):
 
     def test_verifier_rejects_forged_outcome_metadata_even_with_valid_chain(self):
         event = create_outcome_event(self.forecasts, **self.kwargs)
-        append_outcome(self.outcomes, event)
+        append_outcome(self.outcomes, event, forecast_path=self.forecasts)
         record = json.loads(self.outcomes.read_text(encoding="utf-8"))
         body = {key: value for key, value in record.items() if key != "event_hash"}
         body["source_snapshot_sha256"] = "bad"
@@ -179,7 +210,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         ctx = multiprocessing.get_context("spawn")
         barrier, results = ctx.Barrier(2), ctx.Queue()
         processes = [
-            ctx.Process(target=_append_outcome_worker, args=(str(self.outcomes), event, barrier, results))
+            ctx.Process(target=_append_outcome_worker, args=(str(self.outcomes), event, str(self.forecasts), barrier, results))
             for _ in range(2)
         ]
         for process in processes:
@@ -206,6 +237,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         second_kwargs = dict(
             self.kwargs,
             target_draw_id="2605",
+            draw_date="2026-02-03",
             published_at="2026-02-03T20:30:00+08:00",
             captured_at="2026-02-03T20:31:00+08:00",
             recorded_at=datetime(2026, 2, 3, 13, 0, tzinfo=timezone.utc),
@@ -214,7 +246,7 @@ class OutcomeLedgerTests(unittest.TestCase):
         ctx = multiprocessing.get_context("spawn")
         barrier, results = ctx.Barrier(2), ctx.Queue()
         processes = [
-            ctx.Process(target=_append_outcome_worker, args=(str(self.outcomes), event, barrier, results))
+            ctx.Process(target=_append_outcome_worker, args=(str(self.outcomes), event, str(self.forecasts), barrier, results))
             for event in (first_event, second_event)
         ]
         for process in processes:
@@ -267,6 +299,13 @@ class OutcomeSnapshotBindingTests(unittest.TestCase):
         self.assertEqual(event["front_numbers"], [2, 8, 12, 19, 31])
         self.assertEqual(event["back_numbers"], [3, 9])
         self.assertEqual(event["source_snapshot_sha256"], hashlib.sha256(self.snapshot.read_bytes()).hexdigest())
+
+    def test_snapshot_draw_date_must_match_forecast_target(self):
+        payload = json.loads(self.snapshot.read_text(encoding="utf-8"))
+        payload["value"]["list"][0]["lotteryDrawTime"] = "2026-02-03"
+        self.snapshot.write_text(json.dumps(payload), encoding="utf-8")
+        with self.assertRaisesRegex(OutcomeLedgerError, "does not match forecast target draw date"):
+            create_outcome_event_from_snapshot(self.forecasts, **self.kwargs)
 
     def test_snapshot_must_contain_exactly_one_matching_draw(self):
         kwargs = dict(self.kwargs, target_draw_id="not-in-snapshot")
