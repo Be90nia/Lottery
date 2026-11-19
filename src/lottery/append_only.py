@@ -119,7 +119,7 @@ def _verify_source_completeness_attestation(
         raise AppendOnlyError("source total page count must be a positive integer")
     if type(attestation.get("page_size")) is not int or not 1 <= attestation["page_size"] <= 100:
         raise AppendOnlyError("attested page size must be an integer in 1..100")
-    if attestation.get("metadata_page_no") != 1:
+    if type(attestation.get("metadata_page_no")) is not int or attestation.get("metadata_page_no") != 1:
         raise AppendOnlyError("pagination totals must be attested from source page 1")
     total_records = attestation["source_total_records"]
     total_pages = attestation["source_total_pages"]
@@ -140,7 +140,7 @@ def _verify_source_completeness_attestation(
     if (not isinstance(pages, list) or len(pages) != total_pages
             or not isinstance(snapshots, list) or len(snapshots) != total_pages):
         raise AppendOnlyError("attested page inventory does not match source total pages")
-    if manifest.get("snapshot_count") != total_pages:
+    if type(manifest.get("snapshot_count")) is not int or manifest.get("snapshot_count") != total_pages:
         raise AppendOnlyError("candidate snapshot_count does not match source total pages")
     if manifest.get("snapshot_sha256") != [page.get("sha256") for page in pages if isinstance(page, dict)]:
         raise AppendOnlyError("candidate snapshot SHA inventory does not match pagination attestation")
@@ -168,7 +168,7 @@ def _verify_source_completeness_attestation(
                 or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
                 or type(records) is not int or records < 1):
             raise AppendOnlyError(f"page {expected_page_no}: attestation entry is invalid")
-        if (snapshot.get("page_no") != expected_page_no
+        if (type(snapshot.get("page_no")) is not int or snapshot.get("page_no") != expected_page_no
                 or snapshot.get("raw_file") != raw_file
                 or snapshot.get("sha256") != digest
                 or snapshot.get("records") != records
@@ -203,7 +203,7 @@ def _verify_source_completeness_attestation(
         if (sidecar.get("source") != "Sporttery public historical draw API"
                 or sidecar.get("raw_file") != raw_file
                 or sidecar.get("sha256") != digest
-                or sidecar.get("bytes") != len(raw)
+                or type(sidecar.get("bytes")) is not int or sidecar.get("bytes") != len(raw)
                 or type(sidecar.get("http_status")) is not int or sidecar.get("http_status") != 200
                 or type(sidecar.get("page_no")) is not int or sidecar.get("page_no") != expected_page_no
                 or not isinstance(sidecar.get("run_id"), str) or not sidecar.get("run_id")
