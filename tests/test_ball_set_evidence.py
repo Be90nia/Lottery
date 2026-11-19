@@ -73,6 +73,12 @@ class BallSetParserTests(unittest.TestCase):
         with self.assertRaisesRegex(BallSetEvidenceError, "missing an explicit"):
             parse_announcement(b"<html><body>no draw details</body></html>", BASE)
 
+    def test_unsupported_explicit_set_index_is_not_misclassified_as_missing(self):
+        parsed = parse_announcement(page(label=4), BASE)
+        self.assertIsNone(parsed.reported_set_index)
+        self.assertEqual(parsed.observation_status, "unsupported_label")
+        self.assertEqual(parsed.matched_text, "本期使用第4套摇奖球")
+
 
 class BallSetArchiveTests(unittest.TestCase):
     def setUp(self):
