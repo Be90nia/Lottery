@@ -167,7 +167,10 @@ class ConditionalPoisson:
             denominator = self._prefix[i][remaining]
             numerator = self.log_weights[i - 1] + self._prefix[i - 1][remaining - 1]
             include_probability = exp(numerator - denominator)
-            if rng.random() < include_probability:
+            draw = rng.random()
+            if type(draw) not in (int, float) or not isfinite(float(draw)) or not 0.0 <= draw < 1.0:
+                raise ValueError("rng.random() must return a finite int/float in [0, 1) (not bool)")
+            if draw < include_probability:
                 selected.append(i)
                 remaining -= 1
         if remaining != 0:
