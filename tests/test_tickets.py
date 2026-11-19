@@ -1,15 +1,17 @@
 import hashlib
+import io
 import json
 import random
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 from pathlib import Path
 
 from lottery.tickets import (
-    _calibrated_sampler, _sample_ticket_subset, generate_ticket_candidates,
+    _calibrated_sampler, _sample_ticket_subset, generate_ticket_candidates, main,
 )
 
 
@@ -137,6 +139,27 @@ class TicketCandidateTests(unittest.TestCase):
             self.assertEqual(len(report["strategies"]["uniform"]), 2)
             self.assertEqual(len(report["strategies"]["expanding"]), 2)
             self.assertEqual(len(report["strategies"]["ewma"]), 2)
+
+    def test_cli_validates_the_exact_bytes_it_generates_from(self):
+        with tempfile.TemporaryDirectory() as temp:
+            dataset = Path(temp) / "draws.jsonl"
+            dataset.write_text(
+                "".join(json.dumps(row) + "\\n" for row in self.rows),
+                encoding="utf-8",
+            )
+            original_read_bytes = Path.read_bytes
+            reads = []
+
+            def counted_read_bytes(path):
+                if path == dataset:
+                    reads.append(path)
+                return original_read_bytes(path)
+
+            with patch("sys.argv", ["generate_tickets.py", str(dataset), "--seed", "3"]), \
+                    patch.object(Path, "read_bytes", counted_read_bytes), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(main(), 0)
+            self.assertEqual(reads, [dataset])
 
     def test_generation_limit_is_enforced(self):
         with self.assertRaisesRegex(ValueError, "1..100"):
