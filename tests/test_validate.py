@@ -52,6 +52,17 @@ class DatasetValidationTests(unittest.TestCase):
         with self.assertRaises(DatasetValidationError):
             validate_records([row])
 
+    def test_known_current_source_order_sentinel_is_unavailable_not_numeric(self):
+        row = record()
+        row["source_unsort_drawresult"] = "current"
+        self.assertEqual(validate_records([row])["records"], 1)
+
+    def test_unknown_non_numeric_source_order_is_still_rejected(self):
+        row = record()
+        row["source_unsort_drawresult"] = "unknown"
+        with self.assertRaisesRegex(DatasetValidationError, "non-integer"):
+            validate_records([row])
+
     def test_raw_source_order_must_match_parsed_order(self):
         row = record()
         row["front_draw_order"] = [11, 2, 18, 19, 29]
