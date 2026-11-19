@@ -25,6 +25,8 @@ ALLOWED_HOSTS = {"www.js-lottery.com", "api.js-lottery.com"}
 DRAW_TITLE = re.compile(r"超级大乐透第\s*(\d{5})\s*期开奖公告")
 DRAW_DATE = re.compile(r"开奖日期\s*[：:]\s*(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日")
 SET_LABEL = re.compile(r"本期使用第\s*(\d+)\s*套摇奖球")
+DRAW_RESULT_SECTION = re.compile(r"本期开奖号码\s*[：:]?\s*(.*?)(?=本期中奖情况|$)", re.S)
+DRAW_NUMBER = re.compile(r"(?<!\d)(\d{1,2})(?!\d)")
 ANCHOR_DRAW = re.compile(r"超级大乐透第\s*(\d{5})\s*期开奖公告")
 
 
@@ -43,6 +45,9 @@ class ParsedAnnouncement:
     evidence_end: int | None
     newer_links: tuple[tuple[str, str], ...]
     authority_footer_present: bool
+    front_numbers: tuple[int, ...] | None
+    back_numbers: tuple[int, ...] | None
+    draw_result_status: str
 
 
 class _AnnouncementHTMLParser(HTMLParser):
@@ -131,6 +136,27 @@ def parse_announcement(raw: bytes, source_url: str, content_type: str = "text/ht
         status, set_index = "primary_verified", int(match.group(1))
         matched, start, end = match.group(0), match.start(), match.end()
 
+    result_match = DRAW_RESULT_SECTION.search(text)
+    front_numbers: tuple[int, ...] | None = None
+    back_numbers: tuple[int, ...] | None = None
+    if not result_match:
+        draw_result_status = "missing_draw_result"
+    else:
+        number_tokens = [int(value) for value in DRAW_NUMBER.findall(result_match.group(1))]
+        if len(number_tokens) != 7:
+            draw_result_status = "invalid_draw_result"
+        else:
+            front = number_tokens[:5]
+            back = number_tokens[5:]
+            if (any(value < 1 or value > 35 for value in front)
+                    or any(value < 1 or value > 12 for value in back)
+                    or len(set(front)) != 5 or len(set(back)) != 2):
+                draw_result_status = "invalid_draw_result"
+            else:
+                front_numbers = tuple(sorted(front))
+                back_numbers = tuple(sorted(back))
+                draw_result_status = "parsed"
+
     newer: list[tuple[str, str]] = []
     for href, anchor_text in parser.anchors:
         match = ANCHOR_DRAW.search(anchor_text)
@@ -149,6 +175,8 @@ def parse_announcement(raw: bytes, source_url: str, content_type: str = "text/ht
         observation_status=status, matched_text=matched,
         evidence_start=start, evidence_end=end, newer_links=tuple(newer),
         authority_footer_present="江苏省体育彩票管理中心" in text,
+        front_numbers=front_numbers, back_numbers=back_numbers,
+        draw_result_status=draw_result_status,
     )
 
 
