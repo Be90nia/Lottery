@@ -2,8 +2,8 @@
   "schema_version": 1,
   "authority_class": "A2",
   "authority_name": "Jiangsu Provincial Sports Lottery Management Center",
-  "seed_draw_id": "26128",
-  "seed_draw_date": "2026-11-09",
-  "seed_url": "https://www.js-lottery.com/cms/post-148224.html",
+  "seed_draw_id": "19101",
+  "seed_draw_date": "2019-08-31",
+  "seed_url": "https://www.js-lottery.com/cms/post-88511.html",
   "expected_page_title_pattern": "中国体育彩票超级大乐透第{draw_id}期开奖公告"
 }
