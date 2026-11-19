@@ -9,7 +9,7 @@ from lottery.ball_set_evidence import (
     BallSetEvidenceError,
     collect_ball_set_evidence,
     parse_announcement,
-    _next_draw_id,
+    _next_draw_id, _RedirectTracker,
 )
 
 BASE = "https://www.js-lottery.com/cms/post-148224.html"
@@ -70,6 +70,11 @@ class BallSetParserTests(unittest.TestCase):
         self.assertTrue(_next_draw_id("26155", "27001"))
         self.assertFalse(_next_draw_id("26010", "27001"))
         self.assertFalse(_next_draw_id("26154", "26156"))
+
+    def test_redirects_to_non_official_hosts_are_rejected(self):
+        tracker = _RedirectTracker()
+        with self.assertRaisesRegex(BallSetEvidenceError, "not an approved official"):
+            tracker.redirect_request(None, None, 302, "Found", {}, "https://example.com/redirect")
 
 
     def test_non_official_host_is_rejected(self):
