@@ -83,6 +83,18 @@ class CheckpointIntegrityTests(unittest.TestCase):
             self.validate(changed)
 
 
+    def test_converged_fit_must_meet_gradient_tolerance(self):
+        changed = dict(self.record, candidate_gradient_infinity_norm=1e-5)
+        changed["record_sha256"] = _checkpoint_record_hash(changed)
+        with self.assertRaisesRegex(ValueError, "exceeds the convergence tolerance"):
+            self.validate(changed)
+
+    def test_candidate_iteration_count_is_bounded_by_frozen_solver_budget(self):
+        changed = dict(self.record, candidate_iterations=5001)
+        changed["record_sha256"] = _checkpoint_record_hash(changed)
+        with self.assertRaisesRegex(ValueError, "iteration count"):
+            self.validate(changed)
+
     def test_negative_gradient_norm_is_rejected(self):
         changed = dict(self.record, candidate_gradient_infinity_norm=-1e-8)
         changed["record_sha256"] = _checkpoint_record_hash(changed)
