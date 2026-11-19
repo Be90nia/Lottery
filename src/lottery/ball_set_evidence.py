@@ -235,7 +235,8 @@ def _read_ledger(ledger_path: Path) -> list[dict[str, Any]]:
                     or not isinstance(item.get("draw_date"), str)
                     or item.get("observation_status") not in allowed_statuses
                     or (item.get("reported_set_index") is not None
-                        and (type(item.get("reported_set_index")) is not int\n                             or item.get("reported_set_index") not in (1, 2, 3)))):
+                        and (type(item.get("reported_set_index")) is not int
+                             or item.get("reported_set_index") not in (1, 2, 3)))):
                 raise BallSetEvidenceError(f"observation ledger record has invalid fields at line {line_no}")
             if item.get("prev_hash") != previous_event_hash:
                 raise BallSetEvidenceError(f"observation ledger hash chain is broken at line {line_no}")
