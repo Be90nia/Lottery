@@ -6,6 +6,7 @@ the upstream source or mutate the canonical dataset.
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -13,7 +14,9 @@ import os
 from pathlib import Path
 import tempfile
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
+from .ingest import IngestionError, PARSER_VERSION, _add_draw, _parse_page
 from .validate import validate_records
 
 
@@ -68,6 +71,97 @@ def _atomic_write_new(path: Path, content: bytes) -> None:
     temp.unlink(missing_ok=True)
 
 
+def _verify_raw_snapshots(
+    snapshots_dir: Path,
+    manifest: dict[str, Any],
+    snapshots: list[dict[str, Any]],
+    candidate: list[dict[str, Any]],
+    completeness: dict[str, Any],
+) -> None:
+    if not snapshots_dir.is_dir():
+        raise PublicationError("raw snapshot directory does not exist")
+    run_id = manifest.get("run_id")
+    if (not isinstance(run_id, str) or len(run_id) != 32
+            or any(char not in "0123456789abcdef" for char in run_id)):
+        raise PublicationError("candidate manifest fetch run ID is invalid")
+    reconstructed: dict[str, Any] = {}
+    raw_record_count = 0
+    for item in snapshots:
+        raw_name = item["raw_file"]
+        sidecar_name = item.get("sidecar_manifest")
+        if (Path(raw_name).name != raw_name or raw_name in ("", ".", "..")
+                or not isinstance(sidecar_name, str)
+                or Path(sidecar_name).name != sidecar_name):
+            raise PublicationError("snapshot manifest contains an unsafe raw/sidecar filename")
+        raw_path = snapshots_dir / raw_name
+        sidecar_path = snapshots_dir / sidecar_name
+        if (raw_path.resolve().parent != snapshots_dir.resolve()
+                or sidecar_path.resolve().parent != snapshots_dir.resolve()
+                or not raw_path.is_file() or not sidecar_path.is_file()):
+            raise PublicationError("raw snapshot or sidecar is missing/outside the declared run directory")
+        raw = raw_path.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        if digest != item["sha256"] or len(raw) != item.get("bytes"):
+            raise PublicationError(f"raw snapshot hash/size mismatch: {raw_name}")
+        try:
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise PublicationError(f"raw snapshot sidecar is invalid: {sidecar_name}") from exc
+        if not isinstance(sidecar, dict):
+            raise PublicationError(f"raw snapshot sidecar must be an object: {sidecar_name}")
+        if (sidecar.get("sha256") != digest or sidecar.get("raw_file") != raw_name
+                or sidecar.get("page_no") != item["page_no"]
+                or sidecar.get("run_id") != run_id
+                or sidecar.get("http_status") != 200
+                or sidecar.get("parser_version") != PARSER_VERSION
+                or not isinstance(sidecar.get("content_type"), str)
+                or "application/json" not in sidecar["content_type"].lower()):
+            raise PublicationError(f"raw snapshot sidecar does not match its page object: {sidecar_name}")
+        retrieved_at = sidecar.get("retrieved_at")
+        try:
+            parsed_timestamp = datetime.fromisoformat(retrieved_at)
+        except (TypeError, ValueError) as exc:
+            raise PublicationError(f"raw snapshot retrieval timestamp is invalid: {sidecar_name}") from exc
+        if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+            raise PublicationError(f"raw snapshot retrieval timestamp lacks timezone: {sidecar_name}")
+        source_url = sidecar.get("url")
+        parsed_url = urlsplit(source_url) if isinstance(source_url, str) else None
+        query = parse_qs(parsed_url.query) if parsed_url else {}
+        if (parsed_url is None or parsed_url.scheme != "https"
+                or parsed_url.hostname != "webapi.sporttery.cn"
+                or parsed_url.path != "/gateway/lottery/getHistoryPageListV1.qry"
+                or parsed_url.port not in (None, 443)
+                or parsed_url.username is not None or parsed_url.password is not None
+                or parsed_url.fragment
+                or query.get("gameNo") != ["85"] or query.get("provinceId") != ["0"]
+                or query.get("isVerify") != ["1"]
+                or query.get("pageNo") != [str(item["page_no"])]
+                or query.get("pageSize") != [str(completeness["page_size"])]):
+            raise PublicationError(f"raw snapshot URL is not the exact approved page request: {sidecar_name}")
+        try:
+            parsed_rows = _parse_page(raw, item["page_no"], f"sha256:{digest}")
+        except IngestionError as exc:
+            raise PublicationError(f"raw snapshot parser rejected {raw_name}: {exc}") from exc
+        if len(parsed_rows) != item["records"]:
+            raise PublicationError(f"raw snapshot record count mismatch: {raw_name}")
+        raw_record_count += len(parsed_rows)
+        for row in parsed_rows:
+            try:
+                _add_draw(reconstructed, row)
+            except IngestionError as exc:
+                raise PublicationError(f"raw snapshots conflict on draw {row.draw_id}: {exc}") from exc
+
+    candidate_by_id = {row["draw_id"]: row for row in candidate}
+    if raw_record_count != len(candidate) or set(reconstructed) != set(candidate_by_id):
+        raise PublicationError("raw snapshot records do not reconstruct the candidate draw inventory")
+    for draw_id, parsed_row in reconstructed.items():
+        parsed_record = asdict(parsed_row)
+        candidate_row = candidate_by_id[draw_id]
+        for field in SEMANTIC_FIELDS:
+            if parsed_record.get(field) != candidate_row.get(field):
+                raise PublicationError(f"candidate does not match archived raw snapshot for {draw_id}: {field}")
+
+
 def _next_draw_id(previous: str, candidate: str) -> bool:
     if (not previous.isdigit() or not candidate.isdigit()
             or len(previous) != 5 or len(candidate) != 5):
@@ -93,6 +187,7 @@ def reconcile_append_only(
     candidate_manifest_path: Path,
     output_path: Path,
     receipt_path: Path,
+    snapshots_dir: Path,
 ) -> dict[str, Any]:
     paths = [p.resolve() for p in (
         current_path, candidate_path, candidate_manifest_path, output_path, receipt_path
@@ -159,6 +254,9 @@ def reconcile_append_only(
     expected_snapshot_count = completeness["reported_total_pages"] + (1 if terminal_empty else 0)
     if len(snapshots) != expected_snapshot_count:
         raise PublicationError("snapshot inventory contains missing or unexpected terminal pages")
+    if any(item.get("run_id") != manifest.get("run_id") for item in snapshots):
+        raise PublicationError("snapshot inventory mixes fetch runs")
+    _verify_raw_snapshots(snapshots_dir, manifest, snapshots, candidate, completeness)
 
     current_by_id = {row["draw_id"]: row for row in current}
     candidate_by_id = {row["draw_id"]: row for row in candidate}
@@ -261,10 +359,12 @@ def main() -> int:
     parser.add_argument("--candidate-manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--receipt", type=Path, required=True)
+    parser.add_argument("--snapshots-dir", type=Path, required=True)
     args = parser.parse_args()
     try:
         result = reconcile_append_only(
-            args.current, args.candidate, args.candidate_manifest, args.output, args.receipt
+            args.current, args.candidate, args.candidate_manifest, args.output, args.receipt,
+            args.snapshots_dir,
         )
     except (OSError, ValueError) as exc:
         parser.exit(1, f"PUBLICATION_REJECTED: {exc}\n")
