@@ -170,6 +170,7 @@ def fetch_announcement(url: str, timeout: int = 20) -> dict[str, Any]:
             final_url = response.geturl()
             headers = response.headers
     except HTTPError as exc:
+        _allowed_url(exc.geturl())
         return {
             "requested_url": url, "final_url": exc.geturl(), "redirect_chain": tracker.chain,
             "retrieved_at_utc": retrieved_at, "http_status": exc.code,
