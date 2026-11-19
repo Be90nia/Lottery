@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page, fetch_history, ingest_snapshot_directory
+from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page, _snapshot, fetch_history, ingest_snapshot_directory
 from lottery.validate import validate_records
 
 
@@ -238,6 +238,31 @@ class FetchPaginationSafetyTests(unittest.TestCase):
             self.assertEqual(result["pagination_end_reason"], "short_page")
             self.assertFalse(result["source_completeness_verified"])
             self.assertEqual(result["trust_status"], "manifest_complete_not_officially_authenticated")
+
+
+class ImmutableSnapshotTests(unittest.TestCase):
+    def test_identical_snapshot_does_not_rewrite_original_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            raw_dir = Path(temp)
+            raw = json.dumps({"success": True, "value": {"list": []}}).encode()
+            url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1"
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, "run-one")
+            manifest = next(raw_dir.glob("*.manifest.json"))
+            original = manifest.read_bytes()
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, "run-two")
+            self.assertEqual(manifest.read_bytes(), original)
+            self.assertEqual(len(list(raw_dir.glob("*.json"))), 1)
+
+    def test_corrupted_content_addressed_snapshot_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            raw_dir = Path(temp)
+            raw = b'{"success":true,"value":{"list":[]}}'
+            url = "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1"
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, "run-one")
+            body = next(path for path in raw_dir.glob("*.json") if not path.name.endswith(".manifest.json"))
+            body.write_bytes(b"tampered")
+            with self.assertRaisesRegex(IngestionError, "corruption"):
+                _snapshot(raw, 1, 200, "application/json", raw_dir, url, "run-two")
 
 if __name__ == "__main__":
     unittest.main()
