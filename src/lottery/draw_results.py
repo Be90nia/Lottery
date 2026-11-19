@@ -123,6 +123,8 @@ def append_draw_result(
             "body_sha256": manifest["body_sha256"], "parser_version": DRAW_RESULT_PARSER_VERSION,
         }
         result_id = _canonical_hash(identity)
+        if any(item["result_observation_id"] == result_id for item in records):
+            return {"status": "duplicate_noop", "result_observation_id": result_id}
         if (supersedes and supersedes["source"]["body_sha256"] == manifest["body_sha256"]
                 and supersedes.get("parser", {}).get("version") == DRAW_RESULT_PARSER_VERSION):
             return {"status": "duplicate_noop", "result_observation_id": supersedes["result_observation_id"]}
