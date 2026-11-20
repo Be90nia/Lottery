@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 import unittest
@@ -37,6 +38,14 @@ def exponential_payload():
 
 
 class JCSCanonicalizationTests(unittest.TestCase):
+    def test_shared_cross_language_golden_fixture(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "jcs-golden-v1.json"
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        canonical = canonicalize(fixture["input"])
+        expected = fixture["canonical_utf8"].encode("utf-8")
+        self.assertEqual(canonical, expected)
+        self.assertEqual(hashlib.sha256(canonical).hexdigest(), fixture["sha256"])
+
     def test_ecmascript_number_formatting_vectors(self):
         value = {
             "numbers": [
