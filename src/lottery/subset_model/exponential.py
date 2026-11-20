@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from dataclasses import dataclass
-from math import exp, isfinite, log
+from math import exp, fsum, isfinite, log, ulp
 from typing import Sequence
 
 from .features import extract_features
@@ -27,13 +27,90 @@ def logsumexp(values: Sequence[float]) -> float:
         raise ValueError("logsumexp requires at least one value")
     vals = _finite_vector(values, "values")
     maximum = max(vals)
-    return maximum + log(sum(exp(value - maximum) for value in vals))
+    return maximum + log(fsum(exp(value - maximum) for value in vals))
 
 
 def _dot(left: Sequence[float], right: Sequence[float]) -> float:
     if len(left) != len(right):
         raise ValueError("vector dimensions do not match")
-    return sum(a * b for a, b in zip(left, right))
+    return fsum(a * b for a, b in zip(left, right))
+
+
+def _strong_wolfe_search(
+    evaluate,
+    point: tuple[float, ...],
+    direction: tuple[float, ...],
+    initial_objective: float,
+    initial_gradient: tuple[float, ...],
+    *,
+    c1: float = 1e-4,
+    c2: float = 0.9,
+    max_iterations: int = 60,
+) -> tuple[tuple[float, ...], float, tuple[float, ...], float] | None:
+    """Deterministic strong-Wolfe line search for the unbounded L-BFGS-B case."""
+    derivative_zero = _dot(initial_gradient, direction)
+    if not isfinite(derivative_zero) or derivative_zero >= 0.0:
+        return None
+    # Near stationarity, the theoretical Armijo decrease can be smaller than
+    # one float64 ULP of the objective. Permit only a bounded rounding envelope;
+    # the strong-Wolfe curvature condition must still hold.
+    objective_roundoff = 8.0 * ulp(max(1.0, abs(initial_objective)))
+
+    def at(step: float):
+        trial = tuple(point[index] + step * direction[index] for index in range(len(point)))
+        try:
+            objective, gradient, unregularized = evaluate(trial)
+        except (ArithmeticError, ValueError, OverflowError):
+            return None
+        if (not isfinite(objective) or not isfinite(unregularized)
+                or any(not isfinite(value) for value in gradient)):
+            return None
+        return trial, objective, tuple(gradient), unregularized
+
+    def zoom(low: float, high: float, low_value):
+        low_objective = initial_objective if low == 0.0 else low_value[1]
+        for _ in range(max_iterations):
+            step = 0.5 * (low + high)
+            if step == low or step == high:
+                break
+            candidate = at(step)
+            if (candidate is None
+                    or candidate[1] > initial_objective + c1 * step * derivative_zero + objective_roundoff
+                    or candidate[1] > low_objective + objective_roundoff):
+                high = step
+                continue
+            derivative = _dot(candidate[2], direction)
+            if abs(derivative) <= -c2 * derivative_zero:
+                return candidate
+            if derivative * (high - low) >= 0.0:
+                high = low
+            low = step
+            low_value = candidate
+            low_objective = candidate[1]
+        return None
+
+    previous_step = 0.0
+    previous_value = (point, initial_objective, initial_gradient, 0.0)
+    step = 1.0
+    for iteration in range(max_iterations):
+        candidate = at(step)
+        if candidate is None:
+            return zoom(previous_step, step, previous_value)
+        objective = candidate[1]
+        if (objective > initial_objective + c1 * step * derivative_zero + objective_roundoff
+                or (iteration > 0 and objective > previous_value[1] + objective_roundoff)):
+            return zoom(previous_step, step, previous_value)
+        derivative = _dot(candidate[2], direction)
+        if abs(derivative) <= -c2 * derivative_zero:
+            return candidate
+        if derivative >= 0.0:
+            return zoom(step, previous_step, candidate)
+        previous_step = step
+        previous_value = candidate
+        step *= 2.0
+        if not isfinite(step) or step > 1e12:
+            return None
+    return None
 
 
 @dataclass(frozen=True)
@@ -90,8 +167,8 @@ class ExponentialFamily:
         normalizer = logsumexp(terms)
         probabilities = tuple(exp(term - normalizer) for term in terms)
         return tuple(
-            sum(probability * cell.standardized_features[index]
-                for probability, cell in zip(probabilities, self.table.cells))
+            fsum(probability * cell.standardized_features[index]
+                 for probability, cell in zip(probabilities, self.table.cells))
             for index in range(self.dimension)
         )
 
@@ -113,7 +190,7 @@ class ExponentialFamily:
         values = self._theta(theta)
         terms = self._cell_terms(values)
         normalizer = logsumexp(terms)
-        return sum(exp(term - normalizer) for term in terms)
+        return fsum(exp(term - normalizer) for term in terms)
 
     def sample(self, theta: Sequence[float], rng) -> tuple[int, ...]:
         """Draw one exact full-support categorical subset using an injected RNG."""
@@ -185,11 +262,12 @@ class ExponentialFamily:
         gradient_tolerance: float = 1e-8,
         history_size: int = 10,
     ) -> FitResult:
-        """Fit mean-NLL + L2 using deterministic limited-memory BFGS.
+        """Fit mean-NLL + L2 using the unbounded L-BFGS-B specialization.
 
-        There are no box constraints in this model, so the unbounded L-BFGS
-        variant is equivalent to L-BFGS-B with no active bounds. Armijo
-        backtracking is used; terminal failure is retained, never hidden.
+        Parameters have no box constraints, so the L-BFGS-B active-set step
+        reduces to the ordinary limited-memory BFGS two-loop recursion. A
+        deterministic strong-Wolfe line search supplies the standard smooth,
+        unbounded search step. Terminal failures are retained, never hidden.
         """
         if not observations:
             raise ValueError("at least one training observation is required")
@@ -211,7 +289,7 @@ class ExponentialFamily:
             )
             feature_rows.append(self.table.stats.standardize(raw))
         observed_mean = tuple(
-            sum(row[index] for row in feature_rows) / len(feature_rows)
+            fsum(row[index] for row in feature_rows) / len(feature_rows)
             for index in range(self.dimension)
         )
 
@@ -270,24 +348,18 @@ class ExponentialFamily:
                 y_history.clear()
                 rho_history.clear()
 
-            step = 1.0
-            accepted = None
-            for _ in range(60):
-                trial = tuple(theta[i] + step * direction[i] for i in range(self.dimension))
-                try:
-                    trial_objective, trial_gradient, trial_unregularized = self.objective_and_gradient(
-                        trial, observed_mean, regularization_lambda
-                    )
-                except (ArithmeticError, ValueError, OverflowError):
-                    step *= 0.5
-                    continue
-                if trial_objective <= objective + 1e-4 * step * directional_derivative:
-                    accepted = (trial, trial_objective, trial_gradient, trial_unregularized)
-                    break
-                step *= 0.5
+            accepted = _strong_wolfe_search(
+                lambda candidate: self.objective_and_gradient(
+                    candidate, observed_mean, regularization_lambda
+                ),
+                theta,
+                direction,
+                objective,
+                gradient,
+            )
             if accepted is None:
                 status = "line_search_failed"
-                message = "Armijo backtracking could not find an acceptable step"
+                message = "strong-Wolfe line search could not find an acceptable step"
                 iterations = iteration
                 break
 
@@ -295,7 +367,7 @@ class ExponentialFamily:
             s_vec = tuple(new_theta[i] - theta[i] for i in range(self.dimension))
             y_vec = tuple(new_gradient[i] - gradient[i] for i in range(self.dimension))
             curvature = _dot(s_vec, y_vec)
-            if curvature > 1e-12 * max(1.0, sum(value * value for value in s_vec) ** 0.5
+            if curvature > 1e-12 * (sum(value * value for value in s_vec) ** 0.5
                                         * sum(value * value for value in y_vec) ** 0.5):
                 s_history.append(s_vec)
                 y_history.append(y_vec)
@@ -328,6 +400,6 @@ class ExponentialFamily:
             iterations=iterations,
             regularization_lambda=regularization_lambda,
             objective_scale="mean_nll",
-            solver="deterministic_unbounded_lbfgs_armijo_v1",
+            solver="deterministic_unbounded_lbfgsb_strong_wolfe_v1",
             message=message,
         )
