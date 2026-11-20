@@ -448,7 +448,10 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
                         "no LOT-042 access", "no promotion or serving",
-                        "full confirmatory run remains unexecuted",
+                        ("candidate optimizer has line_search_failed fits; see per-zone fit_status_counts"
+                         if any(zone["fit_status_counts"]["candidate"].get("line_search_failed", 0)
+                                for zone in (front, back))
+                         else "candidate optimizer had no line_search_failed fits"),
                         "Holm inference is implemented for the preregistered two-hypothesis candidate-vs-uniform family; expanding/EWMA remain non-regression comparators"],
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
