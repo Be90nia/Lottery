@@ -291,16 +291,20 @@ def _validate_checkpoint_record(record: dict, *, row: dict, zone: str,
         raise ValueError("checkpoint model artifact map is invalid")
     for name, entry in artifacts.items():
         if entry is None:
-            if record["fit_statuses"][name] == "converged":
-                raise ValueError(f"converged {name} fit is missing its immutable artifact")
-            continue
-        if record["fit_statuses"][name] != "converged":
-            raise ValueError(f"failed {name} fit cannot carry a model artifact")
+            raise ValueError(f"{name} fit attempt is missing its immutable model/failure artifact")
         if not isinstance(entry, dict) or set(entry) != {"artifact_id", "payload"}:
             raise ValueError(f"checkpoint {name} artifact entry has invalid shape")
         verified = verify_artifact(canonicalize(entry["payload"]))
         if verified.get("artifact_id") != entry["artifact_id"]:
             raise ValueError(f"checkpoint {name} artifact ID mismatch")
+        expected_type = "fitted_model" if record["fit_statuses"][name] == "converged" else "fit_failure"
+        if verified.get("artifact_type") != expected_type:
+            raise ValueError(f"checkpoint {name} artifact type does not match fit terminal status")
+        expected_family = "complete_subset_exponential" if name == "candidate" else "conditional_poisson"
+        if (verified.get("zone") != zone or verified.get("model_family") != expected_family
+                or verified.get("training_row_count") != training_count
+                or verified.get("training_cutoff_draw_id") != record["training_cutoff_draw_id"]):
+            raise ValueError(f"checkpoint {name} artifact provenance mismatch")
     if any(not isinstance(status, str) or not status for status in record["fit_statuses"].values()):
         raise ValueError("checkpoint fit status must be a non-empty string")
     scores = record["exact_set_nll"]
