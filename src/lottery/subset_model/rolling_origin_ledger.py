@@ -63,6 +63,15 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
     """Validate and write one row per model × zone × target, plus artifacts/manifest."""
     code_revision = result["code_commit"]
     snapshot_digest = result["snapshot_sha256"]
+    expected_seed_schedule = {
+        "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+        "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+    }
+    bootstrap = result.get("bootstrap", {})
+    if (bootstrap.get("replicates") != 1000 or bootstrap.get("block_length") != 50
+            or bootstrap.get("seed") != 20261118
+            or bootstrap.get("seeds_by_zone_and_comparison") != expected_seed_schedule):
+        raise ValueError("bootstrap settings or per-zone seed schedule differ from frozen LOT-055 child protocol")
     target_rows = rows[300:]
     target_list = [{"target_draw_id": row["draw_id"], "target_draw_date": row["draw_date"]}
                    for row in target_rows]
