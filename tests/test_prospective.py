@@ -130,6 +130,44 @@ class ProspectiveLedgerTests(unittest.TestCase):
                 scorer_version="score-v1", log_probability=score_result(-1.0),
             )
 
+    def test_missing_forecast_at_cutoff_is_immutable_terminal_record(self):
+        kwargs = {
+            "target_draw_id": "26132",
+            "target_draw_at_utc": "2026-11-21T13:00:00+00:00",
+            "target_cutoff_utc": "2026-11-21T12:00:00+00:00",
+            "target_cutoff_timezone_source": "official_schedule/v1",
+            "expected_at_utc": "2026-11-21T10:00:00+00:00",
+            "checked_at_utc": "2026-11-21T12:01:00+00:00",
+            "zone": "front",
+            "population_key": "pooled-equipment-blind",
+            "front_artifact_sha256": sha("missing-front-artifact"),
+            "back_artifact_sha256": sha("missing-back-artifact"),
+            "active_registry_snapshot_id": sha("missing-registry"),
+            "lifecycle_state": "champion",
+            "model_spec_sha256": sha("missing-model-spec"),
+            "training_snapshot_sha256": sha("missing-training"),
+            "training_first_draw_id": "09054",
+            "training_last_draw_id": "26131",
+            "training_row_count": 2948,
+            "training_last_draw_date": "2026-11-20",
+            "registry_generation": 7,
+            "forecast_policy_version": "prospective-v1",
+            "scoring_policy_version": "exact-set-nll/v1",
+            "model_family": "complete_subset_exponential",
+            "code_commit": "a" * 40,
+            "runtime": "CPython 3.12",
+        }
+        first = self.ledger.record_missing_forecast(**kwargs)
+        self.assertEqual(first["status"], "missing_at_cutoff")
+        self.assertEqual(first["reason_codes"], ["forecast_missing_at_cutoff"])
+        self.assertEqual(self.ledger.record_missing_forecast(**kwargs), first)
+        report = self.ledger.coverage_report()
+        self.assertEqual(report["forecast_missing_at_cutoff"], 1)
+        self.assertEqual(report["ineligible"], 1)
+        changed = dict(kwargs, checked_at_utc="2026-11-21T12:02:00+00:00")
+        with self.assertRaisesRegex(ProspectiveLedgerError, "duplicate artifact"):
+            self.ledger.record_missing_forecast(**changed)
+
     def test_forecast_key_cannot_be_rewritten(self):
         with self.assertRaisesRegex(ProspectiveLedgerError, "immutable record"):
             self.ledger.issue_forecast(
