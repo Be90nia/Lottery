@@ -251,6 +251,32 @@ class ProspectiveLedgerTests(unittest.TestCase):
                 back_numbers=[1, 2],
             )
 
+    def test_coverage_report_separates_pending_invalid_and_unscored_outcomes(self):
+        self.assertEqual(self.ledger.coverage_report()["outcome_pending"], 1)
+        self.ledger.record_outcome(
+            draw_id="26131",
+            observed_at_utc="2026-11-20T14:00:00+00:00",
+            authority="third_party",
+            source_evidence_sha256=sha("third-party-coverage"),
+            parser_version="third-party-parser/v1",
+            front_numbers=[1, 2, 3, 4, 5],
+            back_numbers=[1, 2],
+            reason_code="official_source_blocked",
+        )
+        self.assertEqual(self.ledger.coverage_report()["outcome_invalid"], 1)
+        official = self.record_official_outcome(
+            source="official-after-third-party",
+            supersedes=self.ledger.snapshot()["latest_outcome_by_draw"]["26131"],
+        )
+        self.assertEqual(self.ledger.coverage_report()["score_pending"], 1)
+        self.ledger.score_forecast(
+            forecast_id=self.forecast["forecast_id"],
+            outcome_id=official["outcome_id"],
+            scorer_version="coverage-test-v1",
+            log_probability=lambda record, subset: -10.5,
+        )
+        self.assertEqual(self.ledger.coverage_report()["eligible_pending"], 0)
+
     def test_ledger_hash_chain_detects_tampering(self):
         self.record_official_outcome()
         raw = self.ledger.path.read_bytes()
