@@ -35,6 +35,8 @@ def _sha(raw: bytes) -> str:
 
 def _parse_ids(raw: str) -> list[str]:
     values = [item.strip() for item in raw.split(",") if item.strip()]
+    if not values:
+        raise ValueError("at least one target draw ID is required")
     if len(values) != len(set(values)) or any(len(item) != 5 or not item.isdigit() for item in values):
         raise ValueError("target IDs must be unique comma-separated five-digit draw IDs")
     return values
