@@ -312,16 +312,26 @@ def validate_model_artifact(payload: dict) -> None:
                 or model_configuration["gradient_tolerance"] <= 0):
             raise ArtifactValidationError("exponential model configuration is invalid")
     else:
-        if (not isinstance(model_configuration.get("baseline"), str)
+        baseline_fields = {"baseline", "alpha", "half_life", "weighting"}
+        present_baseline_fields = baseline_fields.intersection(model_configuration)
+        if present_baseline_fields and present_baseline_fields != baseline_fields:
+            raise ArtifactValidationError("conditional-Poisson baseline metadata must be complete")
+        if present_baseline_fields and (
+                not isinstance(model_configuration["baseline"], str)
                 or not model_configuration["baseline"]
-                or not _is_finite_number(model_configuration.get("alpha"))
+                or not _is_finite_number(model_configuration["alpha"])
                 or model_configuration["alpha"] <= 0
-                or (model_configuration.get("half_life") is not None
+                or (model_configuration["half_life"] is not None
                     and (not _is_finite_number(model_configuration["half_life"])
                          or model_configuration["half_life"] <= 0))
-                or not isinstance(model_configuration.get("weighting"), str)
+                or not isinstance(model_configuration["weighting"], str)
                 or not model_configuration["weighting"]):
-            raise ArtifactValidationError("conditional-Poisson model configuration is invalid")
+            raise ArtifactValidationError("conditional-Poisson baseline configuration is invalid")
+        for field_name in ("baseline", "alpha", "half_life"):
+            if field_name in payload and payload[field_name] != model_configuration.get(field_name):
+                raise ArtifactValidationError(
+                    f"conditional-Poisson top-level {field_name} differs from model_configuration"
+                )
 
     artifact_type = payload["artifact_type"]
     if artifact_type not in ("fitted_model", "fit_failure"):
