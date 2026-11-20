@@ -51,6 +51,8 @@ def _safe_evidence(root: Path, item: Any) -> tuple[bool, str]:
         return False, "evidence_path_not_relative"
     if not isinstance(expected, str) or not _SHA256.fullmatch(expected):
         return False, "evidence_sha256_invalid"
+    if "\\\\" in rel or ":" in rel:
+        return False, "evidence_path_has_nonportable_separator"
     relative = Path(rel)
     if any(part in ("", ".", "..") for part in relative.parts):
         return False, "evidence_path_traversal"
@@ -180,8 +182,10 @@ def evaluate_readiness(
             })
         else:
             fault_states[fault_id] = "FAIL" if declared == "PASS" else declared
-            if declared == "PASS":
-                blockers.append(f"{fault_id}:{reason if not ok else 'fault_expectation_mismatch'}")
+            detail = reason if declared == "PASS" and not ok else (
+                "fault_expectation_mismatch" if declared == "PASS" else declared.lower()
+            )
+            blockers.append(f"{fault_id}:{detail}")
 
     if manifest["lot042_accessed"] is not False:
         blockers.append("LOT-042:protected_holdout_accessed_or_not_isolated")
