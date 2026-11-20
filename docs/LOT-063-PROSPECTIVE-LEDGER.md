@@ -6,10 +6,12 @@ version and score records.
 ## Implemented
 
 - One immutable forecast record per artifact × target draw × zone × population
-  key; it binds the artifact/distribution hashes, training snapshot/cutoff,
-  registry generation, policy, source-evidence digest, code commit and runtime.
-- Forecasts issued after cutoff or using training data not strictly before the
-  target are retained as ineligible with explicit reason codes.
+  key; it binds scheduled target time and cutoff, artifact/distribution hashes,
+  training snapshot/first-last draw IDs/row count, registry generation, policy,
+  source-evidence digest, code commit and runtime.
+- Forecasts issued after cutoff, with training data not strictly before the
+  target, or with fewer than 300 training rows are retained as ineligible with
+  explicit reason codes.
 - Official outcome observations require a protected evidence-verifier callback
   and legal front/back subsets. Non-authoritative observations are preserved
   with a reason but cannot be scored.
@@ -23,6 +25,8 @@ version and score records.
 - Duplicate forecast/outcome/score retries are idempotent; changed forecast
   content cannot rewrite the same logical key.
 - Hash-chained canonical events expose ledger edits and reordering.
+- Coverage reports separate ineligible forecasts, pending/invalid outcomes,
+  score-pending forecasts, completed score revisions and failed score attempts.
 
 ## Deliberate limits
 
