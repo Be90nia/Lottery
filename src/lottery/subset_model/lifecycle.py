@@ -125,7 +125,7 @@ def _validate_evaluation_receipt(receipt: dict[str, Any]) -> bool:
     required = {
         "schema_version", "artifact_id", "population_key", "zone",
         "evaluation_manifest_sha256", "target_list_sha256", "target_count",
-        "full_coverage", "preregistered", "holdout_accessed", "numerical_pass",
+        "population_eligibility", "population_evidence_sha256", "full_coverage", "preregistered", "holdout_accessed", "numerical_pass",
         "calibration_pass", "stability_pass", "front_improved", "back_improved",
         "multiplicity_pass", "uniform_non_regression_pass", "decision", "reason_code",
     }
@@ -136,6 +136,15 @@ def _validate_evaluation_receipt(receipt: dict[str, Any]) -> bool:
     for field in ("evaluation_manifest_sha256", "target_list_sha256"):
         if not _is_sha(receipt[field]):
             raise LifecycleError(f"{field} must be a lowercase SHA-256")
+    if receipt["population_eligibility"] not in (
+        "verified_regime", "pooled_equipment_blind", "blocked_regime_unresolved"
+    ):
+        raise LifecycleError("population_eligibility is not a registered status")
+    if receipt["population_eligibility"] == "verified_regime":
+        if not _is_sha(receipt["population_evidence_sha256"]):
+            raise LifecycleError("verified regime requires a population evidence SHA-256")
+    elif receipt["population_evidence_sha256"] is not None:
+        raise LifecycleError("non-regime population must not claim a regime evidence digest")
     if not isinstance(receipt["artifact_id"], str) or not receipt["artifact_id"].startswith("sha256:"):
         raise LifecycleError("evaluation receipt artifact_id is invalid")
     _slot_key(receipt["population_key"], receipt["zone"])
@@ -154,6 +163,7 @@ def _validate_evaluation_receipt(receipt: dict[str, Any]) -> bool:
         raise LifecycleError("reason_code must be a string")
     return (
         receipt["decision"] == "PASS"
+        and receipt["population_eligibility"] in ("verified_regime", "pooled_equipment_blind")
         and receipt["full_coverage"]
         and receipt["preregistered"]
         and not receipt["holdout_accessed"]
@@ -423,8 +433,12 @@ class ChampionLifecycle:
                 ):
                     if artifact_id is not None:
                         self._load_artifact(artifact_id)
-                for validation in slot.get("validation", {}).values():
-                    self._load_evaluation_receipt(validation["receipt_sha256"])
+                for artifact_id, validation in slot.get("validation", {}).items():
+                    receipt = self._load_evaluation_receipt(validation["receipt_sha256"])
+                    if (receipt.get("artifact_id") != artifact_id
+                            or receipt.get("population_key") != slot["population_key"]
+                            or receipt.get("zone") != slot["zone"]):
+                        raise LifecycleError("evaluation receipt scope differs from registry slot")
                 for approval_hash in slot.get("approval", {}).values():
                     if not _is_sha(approval_hash):
                         raise LifecycleError("immutable approval receipt reference is malformed")
@@ -701,8 +715,17 @@ class ChampionLifecycle:
         if not validation or validation.get("eligible") is not True:
             raise LifecycleError("retired artifact no longer has a passing validation receipt")
         artifact = self._load_artifact(artifact_id)
-        if artifact.get("zone") != zone:
-            raise LifecycleError("retired artifact zone is incompatible with slot")
+        retired_receipt = self._load_evaluation_receipt(validation["receipt_sha256"])
+        if (retired_receipt.get("artifact_id") != artifact_id
+                or retired_receipt.get("population_key") != population_key
+                or retired_receipt.get("zone") != zone
+                or artifact.get("zone") != zone):
+            raise LifecycleError("retired artifact evidence/zone is incompatible with slot")
+        if expected_champion_artifact_id is not None:
+            current_artifact = self._load_artifact(expected_champion_artifact_id)
+            for field in ("model_family", "zone", "population_size", "selection_size", "feature_schema_hash"):
+                if artifact.get(field) != current_artifact.get(field):
+                    raise LifecycleError("retired artifact is incompatible with current Champion schema")
         if slot_snapshot.get("champion_artifact_id") != expected_champion_artifact_id:
             raise StaleRegistryError("expected Champion artifact does not match current registry")
         _, approval_hash = self._verified_approval(
@@ -759,6 +782,7 @@ class ChampionLifecycle:
             raise LifecycleError("three-slot resolution requires the protected approval verifier")
         registry = self.snapshot()
         resolved = []
+        evidence_by_population: dict[str, str] = {}
         for population_key in population_keys:
             for zone in ZONES:
                 key = _slot_key(population_key, zone)
@@ -771,6 +795,19 @@ class ChampionLifecycle:
                 if not artifact_id or not approval_hash or not validation or validation.get("eligible") is not True:
                     raise LifecycleError("three-slot generation contains an unapproved or unvalidated artifact")
                 artifact = self._load_artifact(artifact_id)
+                receipt = self._load_evaluation_receipt(validation["receipt_sha256"])
+                if (receipt.get("artifact_id") != artifact_id
+                        or receipt.get("population_key") != population_key
+                        or receipt.get("zone") != zone
+                        or receipt.get("population_eligibility") != "verified_regime"
+                        or not _is_sha(receipt.get("population_evidence_sha256"))):
+                    raise LifecycleError("three-slot generation requires primary-verified regime evidence")
+                evidence_hash = receipt["population_evidence_sha256"]
+                previous_evidence_hash = evidence_by_population.setdefault(population_key, evidence_hash)
+                if previous_evidence_hash != evidence_hash:
+                    raise LifecycleError("front/back artifacts for a population key bind different evidence manifests")
+                if not _is_sha(approval_hash):
+                    raise LifecycleError("Champion approval reference is malformed")
                 approval_path = self.approvals / f"{approval_hash}.json"
                 try:
                     approval = parse_json_strict(approval_path.read_bytes())
