@@ -14,12 +14,12 @@ from lottery.subset_model.lifecycle import (
 )
 
 
-def model_payload(zone="front"):
+def model_payload(zone="front", snapshot_hash="a" * 64):
     population, selection = (35, 5) if zone == "front" else (12, 2)
     names = ["sum", "odd_count", "range", "adjacent_count"]
     runtime = {"python": "3.12"}
     training = {
-        "snapshot_sha256": "a" * 64,
+        "snapshot_sha256": snapshot_hash,
         "row_count": 2948,
         "first_draw_id": "07001",
         "last_draw_id": "26130",
@@ -88,7 +88,7 @@ def model_payload(zone="front"):
             "library_versions": {},
             "rng_algorithm": "injected_rng.random_v1",
         },
-        "training_snapshot_sha256": "a" * 64,
+        "training_snapshot_sha256": snapshot_hash,
         "training_cutoff_draw_id": "26130",
         "training_row_count": 2948,
         "feature_schema_hash": feature_hash,
@@ -110,7 +110,7 @@ def model_payload(zone="front"):
     }
 
 
-def evaluation_receipt(artifact_id, population_key, zone, *, passed=True):
+def evaluation_receipt(artifact_id, population_key, zone, *, passed=True,\n                       snapshot_hash="a" * 64, population_eligibility="pooled_equipment_blind",\n                       population_evidence_sha256=None):
     return {
         "schema_version": EVALUATION_SCHEMA,
         "artifact_id": artifact_id,
@@ -119,8 +119,9 @@ def evaluation_receipt(artifact_id, population_key, zone, *, passed=True):
         "evaluation_manifest_sha256": "b" * 64,
         "target_list_sha256": "c" * 64,
         "target_count": 100,
-        "population_eligibility": "pooled_equipment_blind",
-        "population_evidence_sha256": None,
+        "training_population_sha256": snapshot_hash,
+        "population_eligibility": population_eligibility,
+        "population_evidence_sha256": population_evidence_sha256,
         "full_coverage": passed,
         "preregistered": True,
         "holdout_accessed": False,
@@ -165,8 +166,8 @@ class ChampionLifecycleTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def register_and_validate(self, population_key="regime-a|reported-1", zone="front", passed=True):
-        artifact_payload = model_payload(zone)
+    def register_and_validate(self, population_key="regime-a|reported-1", zone="front", passed=True,\n                              snapshot_hash="a" * 64, population_eligibility="pooled_equipment_blind",\n                              population_evidence_sha256=None):
+        artifact_payload = model_payload(zone, snapshot_hash)
         from lottery.subset_model.artifact import create_artifact
         _, artifact_id = create_artifact(artifact_payload)
         current = self.store.snapshot()
@@ -178,7 +179,7 @@ class ChampionLifecycleTests(unittest.TestCase):
             actor="test-suite",
             workflow_run_id="run-fixture",
         )
-        receipt = evaluation_receipt(artifact_id, population_key, zone, passed=passed)
+        receipt = evaluation_receipt(\n            artifact_id, population_key, zone, passed=passed, snapshot_hash=snapshot_hash,\n            population_eligibility=population_eligibility,\n            population_evidence_sha256=population_evidence_sha256,\n        )
         validated = self.store.validate_candidate(
             population_key=population_key,
             zone=zone,
@@ -273,6 +274,50 @@ class ChampionLifecycleTests(unittest.TestCase):
         events = self.store._read_events()
         self.assertEqual([event["event_type"] for event in events],
                          ["challenger_registered", "candidate_validated", "promoted", "slot_suspended"])
+
+
+    def test_three_slot_generation_requires_three_verified_distinct_populations(self):
+        population_keys = [
+            "regime-2020|reported-1",
+            "regime-2020|reported-2",
+            "regime-2020|reported-3",
+        ]
+        generation = self.store.snapshot()["generation"]
+        for population_key in population_keys:
+            training_hash = hashlib.sha256(population_key.encode("utf-8")).hexdigest()
+            evidence_hash = hashlib.sha256(("evidence:" + population_key).encode("utf-8")).hexdigest()
+            for zone in ("front", "back"):
+                artifact_payload = model_payload(zone, training_hash)
+                from lottery.subset_model.artifact import create_artifact
+                _, artifact_id = create_artifact(artifact_payload)
+                registered = self.store.register_challenger(
+                    artifact_payload, population_key=population_key, zone=zone,
+                    expected_generation=generation, actor="test-suite",
+                )
+                receipt = evaluation_receipt(
+                    artifact_id, population_key, zone,
+                    snapshot_hash=training_hash,
+                    population_eligibility="verified_regime",
+                    population_evidence_sha256=evidence_hash,
+                )
+                validated = self.store.validate_candidate(
+                    population_key=population_key, zone=zone, artifact_id=artifact_id,
+                    receipt=receipt, expected_generation=registered["generation"],
+                    actor="test-suite",
+                )
+                approval = approval_for(artifact_id, population_key, zone, receipt)
+                promoted = self.store.promote_candidate(
+                    population_key=population_key, zone=zone, artifact_id=artifact_id,
+                    expected_champion_artifact_id=None,
+                    expected_generation=validated["generation"],
+                    approval=approval, approval_verifier=self.verifier, actor="test-suite",
+                )
+                generation = promoted["generation"]
+        resolved = self.store.resolve_three_slot_generation(
+            population_keys, approval_verifier=self.verifier
+        )
+        self.assertEqual(len(resolved["slots"]), 6)
+        self.assertEqual(resolved["registry_generation"], generation)
 
     def test_three_slot_resolution_is_all_or_none_and_reverifies_approval(self):
         with self.assertRaisesRegex(LifecycleError, "exactly three distinct"):
