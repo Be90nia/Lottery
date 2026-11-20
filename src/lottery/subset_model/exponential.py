@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from dataclasses import dataclass
-from math import exp, isfinite, log
+from math import exp, fsum, isfinite, log
 from typing import Sequence
 
 from .features import extract_features
@@ -27,13 +27,13 @@ def logsumexp(values: Sequence[float]) -> float:
         raise ValueError("logsumexp requires at least one value")
     vals = _finite_vector(values, "values")
     maximum = max(vals)
-    return maximum + log(sum(exp(value - maximum) for value in vals))
+    return maximum + log(fsum(exp(value - maximum) for value in vals))
 
 
 def _dot(left: Sequence[float], right: Sequence[float]) -> float:
     if len(left) != len(right):
         raise ValueError("vector dimensions do not match")
-    return sum(a * b for a, b in zip(left, right))
+    return fsum(a * b for a, b in zip(left, right))
 
 
 def _strong_wolfe_search(
@@ -163,8 +163,8 @@ class ExponentialFamily:
         normalizer = logsumexp(terms)
         probabilities = tuple(exp(term - normalizer) for term in terms)
         return tuple(
-            sum(probability * cell.standardized_features[index]
-                for probability, cell in zip(probabilities, self.table.cells))
+            fsum(probability * cell.standardized_features[index]
+                 for probability, cell in zip(probabilities, self.table.cells))
             for index in range(self.dimension)
         )
 
@@ -186,7 +186,7 @@ class ExponentialFamily:
         values = self._theta(theta)
         terms = self._cell_terms(values)
         normalizer = logsumexp(terms)
-        return sum(exp(term - normalizer) for term in terms)
+        return fsum(exp(term - normalizer) for term in terms)
 
     def sample(self, theta: Sequence[float], rng) -> tuple[int, ...]:
         """Draw one exact full-support categorical subset using an injected RNG."""
@@ -285,7 +285,7 @@ class ExponentialFamily:
             )
             feature_rows.append(self.table.stats.standardize(raw))
         observed_mean = tuple(
-            sum(row[index] for row in feature_rows) / len(feature_rows)
+            fsum(row[index] for row in feature_rows) / len(feature_rows)
             for index in range(self.dimension)
         )
 
@@ -363,7 +363,7 @@ class ExponentialFamily:
             s_vec = tuple(new_theta[i] - theta[i] for i in range(self.dimension))
             y_vec = tuple(new_gradient[i] - gradient[i] for i in range(self.dimension))
             curvature = _dot(s_vec, y_vec)
-            if curvature > 1e-12 * max(1.0, sum(value * value for value in s_vec) ** 0.5
+            if curvature > 1e-12 * (sum(value * value for value in s_vec) ** 0.5
                                         * sum(value * value for value in y_vec) ** 0.5):
                 s_history.append(s_vec)
                 y_history.append(y_vec)
