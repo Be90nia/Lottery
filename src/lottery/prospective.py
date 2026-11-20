@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import tempfile
 from typing import Any, Callable
+from uuid import uuid4
 
 from .ledger_lock import ledger_lock
 from .subset_model.artifact import canonicalize, parse_json_strict, ArtifactValidationError
@@ -146,6 +147,8 @@ class ProspectiveLedger:
         superseded: set[str] = set()
         scores: dict[str, dict[str, Any]] = {}
         score_keys: dict[tuple[str, str, str], str] = {}
+        score_failures: dict[str, dict[str, Any]] = {}
+        score_failure_keys: dict[tuple[str, str, str, str], str] = {}
         for event in self._read_events():
             record = event.get("record")
             if not isinstance(record, dict):
@@ -195,6 +198,22 @@ class ProspectiveLedger:
                     raise ProspectiveLedgerError("score references missing forecast or outcome")
                 scores[score_id] = record
                 score_keys[key] = score_id
+            elif event["event_type"] == "score_failed":
+                if record.get("schema") != SCORE_SCHEMA or record.get("status") != "score_failed" or _sha(canonicalize({
+                    key: value for key, value in record.items() if key != "score_failure_id"
+                })) != record.get("score_failure_id"):
+                    raise ProspectiveLedgerError("score failure record content hash mismatch")
+                failure_id = record["score_failure_id"]
+                key = (
+                    record["forecast_id"], record["outcome_id"],
+                    record["scorer_version"], record["attempt_id"],
+                )
+                if failure_id in score_failures or key in score_failure_keys:
+                    raise ProspectiveLedgerError("duplicate score failure attempt")
+                if record["forecast_id"] not in forecasts or record["outcome_id"] not in outcomes:
+                    raise ProspectiveLedgerError("score failure references missing forecast or outcome")
+                score_failures[failure_id] = record
+                score_failure_keys[key] = failure_id
             else:
                 raise ProspectiveLedgerError("unknown prospective ledger event type")
         return {
@@ -205,6 +224,8 @@ class ProspectiveLedger:
             "superseded_outcome_ids": superseded,
             "scores": scores,
             "score_keys": score_keys,
+            "score_failures": score_failures,
+            "score_failure_keys": score_failure_keys,
             "event_count": len(self._read_events()),
         }
 
@@ -397,6 +418,7 @@ class ProspectiveLedger:
         outcome_id: str,
         scorer_version: str,
         log_probability: Callable[[dict[str, Any], list[int]], float],
+        attempt_id: str | None = None,
     ) -> dict[str, Any]:
         if not _is_sha(forecast_id) or not _is_sha(outcome_id):
             raise ProspectiveLedgerError("forecast_id and outcome_id must be lowercase SHA-256 values")
@@ -427,14 +449,44 @@ class ProspectiveLedger:
             actual = outcome["front_numbers"] if forecast["zone"] == "front" else outcome["back_numbers"]
             if actual is None:
                 raise ProspectiveLedgerError("validated outcome is missing the forecast zone subset")
+            def record_failure(failure_code: str) -> None:
+                current_attempt_id = attempt_id or uuid4().hex
+                if (not isinstance(current_attempt_id, str)
+                        or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", current_attempt_id) is None):
+                    raise ProspectiveLedgerError("score failure attempt_id is malformed")
+                failure = {
+                    "schema": SCORE_SCHEMA,
+                    "status": "score_failed",
+                    "forecast_id": forecast_id,
+                    "outcome_id": outcome_id,
+                    "target_draw_id": forecast["target_draw_id"],
+                    "artifact_sha256": forecast["artifact_sha256"],
+                    "zone": forecast["zone"],
+                    "population_key": forecast["population_key"],
+                    "scorer_version": scorer_version,
+                    "attempt_id": current_attempt_id,
+                    "failure_code": failure_code,
+                }
+                failure["score_failure_id"] = _sha(canonicalize(failure))
+                event_id = _sha(
+                    f"{forecast_id}:{outcome_id}:{scorer_version}:{current_attempt_id}:failed".encode("utf-8")
+                )
+                self._append_locked(event_id, "score_failed", failure)
+
             try:
                 raw_logp = log_probability(forecast, actual)
+            except Exception as exc:
+                record_failure("artifact_probability_evaluation_failed")
+                raise ProspectiveLedgerError("artifact probability evaluation failed") from exc
+            try:
                 if isinstance(raw_logp, bool):
                     raise TypeError("boolean is not a probability score")
                 logp = float(raw_logp)
-            except Exception as exc:
-                raise ProspectiveLedgerError("artifact probability evaluation failed") from exc
+            except (TypeError, ValueError, OverflowError):
+                record_failure("invalid_log_probability")
+                raise ProspectiveLedgerError("exact-set log probability is invalid")
             if not math.isfinite(logp) or logp >= 0.0:
+                record_failure("invalid_log_probability")
                 raise ProspectiveLedgerError("exact-set log probability must be finite and strictly negative")
             population, selection = (35, 5) if forecast["zone"] == "front" else (12, 2)
             nll = -logp
@@ -487,5 +539,6 @@ class ProspectiveLedger:
             "scored_current_forecasts": len(scored_forecasts),
             "eligible_pending": sum(record["forecast_id"] not in scored_forecasts for record in eligible),
             "score_revisions": len(scores),
+            "score_failed_attempts": len(snapshot["score_failures"]),
             "event_count": snapshot["event_count"],
         }
