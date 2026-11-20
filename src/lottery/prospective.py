@@ -398,11 +398,13 @@ class ProspectiveLedger:
         with ledger_lock(self.path):
             snapshot = self._snapshot_unlocked()
             forecast = snapshot["forecasts"].get(forecast_id)
-            outcome = snapshot["outcomes"].get(outcome_id)
-            if forecast is None or outcome is None:
-                raise ProspectiveLedgerError("forecast or outcome record is missing")
+            if forecast is None:
+                raise ProspectiveLedgerError("forecast record is missing")
             if forecast["status"] != "eligible":
                 raise ProspectiveLedgerError("ineligible forecast cannot be scored")
+            outcome = snapshot["outcomes"].get(outcome_id)
+            if outcome is None:
+                raise ProspectiveLedgerError("outcome record is missing")
             if outcome["authority"] != "official_validated":
                 raise ProspectiveLedgerError("only authoritative validated outcomes can be scored")
             if snapshot["latest_outcome_by_draw"].get(outcome["draw_id"]) != outcome_id:
