@@ -21,6 +21,8 @@ verified Champion resolver with the LOT-065 immutable object store.
 - Includes the full sorted registry snapshot and its SHA-256 identity, per-zone
   artifact training cutoff/inventory/evidence/evaluation/approval provenance,
   and stable ticket IDs bound to request, population slot and ticket contents.
+- Returns a published status and the immutable UTC pointer-publication timestamp;
+  the timestamp is preserved by idempotent retries and crash recovery.
 - Enforces a conservative offline maximum of 100 tickets per slot (300 total)
   before resolving the registry or invoking the sampler.
 - Holds the Champion registry CAS lock through the batch-pointer publication.
