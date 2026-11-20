@@ -304,8 +304,22 @@ class FileSystemObjectStore:
                     raise StorageError("prior publication receipt conflicts with current pointer")
                 return pointer
             if pointer_path.exists():
-                current = _read_canonical(pointer_path)
+                current = self.read_pointer(name)
                 generation = current.get("generation")
+                # Recover a crash after the atomic pointer replacement but
+                # before its immutable publication receipt was written.
+                if (current.get("last_operation_id") == operation_id
+                        and current.get("object_sha256") == commit["content_sha256"]):
+                    recovered_receipt = {
+                        "schema": "lottery.storage-publication/v1",
+                        "pointer_name": name,
+                        "generation": generation,
+                        "object_sha256": commit["content_sha256"],
+                        "operation_id": operation_id,
+                        "previous_object_sha256": None,
+                    }
+                    _atomic_immutable(publication_path, canonicalize(recovered_receipt))
+                    return current
             else:
                 current = None
                 generation = 0
@@ -337,16 +351,21 @@ class FileSystemObjectStore:
         if (pointer.get("schema") != POINTER_SCHEMA or pointer.get("name") != name
                 or type(pointer.get("generation")) is not int or pointer["generation"] < 1):
             raise StorageError("pointer schema or generation is invalid")
-        object_path = self._object_path(pointer.get("object_sha256"))
-        self._verify_bytes(object_path, pointer["object_sha256"], object_path.stat().st_size)
         receipt_hash = pointer.get("commit_receipt_sha256")
         if not isinstance(receipt_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", receipt_hash):
             raise StorageError("pointer commit receipt digest is invalid")
-        operation_id = pointer.get("last_operation_id")
-        commit = _read_canonical(self._commit_path(operation_id))
-        if (_sha(self._commit_path(operation_id).read_bytes()) != receipt_hash
-                or commit.get("content_sha256") != pointer["object_sha256"]):
+        operation_id = _safe_name(pointer.get("last_operation_id"), "operation_id")
+        commit_path = self._commit_path(operation_id)
+        commit_raw = commit_path.read_bytes()
+        commit = _read_canonical(commit_path)
+        if (_sha(commit_raw) != receipt_hash
+                or commit.get("operation_id") != operation_id
+                or commit.get("content_sha256") != pointer["object_sha256"]
+                or commit.get("committed") is not True
+                or type(commit.get("byte_length")) is not int):
             raise StorageError("pointer does not resolve to its committed object")
+        object_path = self._object_path(pointer.get("object_sha256"))
+        self._verify_bytes(object_path, pointer["object_sha256"], commit["byte_length"])
         return pointer
 
     def reconcile(self) -> dict[str, Any]:
