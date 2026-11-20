@@ -109,7 +109,7 @@ def _slot_key(population_key: str, zone: str) -> str:
 
 def _parse_regime_population_key(population_key: str) -> tuple[str, int]:
     match = re.fullmatch(
-        r"([a-z0-9][a-z0-9._-]{0,63})\\|reported_set_index=([123])",
+        r"([a-z0-9][a-z0-9._-]{0,63})\|reported_set_index=([123])",
         population_key,
     )
     if not match:
