@@ -58,6 +58,7 @@ def make_record():
 def make_schedule(records=None):
     body = {
         "schema": "lottery.prospective-schedule/v1",
+        "lot042_accessed": False,
         "generated_at_utc": "2026-11-20T14:01:00+00:00",
         "expected_forecasts": records if records is not None else [make_record()],
     }
@@ -106,6 +107,15 @@ class ProspectiveScheduleTests(unittest.TestCase):
         duplicate = make_schedule([make_record(), make_record()])
         with self.assertRaisesRegex(ScheduleError, "duplicate expected forecast slot"):
             validate_schedule(duplicate)
+        self.assertEqual(self.ledger.snapshot()["event_count"], 0)
+
+    def test_schedule_must_explicitly_preserve_lot042_firewall(self):
+        schedule = dict(self.schedule, lot042_accessed=True)
+        schedule["schedule_id"] = "sha256:" + hashlib.sha256(
+            canonicalize({k: v for k, v in schedule.items() if k != "schedule_id"})
+        ).hexdigest()
+        with self.assertRaisesRegex(ScheduleError, "LOT-042"):
+            validate_schedule(schedule)
         self.assertEqual(self.ledger.snapshot()["event_count"], 0)
 
     def test_generated_after_cutoff_is_rejected(self):
