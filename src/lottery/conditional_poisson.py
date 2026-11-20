@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import combinations
-from math import exp, fsum, isfinite, log
+from math import exp, fsum, isfinite, log, ulp
 from typing import Sequence
 
 
@@ -269,17 +269,79 @@ class ConditionalPoisson:
                 directional_derivative = -dot(gradient, gradient)
                 s_hist.clear(); y_hist.clear(); rho_hist.clear()
 
+            # A near-stationary Armijo decrease can be smaller than one
+            # float64 ULP of the objective. Permit a bounded rounding envelope,
+            # but retain the strong-Wolfe curvature condition so the envelope
+            # cannot turn an arbitrary non-descent point into an accepted step.
+            objective_roundoff = 8.0 * ulp(max(1.0, abs(objective)))
+
+            def at(step_size: float):
+                trial_raw = tuple(
+                    eta[i] + step_size * direction[i] for i in range(m)
+                )
+                center = fsum(trial_raw) / m
+                trial = tuple(value - center for value in trial_raw)
+                try:
+                    trial_objective, trial_gradient, trial_achieved = evaluate(trial)
+                except (ArithmeticError, ValueError, OverflowError):
+                    return None
+                if (not isfinite(trial_objective)
+                        or any(not isfinite(value) for value in trial_gradient)):
+                    return None
+                return trial, trial_objective, trial_gradient, trial_achieved
+
+            def zoom(low: float, high: float, low_value):
+                low_objective = objective if low == 0.0 else low_value[1]
+                for _ in range(60):
+                    step_size = 0.5 * (low + high)
+                    if step_size == low or step_size == high:
+                        break
+                    candidate = at(step_size)
+                    if (candidate is None
+                            or candidate[1] > objective
+                            + 1e-4 * step_size * directional_derivative
+                            + objective_roundoff
+                            or candidate[1] > low_objective + objective_roundoff):
+                        high = step_size
+                        continue
+                    derivative = dot(candidate[2], direction)
+                    if abs(derivative) <= -0.9 * directional_derivative:
+                        return candidate
+                    if derivative * (high - low) >= 0.0:
+                        high = low
+                    low = step_size
+                    low_value = candidate
+                    low_objective = candidate[1]
+                return None
+
+            previous_step = 0.0
+            previous_value = (eta, objective, gradient, achieved)
             step = 1.0
             accepted = None
-            for _ in range(60):
-                trial_raw = tuple(eta[i] + step * direction[i] for i in range(m))
-                center = sum(trial_raw) / m
-                trial = tuple(value - center for value in trial_raw)
-                trial_objective, trial_gradient, trial_achieved = evaluate(trial)
-                if trial_objective <= objective + 1e-4 * step * directional_derivative:
-                    accepted = (trial, trial_objective, trial_gradient, trial_achieved)
+            for line_iteration in range(60):
+                candidate = at(step)
+                if candidate is None:
+                    accepted = zoom(previous_step, step, previous_value)
                     break
-                step *= 0.5
+                if (candidate[1] > objective
+                        + 1e-4 * step * directional_derivative
+                        + objective_roundoff
+                        or (line_iteration > 0
+                            and candidate[1] > previous_value[1] + objective_roundoff)):
+                    accepted = zoom(previous_step, step, previous_value)
+                    break
+                derivative = dot(candidate[2], direction)
+                if abs(derivative) <= -0.9 * directional_derivative:
+                    accepted = candidate
+                    break
+                if derivative >= 0.0:
+                    accepted = zoom(step, previous_step, candidate)
+                    break
+                previous_step = step
+                previous_value = candidate
+                step *= 2.0
+                if not isfinite(step) or step > 1e12:
+                    break
             if accepted is None:
                 status, message, iterations = "line_search_failed", "Armijo search failed", iteration
                 break
