@@ -1006,6 +1006,172 @@ class ChampionLifecycle:
                 reason_code="compatible_retired_artifact_restored",
             )
 
+    def restore_three_slot_generation(
+        self,
+        transitions: list[dict[str, Any]],
+        *,
+        expected_generation: int,
+        approval_verifier: ApprovalVerifier | None,
+        actor: str,
+        workflow_run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Atomically restore six compatible retired artifacts as one Champion generation."""
+        if not isinstance(transitions, list) or len(transitions) != 6:
+            raise LifecycleError("atomic three-slot restoration requires exactly six zone transitions")
+        if approval_verifier is None:
+            raise LifecycleError("atomic three-slot restoration requires the protected approval verifier")
+        current = self.snapshot()
+        if current["generation"] != expected_generation:
+            raise StaleRegistryError("registry generation changed before three-slot restoration")
+        normalized: dict[str, dict[str, Any]] = {}
+        population_keys: set[str] = set()
+        evidence_hashes: set[str] = set()
+        manifests: set[str] = set()
+        target_lists: set[str] = set()
+        target_counts: set[int] = set()
+        training_by_population: dict[str, str] = {}
+        artifact_ids_by_zone: dict[str, set[str]] = {"front": set(), "back": set()}
+
+        for transition in transitions:
+            required = {
+                "population_key", "zone", "artifact_id",
+                "expected_champion_artifact_id", "approval",
+            }
+            if not isinstance(transition, dict) or set(transition) != required:
+                raise LifecycleError("three-slot restore fields do not match the closed schema")
+            population_key = transition["population_key"]
+            zone = transition["zone"]
+            key = _slot_key(population_key, zone)
+            if key in normalized:
+                raise LifecycleError("three-slot restore contains a duplicate population/zone")
+            regime_id, _ = _parse_regime_population_key(population_key)
+            population_keys.add(population_key)
+            slot = current["slots"].get(key)
+            artifact_id = transition["artifact_id"]
+            expected_champion = transition["expected_champion_artifact_id"]
+            if not slot or artifact_id not in slot.get("retired_artifact_ids", []):
+                raise LifecycleError("three-slot restore target is not a retired artifact for its slot")
+            if slot.get("champion_artifact_id") != expected_champion:
+                raise StaleRegistryError("three-slot restore expected Champion pointer does not match")
+            validation = slot.get("validation", {}).get(artifact_id)
+            if not validation or validation.get("eligible") is not True:
+                raise LifecycleError("three-slot restore target lacks a passing immutable validation receipt")
+            receipt = self._load_evaluation_receipt(validation["receipt_sha256"])
+            if (
+                receipt.get("artifact_id") != artifact_id
+                or receipt.get("population_key") != population_key
+                or receipt.get("zone") != zone
+                or receipt.get("population_eligibility") != "verified_regime"
+                or not _is_sha(receipt.get("population_evidence_sha256"))
+            ):
+                raise LifecycleError("three-slot restore target lacks verified regime evidence")
+            artifact = self._load_artifact(artifact_id)
+            current_artifact = self._load_artifact(expected_champion)
+            for field in ("model_family", "zone", "population_size", "selection_size", "feature_schema_hash"):
+                if artifact.get(field) != current_artifact.get(field):
+                    raise LifecycleError("three-slot restore target is incompatible with current Champion schema")
+            if (
+                artifact.get("training_snapshot_sha256") != receipt["training_population_sha256"]
+                or artifact.get("training_row_count", 0) < 300
+            ):
+                raise LifecycleError("three-slot restore target has an invalid training population")
+            evidence_hashes.add(receipt["population_evidence_sha256"])
+            manifests.add(receipt["evaluation_manifest_sha256"])
+            target_lists.add(receipt["target_list_sha256"])
+            target_counts.add(receipt["target_count"])
+            prior_training = training_by_population.setdefault(
+                population_key, receipt["training_population_sha256"]
+            )
+            if prior_training != receipt["training_population_sha256"]:
+                raise LifecycleError("front/back restore targets use different training populations")
+            if artifact_id in artifact_ids_by_zone[zone]:
+                raise LifecycleError("three reported-index restore targets reuse a zone artifact")
+            artifact_ids_by_zone[zone].add(artifact_id)
+            _, approval_hash = self._verified_approval(
+                transition["approval"], approval_verifier=approval_verifier,
+                action="restore", artifact_id=artifact_id,
+                population_key=population_key, zone=zone,
+                expected_champion_artifact_id=expected_champion,
+                evaluation_manifest_sha256=receipt["evaluation_manifest_sha256"],
+                evaluation_receipt_sha256=validation["receipt_sha256"],
+            )
+            normalized[key] = {
+                "population_key": population_key,
+                "zone": zone,
+                "artifact_id": artifact_id,
+                "expected_champion_artifact_id": expected_champion,
+                "approval_sha256": approval_hash,
+                "evaluation_receipt_sha256": validation["receipt_sha256"],
+            }
+
+        parsed = [_parse_regime_population_key(key) for key in population_keys]
+        if (
+            len(population_keys) != 3
+            or len({regime_id for regime_id, _ in parsed}) != 1
+            or {index for _, index in parsed} != {1, 2, 3}
+            or set(normalized) != {
+                f"{population_key}|{zone}"
+                for population_key in population_keys for zone in ZONES
+            }
+        ):
+            raise LifecycleError("atomic restoration must cover indices 1/2/3 and both zones in one regime")
+        if len(evidence_hashes) != 1 or len(manifests) != 1 or len(target_lists) != 1 or len(target_counts) != 1:
+            raise LifecycleError("restored slots must share one evidence, evaluation and target manifest")
+        if len(set(training_by_population.values())) != 3:
+            raise LifecycleError("restored reported-index slots must use three distinct training populations")
+
+        regime_id = parsed[0][0]
+        with ledger_lock(self.registry_path):
+            self._recover_locked()
+            registry = self._read_registry()
+            if registry["generation"] != expected_generation:
+                raise StaleRegistryError("registry generation changed before atomic three-slot restore")
+            slots = dict(registry["slots"])
+            new_generation = registry["generation"] + 1
+            for key, transition in normalized.items():
+                slot = dict(slots[key])
+                old_champion = transition["expected_champion_artifact_id"]
+                artifact_id = transition["artifact_id"]
+                if (
+                    artifact_id not in slot.get("retired_artifact_ids", [])
+                    or slot.get("champion_artifact_id") != old_champion
+                ):
+                    raise StaleRegistryError("three-slot retired/Champion pointer changed before restore")
+                retired = list(slot["retired_artifact_ids"])
+                retired.remove(artifact_id)
+                if old_champion not in retired:
+                    retired.append(old_champion)
+                slot["retired_artifact_ids"] = retired
+                slot["champion_artifact_id"] = artifact_id
+                slot["champion_generation"] = new_generation
+                slot["suspended"] = False
+                slot["suspension_reason"] = None
+                approvals = dict(slot.get("approval", {}))
+                approvals[artifact_id] = transition["approval_sha256"]
+                slot["approval"] = approvals
+                slots[key] = slot
+            new_registry = {**registry, "slots": slots}
+            event_transitions = [
+                {
+                    "population_key": item["population_key"],
+                    "zone": item["zone"],
+                    "artifact_id": item["artifact_id"],
+                    "previous_artifact_id": item["expected_champion_artifact_id"],
+                    "approval_sha256": item["approval_sha256"],
+                    "evaluation_receipt_sha256": item["evaluation_receipt_sha256"],
+                }
+                for item in normalized.values()
+            ]
+            return self._commit_locked(
+                registry, new_registry, event_type="three_slot_generation_restored",
+                population_key=regime_id, zone="all", artifact_id=None,
+                previous_artifact_id=None, actor=actor,
+                workflow_run_id=workflow_run_id,
+                evidence_sha256=_sha(canonicalize([item["approval_sha256"] for item in normalized.values()])),
+                reason_code="atomic_compatible_three_slot_generation_restored",
+                event_details={"transitions": event_transitions},
+            )
+
     def resolve_three_slot_generation(
         self,
         population_keys: list[str],
