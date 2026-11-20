@@ -18,6 +18,7 @@ from pathlib import Path
 from lottery.backtest import _probabilities
 from lottery.subset_model.artifact import canonicalize, create_artifact, verify_artifact
 from lottery.subset_model.rolling_origin_ledger import write_immutable_outputs
+from lottery.subset_model.conditional_poisson import CALIBRATION_SOLVER
 from lottery.subset_model import (
     BACK_POPULATION,
     BACK_SELECTION,
@@ -498,6 +499,10 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                     "alpha": 100.0,
                     "half_life": 100.0 if baseline == "ewma" else None,
                     "weighting": "expanding" if baseline == "expanding" else "2^(-lag/100)",
+                    "solver": CALIBRATION_SOLVER,
+                    "max_iterations": 5000,
+                    "gradient_tolerance": 1e-8,
+                    "history_size": 10,
                     "feature_schema_hash": _jcs_hash(baseline_schema),
                 }
                 try:
@@ -547,7 +552,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                                 "objective": calibration.objective,
                                 "gradient_inf_norm": calibration.gradient_infinity_norm,
                                 "iterations": calibration.iterations,
-                                "optimizer": calibration.solver,
+                                "optimizer": CALIBRATION_SOLVER,
                                 "lambda": None,
                             },
                             "training": {
@@ -592,7 +597,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                             objective=calibration.objective,
                             gradient_inf_norm=calibration.gradient_infinity_norm,
                             iterations=calibration.iterations,
-                            optimizer=calibration.solver,
+                            optimizer=CALIBRATION_SOLVER,
                             regularization_lambda=None,
                             rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
                         )
@@ -606,7 +611,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                         feature_schema=baseline_schema, model_configuration=baseline_config,
                         status=statuses[baseline], reason=str(exc),
                         objective=None, gradient_inf_norm=None, iterations=0,
-                        optimizer=calibration.solver,
+                        optimizer=CALIBRATION_SOLVER,
                         regularization_lambda=None,
                         rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
                     )
