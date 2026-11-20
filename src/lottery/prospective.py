@@ -188,6 +188,42 @@ class ProspectiveLedger:
                     record["population_key"], record["forecast_policy_version"],
                     record["active_registry_snapshot_id"], record["registry_generation"],
                 )
+                expected_id = record.get("expected_forecast_id")
+                expected = expectations.get(expected_id)
+                if expected is None:
+                    raise ProspectiveLedgerError("forecast terminal record references no prior expectation")
+                expected_key = (
+                    expected["front_artifact_sha256"], expected["back_artifact_sha256"],
+                    expected["target_draw_id"], expected["zone"],
+                    expected["population_key"], expected["forecast_policy_version"],
+                    expected["active_registry_snapshot_id"], expected["registry_generation"],
+                )
+                if expected_key != key:
+                    raise ProspectiveLedgerError("forecast terminal record does not match expected identity")
+                identity_fields = (
+                    "target_draw_id", "target_draw_at_utc", "target_cutoff_utc",
+                    "target_cutoff_timezone_source", "front_artifact_sha256",
+                    "back_artifact_sha256", "active_registry_snapshot_id", "lifecycle_state",
+                    "model_spec_sha256", "zone", "population_key", "registry_generation",
+                    "forecast_policy_version", "scoring_policy_version", "model_family",
+                    "code_commit", "runtime", "source_evidence_manifest_sha256",
+                )
+                if any(record[field] != expected[field] for field in identity_fields):
+                    raise ProspectiveLedgerError("forecast terminal record provenance differs from expectation")
+                training_fields = (
+                    "training_snapshot_sha256", "training_first_draw_id", "training_last_draw_id",
+                    "training_row_count", "training_last_draw_date",
+                )
+                training_mismatch = any(record[field] != expected[field] for field in training_fields)
+                if event["event_type"] == "forecast_missing":
+                    if (record.get("expected_at_utc") != expected["expected_at_utc"]
+                            or training_mismatch):
+                        raise ProspectiveLedgerError("missing forecast record differs from its expectation")
+                elif training_mismatch and (
+                    record.get("status") != "ineligible"
+                    or "forecast_training_lineage_mismatch" not in record.get("reason_codes", [])
+                ):
+                    raise ProspectiveLedgerError("training lineage mismatch must be retained as ineligible")
                 if forecast_id in forecasts or key in forecast_keys:
                     raise ProspectiveLedgerError("duplicate artifact × target × zone forecast")
                 forecasts[forecast_id] = record
