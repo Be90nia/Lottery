@@ -7,6 +7,7 @@ independent backup domain or a production cloud object-store implementation.
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
@@ -300,7 +301,8 @@ class FileSystemObjectStore:
                 existing = _read_canonical(publication_path)
                 pointer = _read_canonical(pointer_path)
                 if (pointer.get("last_operation_id") != operation_id
-                        or existing.get("object_sha256") != commit["content_sha256"]):
+                        or existing.get("object_sha256") != commit["content_sha256"]
+                        or existing.get("published_at_utc") != pointer.get("published_at_utc")):
                     raise StorageError("prior publication receipt conflicts with current pointer")
                 return pointer
             if pointer_path.exists():
@@ -317,6 +319,7 @@ class FileSystemObjectStore:
                         "object_sha256": commit["content_sha256"],
                         "operation_id": operation_id,
                         "previous_object_sha256": current.get("previous_object_sha256"),
+                        "published_at_utc": current["published_at_utc"],
                     }
                     _atomic_immutable(publication_path, canonicalize(recovered_receipt))
                     return current
@@ -333,6 +336,7 @@ class FileSystemObjectStore:
                 "commit_receipt_sha256": _sha(self._commit_path(operation_id).read_bytes()),
                 "previous_object_sha256": current.get("object_sha256") if current else None,
                 "last_operation_id": operation_id,
+                "published_at_utc": datetime.now(timezone.utc).isoformat(),
             }
             _atomic_replace(pointer_path, canonicalize(new_pointer))
             receipt = {
@@ -342,6 +346,7 @@ class FileSystemObjectStore:
                 "object_sha256": commit["content_sha256"],
                 "operation_id": operation_id,
                 "previous_object_sha256": current.get("object_sha256") if current else None,
+                "published_at_utc": new_pointer["published_at_utc"],
             }
             _atomic_immutable(publication_path, canonicalize(receipt))
             return new_pointer
@@ -355,6 +360,15 @@ class FileSystemObjectStore:
         receipt_hash = pointer.get("commit_receipt_sha256")
         if not isinstance(receipt_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", receipt_hash):
             raise StorageError("pointer commit receipt digest is invalid")
+        published_at = pointer.get("published_at_utc")
+        if not isinstance(published_at, str):
+            raise StorageError("pointer publication timestamp is missing")
+        try:
+            parsed_published_at = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise StorageError("pointer publication timestamp is invalid") from exc
+        if parsed_published_at.tzinfo is None or parsed_published_at.utcoffset() is None:
+            raise StorageError("pointer publication timestamp must be timezone-aware")
         operation_id = _safe_name(pointer.get("last_operation_id"), "operation_id")
         commit_path = self._commit_path(operation_id)
         commit_raw = commit_path.read_bytes()
@@ -435,6 +449,7 @@ class FileSystemObjectStore:
                             "object_sha256": pointer["object_sha256"],
                             "operation_id": pointer["last_operation_id"],
                             "previous_object_sha256": pointer.get("previous_object_sha256"),
+                            "published_at_utc": pointer.get("published_at_utc"),
                         }
                         if publication != expected_publication:
                             report["corrupt_publication_receipts"].append(
