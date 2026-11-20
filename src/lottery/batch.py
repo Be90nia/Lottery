@@ -26,13 +26,23 @@ def _sha(raw: bytes) -> str:
 
 
 def _derive_slot_seed(
-    master_seed: bytes, *, population_key: str, zone: str, artifact_id: str
+    master_seed: bytes,
+    *,
+    request_id: str,
+    population_key: str,
+    zone: str,
+    artifact_id: str,
+    rng_algorithm: str,
+    sampler_version: str,
 ) -> bytes:
     context = canonicalize({
-        "schema": "lottery.batch-rng-context/v1",
+        "schema": "lottery.batch-rng-context/v2",
+        "request_id": request_id,
         "population_key": population_key,
         "zone": zone,
         "artifact_id": artifact_id,
+        "rng_algorithm": rng_algorithm,
+        "sampler_version": sampler_version,
     })
     return hmac.new(
         master_seed,
@@ -88,7 +98,7 @@ class ThreeSlotBatchPublisher:
     ) -> dict[str, Any]:
         if type(tickets_per_slot) is not int or tickets_per_slot < 1:
             raise BatchPublicationError("tickets_per_slot must be a positive integer")
-        if not isinstance(idempotency_key, str) or not idempotency_key:
+        if not isinstance(idempotency_key, str) or not idempotency_key or len(idempotency_key) > 512:
             raise BatchPublicationError("idempotency_key must be a non-empty string")
         if type(master_seed) is not bytes or len(master_seed) < 32:
             raise BatchPublicationError("master_seed must be at least 32 secret bytes")
@@ -108,6 +118,7 @@ class ThreeSlotBatchPublisher:
         if not callable(sampler):
             raise BatchPublicationError("a deterministic sampler callback is required")
 
+        request_id = _sha(idempotency_key.encode("utf-8"))
         try:
             resolved = lifecycle.resolve_three_slot_generation(
                 population_keys, approval_verifier=approval_verifier
@@ -140,6 +151,9 @@ class ThreeSlotBatchPublisher:
         for slot in resolved["slots"]:
             slots_by_population.setdefault(slot["population_key"], {})[slot["zone"]] = slot["artifact_id"]
         ordered_populations = sorted(slots_by_population)
+        resolved_by_key = {
+            (slot["population_key"], slot["zone"]): slot for slot in resolved["slots"]
+        }
         slot_payloads = []
         all_ticket_keys: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
         for population_key in ordered_populations:
@@ -148,12 +162,14 @@ class ThreeSlotBatchPublisher:
                 raise BatchPublicationError("each population slot requires both front and back artifacts")
             try:
                 front_seed = _derive_slot_seed(
-                    master_seed, population_key=population_key, zone="front",
-                    artifact_id=artifacts["front"],
+                    master_seed, request_id=request_id, population_key=population_key,
+                    zone="front", artifact_id=artifacts["front"],
+                    rng_algorithm=rng_algorithm, sampler_version=sampler_version,
                 )
                 back_seed = _derive_slot_seed(
-                    master_seed, population_key=population_key, zone="back",
-                    artifact_id=artifacts["back"],
+                    master_seed, request_id=request_id, population_key=population_key,
+                    zone="back", artifact_id=artifacts["back"],
+                    rng_algorithm=rng_algorithm, sampler_version=sampler_version,
                 )
                 tickets = sampler(
                     population_key, artifacts["front"], artifacts["back"],
@@ -169,11 +185,44 @@ class ThreeSlotBatchPublisher:
             legal_tickets = [_validate_ticket(ticket) for ticket in tickets]
             ticket_keys = [(tuple(ticket["front"]), tuple(ticket["back"])) for ticket in legal_tickets]
             all_ticket_keys.extend(ticket_keys)
+            ticket_records = [
+                {
+                    "ticket_id": _sha(canonicalize({
+                        "schema": "lottery.ticket/v1",
+                        "request_id": request_id,
+                        "population_key": population_key,
+                        "ticket_index": index,
+                        "front": ticket["front"],
+                        "back": ticket["back"],
+                    })),
+                    "front": ticket["front"],
+                    "back": ticket["back"],
+                }
+                for index, ticket in enumerate(legal_tickets)
+            ]
+            front_meta = resolved_by_key[(population_key, "front")]
+            back_meta = resolved_by_key[(population_key, "back")]
             slot_payloads.append({
                 "population_key": population_key,
                 "front_artifact_id": artifacts["front"],
                 "back_artifact_id": artifacts["back"],
-                "tickets": legal_tickets,
+                "front_artifact_provenance": {
+                    key: front_meta[key] for key in (
+                        "training_cutoff_draw_id", "training_snapshot_sha256",
+                        "training_row_count", "training_first_draw_id", "training_last_draw_id",
+                        "population_evidence_sha256", "evaluation_manifest_sha256",
+                        "evaluation_receipt_sha256", "shadow_receipt_sha256", "approval_sha256",
+                    )
+                },
+                "back_artifact_provenance": {
+                    key: back_meta[key] for key in (
+                        "training_cutoff_draw_id", "training_snapshot_sha256",
+                        "training_row_count", "training_first_draw_id", "training_last_draw_id",
+                        "population_evidence_sha256", "evaluation_manifest_sha256",
+                        "evaluation_receipt_sha256", "shadow_receipt_sha256", "approval_sha256",
+                    )
+                },
+                "tickets": ticket_records,
                 "rng_streams": {
                     "front": {
                         "algorithm": rng_algorithm,
@@ -208,8 +257,17 @@ class ThreeSlotBatchPublisher:
 
         manifest = {
             "schema": BATCH_SCHEMA,
-            "batch_id": _sha(idempotency_key.encode("utf-8")),
-            "idempotency_key_sha256": _sha(idempotency_key.encode("utf-8")),
+            "batch_id": request_id,
+            "request_id": request_id,
+            "idempotency_key_sha256": request_id,
+            "registry_snapshot_sha256": _sha(canonicalize({
+                "registry_generation": resolved["registry_generation"],
+                "champion_generation": resolved["champion_generation"],
+                "slots": sorted(
+                    resolved["slots"],
+                    key=lambda item: (item["population_key"], item["zone"]),
+                ),
+            })),
             "registry_generation": resolved["registry_generation"],
             "champion_generation": resolved["champion_generation"],
             "population_keys": ordered_populations,
@@ -218,7 +276,7 @@ class ThreeSlotBatchPublisher:
             "total_ticket_count": total,
             "seed_commitment_sha256": seed_commitment_sha256,
             "seed_material_ref": seed_material_ref,
-            "seed_derivation": "HMAC-SHA256(lottery.three-slot-rng.v1, population_key, zone, artifact_id)",
+            "seed_derivation": "HMAC-SHA256(lottery.three-slot-rng.v1, request_id, population_key, zone, artifact_id, rng_algorithm, sampler_version)",
             "rng_algorithm": rng_algorithm,
             "sampler_version": sampler_version,
             "producer_commit": producer_commit,
