@@ -81,23 +81,34 @@ def _atomic_write(path: Path, raw: bytes) -> None:
 
 
 def _write_once(path: Path, raw: bytes) -> None:
+    """Publish immutable bytes atomically without exposing a partial object."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
     try:
-        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError:
-        if path.read_bytes() != raw:
-            raise LifecycleError(f"immutable object collision at {path}")
-        return
-    with os.fdopen(descriptor, "wb") as handle:
-        handle.write(raw)
-        handle.flush()
-        os.fsync(handle.fileno())
-    if hasattr(os, "O_DIRECTORY"):
-        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(raw)
+            handle.flush()
+            os.fsync(handle.fileno())
         try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
+            # A same-directory hard link is an atomic no-clobber publication:
+            # readers see either no object or the complete fsynced object.
+            os.link(temporary, path)
+        except FileExistsError:
+            if path.read_bytes() != raw:
+                raise LifecycleError(f"immutable object collision at {path}")
+        if hasattr(os, "O_DIRECTORY"):
+            directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 def _require_generation(value: Any) -> None:
