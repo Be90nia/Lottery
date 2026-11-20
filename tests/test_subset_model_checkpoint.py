@@ -195,11 +195,34 @@ class CheckpointIntegrityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "uniform NLL"):
             self.validate(changed)
 
-    def test_failed_fit_cannot_carry_a_score(self):
+    def test_failed_fit_cannot_carry_a_score_and_has_failure_artifact(self):
+        import json
         changed = dict(self.record)
         changed["fit_statuses"] = dict(changed["fit_statuses"], candidate="line_search_failed")
         changed["exact_set_nll"] = dict(changed["exact_set_nll"], exponential_family=None)
-        changed["model_artifacts"] = dict(changed["model_artifacts"], candidate=None)
+        changed["model_artifacts"] = dict(changed["model_artifacts"])
+        entry = changed["model_artifacts"]["candidate"]
+        failure = dict(entry["payload"])
+        failure["artifact_type"] = "fit_failure"
+        failure["fit"] = dict(failure["fit"], status="line_search_failed",
+                              termination_reason="line search failed",
+                              objective=None, gradient_inf_norm=None)
+        failure["fit_diagnostics"] = {
+            "terminal_status": "line_search_failed", "converged": False,
+            "message": "line search failed",
+        }
+        failure["parameters"] = {
+            "parameter_order": "feature_schema.names", "parameters_available": False,
+        }
+        failure["normalization"] = {
+            "method": "not_computed", "log_partition": None, "numeric_dtype": "float64",
+        }
+        failure["failure_reason"] = "line_search_failed"
+        failure.pop("theta", None)
+        raw, artifact_id = create_artifact(failure)
+        changed["model_artifacts"]["candidate"] = {
+            "artifact_id": artifact_id, "payload": json.loads(raw),
+        }
         changed["record_sha256"] = _checkpoint_record_hash(changed)
         self.validate(changed)
 
