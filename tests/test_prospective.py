@@ -149,6 +149,25 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.assertEqual(score, retry)
         self.assertEqual(self.ledger.coverage_report()["score_revisions"], 1)
 
+    def test_score_evaluation_failures_are_retained_without_penalty(self):
+        outcome = self.record_official_outcome()
+        for _ in range(2):
+            with self.assertRaisesRegex(ProspectiveLedgerError, "probability evaluation failed"):
+                self.ledger.score_forecast(
+                    forecast_id=self.forecast["forecast_id"],
+                    outcome_id=outcome["outcome_id"],
+                    scorer_version="failing-scorer-v1",
+                    attempt_id="failed-attempt-001",
+                    log_probability=lambda record, subset: (_ for _ in ()).throw(RuntimeError("optimizer unavailable")),
+                )
+        snapshot = self.ledger.snapshot()
+        self.assertEqual(len(snapshot["scores"]), 0)
+        self.assertEqual(len(snapshot["score_failures"]), 1)
+        failure = next(iter(snapshot["score_failures"].values()))
+        self.assertEqual(failure["failure_code"], "artifact_probability_evaluation_failed")
+        self.assertEqual(failure["status"], "score_failed")
+        self.assertEqual(self.ledger.coverage_report()["score_failed_attempts"], 1)
+
     def test_positive_or_nonfinite_log_probability_is_rejected(self):
         outcome = self.record_official_outcome()
         for value in (0.01, 0.0, float("nan"), float("inf"), False):
