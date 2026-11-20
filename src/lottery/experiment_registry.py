@@ -192,6 +192,7 @@ class ExperimentRegistry:
             event_id = event.get("event_id")
             body = {key: value for key, value in event.items() if key != "event_hash"}
             if (not isinstance(event_id, str) or not event_id or event_id in seen
+                    or event.get("schema") != EVENT_SCHEMA or canonicalize(event) != line
                     or event.get("prev_event_hash") != previous
                     or event.get("event_hash") != _sha(canonicalize(body))):
                 raise ExperimentRegistryError(f"experiment event hash chain failed at line {line_number}")
@@ -201,6 +202,8 @@ class ExperimentRegistry:
         return events
 
     def _append_event_locked(self, body: dict[str, Any]) -> None:
+        if not isinstance(body, dict) or body.get("schema") != EVENT_SCHEMA:
+            raise ExperimentRegistryError("experiment event does not match the closed event schema")
         events = self._read_events()
         event_id = body["event_id"]
         existing = next((x for x in events if x["event_id"] == event_id), None)
@@ -352,6 +355,7 @@ class ExperimentRegistry:
             _write_once(path, canonicalize(registration))
             if experiment_id not in snapshot["experiments"]:
                 self._append_event_locked({
+                    "schema": EVENT_SCHEMA,
                     "event_id": f"register:{experiment_id}",
                     "event_type": "experiment_registered",
                     "occurred_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -394,6 +398,7 @@ class ExperimentRegistry:
                 raise ExperimentRegistryError("attempt_id already exists with a different or terminal state")
             event_id = _sha(f"{experiment_id}:{attempt_id}:start".encode("utf-8"))
             self._append_event_locked({
+                "schema": EVENT_SCHEMA,
                 "event_id": event_id,
                 "event_type": "trial_started",
                 "occurred_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -448,6 +453,7 @@ class ExperimentRegistry:
                 raise ExperimentRegistryError("terminal trial attempt cannot be overwritten")
             event_id = _sha(f"{experiment_id}:{attempt_id}:finish".encode("utf-8"))
             self._append_event_locked({
+                "schema": EVENT_SCHEMA,
                 "event_id": event_id,
                 "event_type": "trial_finished",
                 "occurred_at_utc": datetime.now(timezone.utc).isoformat(),
