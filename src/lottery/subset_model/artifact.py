@@ -334,6 +334,7 @@ def validate_model_artifact(payload: dict) -> None:
         }
     else:
         allowed_fields |= {
+            "baseline", "alpha", "half_life",
             "centered_log_weights", "target_marginals", "achieved_marginals",
             "solver_status", "calibration_residual",
         }
