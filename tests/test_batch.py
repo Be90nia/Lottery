@@ -92,7 +92,7 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
         if master_seed is None:
             master_seed = b"lottery-test-master-seed-material-2026"
         if sampler is None:
-            sampler = lambda population, front, back, count, front_seed, back_seed: [
+            sampler = lambda population, front, back, count, front_seed, back_seed, rng_algorithm, sampler_version: [
                 {"front": [1, 2, 3, 4, 5], "back": [1, 2]}
                 for _ in range(count)
             ]
@@ -145,7 +145,7 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
     def test_sampler_failure_publishes_nothing(self):
         calls = {"count": 0}
 
-        def fail_second(population, front, back, count, front_seed, back_seed):
+        def fail_second(population, front, back, count, front_seed, back_seed, rng_algorithm, sampler_version):
             calls["count"] += 1
             if calls["count"] == 2:
                 raise RuntimeError("sampler failed")
