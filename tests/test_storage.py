@@ -85,10 +85,19 @@ class FileSystemObjectStoreTests(unittest.TestCase):
         )
         self.assertEqual(pointer["generation"], 1)
         self.assertEqual(self.store.read_pointer("active-inventory"), pointer)
+        retry = self.store.publish_pointer(
+            name="active-inventory",
+            operation_id=staged["operation_id"],
+            expected_generation=0,
+        )
+        self.assertEqual(retry, pointer)
+        other, _ = self.stage_validate_commit(
+            key="inventory-2", content=b"canonical snapshot v2"
+        )
         with self.assertRaises(StalePointer):
             self.store.publish_pointer(
                 name="active-inventory",
-                operation_id=staged["operation_id"],
+                operation_id=other["operation_id"],
                 expected_generation=0,
             )
 
