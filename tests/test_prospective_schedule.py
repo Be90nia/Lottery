@@ -125,13 +125,9 @@ class ProspectiveScheduleTests(unittest.TestCase):
         good = make_record()
         bad = dict(make_record(), target_draw_id="26133", expected_at_utc="2026-11-21T12:30:00+00:00")
         schedule = make_schedule([good, bad])
-        with self.assertRaisesRegex(ProspectiveScheduleTestsError, "expected_at_utc"):
+        with self.assertRaisesRegex(ScheduleError, "expectation < cutoff"):
             run_schedule(schedule, self.ledger, mode="register", clock=self.clock)
         self.assertEqual(self.ledger.snapshot()["event_count"], 0)
-
-
-class ProspectiveScheduleTestsError(Exception):
-    pass
 
 
 if __name__ == "__main__":
