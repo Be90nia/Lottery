@@ -31,8 +31,9 @@ version and score records.
 - Evidence and artifact probability verification are injected protected
   callbacks; this PR does not supply official credentials or model artifact
   loading.
-- Score execution failures are surfaced as errors but a separate immutable
-  score-failure-attempt ledger is still required.
+- Probability-evaluator failures and invalid probability outputs are
+  retained as immutable `score_failed` attempts with stable failure codes;
+  they never receive an artificial NLL.
 - This does not enable model refresh, Champion mutation, rollback or serving.
 - Ticket hit rates and user batch counts are not used as model-level scoring
   denominators.
