@@ -24,9 +24,22 @@ artifacts. It is intentionally separate from the legacy LOT-042 forecast ledger.
   hash, not merely a mutable manifest name.
 - Rejection and suspension preserve all artifacts and history. A suspended
   slot retains its Champion pointer for audit but cannot resolve for serving.
+- Verified set-conditioned population keys use the canonical form
+  `<equipment_regime_id>|reported_set_index=<1|2|3>`. The signed evaluation
+  receipt binds the population evidence digest and the exact filtered training
+  snapshot hash; front/back artifacts for one index must share that training
+  population, while the three reported indices must have three distinct
+  training populations and distinct zone artifacts.
+- Verified set-conditioned Champions cannot be promoted one zone at a time.
+  `promote_three_slot_generation` atomically publishes exactly six artifacts
+  (indices 1/2/3 × front/back) under one registry generation, with one shared
+  evidence/evaluation/target manifest and six scoped approvals.
+- `restore_three_slot_generation` performs the corresponding atomic rollback.
+  Individual `restore_retired` is restricted to pooled equipment-blind slots.
 - Three-slot resolution requires exactly three distinct population keys and
-  both zones for every key (six immutable artifacts), all from one registry
-  generation. Every approval signature is reverified at resolution time.
+  both zones for every key (six immutable artifacts), all carrying the same
+  atomic Champion generation. Every approval signature is reverified at
+  resolution time.
   Missing or suspended slots reject the entire resolution.
 
 ## Current boundary
