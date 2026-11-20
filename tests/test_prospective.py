@@ -185,6 +185,17 @@ class ProspectiveLedgerTests(unittest.TestCase):
                     log_probability=lambda record, subset, value=value: value,
                 )
 
+    def test_outcome_correction_timestamp_cannot_move_backwards(self):
+        first = self.record_official_outcome()
+        with self.assertRaisesRegex(ProspectiveLedgerError, "cannot move backwards"):
+            self.record_official_outcome(
+                front=[6, 7, 8, 9, 10],
+                source="out-of-order-correction",
+                supersedes=first["outcome_id"],
+                observed="2026-11-20T13:59:59+00:00",
+            )
+        self.assertEqual(self.ledger.snapshot()["latest_outcome_by_draw"]["26131"], first["outcome_id"])
+
     def test_outcome_correction_appends_new_version_and_new_score(self):
         first = self.record_official_outcome()
         first_score = self.ledger.score_forecast(
