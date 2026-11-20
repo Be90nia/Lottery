@@ -407,7 +407,7 @@ class ProspectiveLedger:
             zone, population_key, forecast_policy_version,
             active_registry_snapshot_id, registry_generation,
         )
-        with self._lock():
+        with ledger_lock(self.path):
             snapshot = self._snapshot_unlocked()
             existing = snapshot["expectation_keys"].get(key)
             if existing is not None:
@@ -710,7 +710,7 @@ class ProspectiveLedger:
             zone, population_key, forecast_policy_version,
             active_registry_snapshot_id, registry_generation,
         )
-        with self._lock():
+        with ledger_lock(self.path):
             snapshot = self._snapshot_unlocked()
             expected_id = snapshot["expectation_keys"].get(key)
             if expected_id is None:
