@@ -157,7 +157,7 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
         self.assertFalse(self.store.operations.exists())
 
     def test_invalid_ticket_is_rejected_before_any_storage_write(self):
-        def invalid(population, front, back, count, front_seed, back_seed):
+        def invalid(population, front, back, count, front_seed, back_seed, rng_algorithm, sampler_version):
             return [{"front": [1, 1, 2, 3, 4], "back": [1, 2]}] * count
 
         with self.assertRaisesRegex(BatchPublicationError, "front ticket"):
@@ -187,7 +187,7 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
 
     def test_sampler_must_return_exactly_n_tickets(self):
         with self.assertRaisesRegex(BatchPublicationError, "expected exactly"):
-            self.publish(sampler=lambda population, front, back, count, front_seed, back_seed: [])
+            self.publish(sampler=lambda population, front, back, count, front_seed, back_seed, rng_algorithm, sampler_version: [])
 
     def test_batch_size_is_bounded_before_registry_resolution(self):
         with self.assertRaisesRegex(BatchPublicationError, "frozen offline limit of 100"):
