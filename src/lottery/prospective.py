@@ -632,13 +632,26 @@ class ProspectiveLedger:
                 record["reason_codes"].append("forecast_training_lineage_mismatch")
                 record["status"] = "ineligible"
             record["expected_forecast_id"] = expected_id
-            record["forecast_id"] = _sha(canonicalize(record))
             existing_id = snapshot["forecast_keys"].get(key)
             if existing_id is not None:
-                if existing_id == record["forecast_id"]:
-                    return snapshot["forecasts"][existing_id]
+                existing = snapshot["forecasts"][existing_id]
+                request_fields = set(record) - {"status", "reason_codes", "forecast_id"}
+                if all(record[field] == existing.get(field) for field in request_fields):
+                    return existing
                 raise ProspectiveLedgerError("forecast key already has an immutable record")
-            self._append_locked(f"forecast:{record['forecast_id']}", "forecast_issued", record)
+
+            occurred_at = self._now()
+            if occurred_at >= cutoff and "forecast_recorded_after_cutoff" not in record["reason_codes"]:
+                record["reason_codes"].append("forecast_recorded_after_cutoff")
+                record["status"] = "ineligible"
+            if issued > occurred_at and "forecast_timestamp_after_ledger_time" not in record["reason_codes"]:
+                record["reason_codes"].append("forecast_timestamp_after_ledger_time")
+                record["status"] = "ineligible"
+            record["forecast_id"] = _sha(canonicalize(record))
+            self._append_locked(
+                f"forecast:{record['forecast_id']}", "forecast_issued", record,
+                occurred_at=occurred_at,
+            )
             return record
 
     def record_missing_forecast(
