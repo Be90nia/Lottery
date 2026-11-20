@@ -4,7 +4,7 @@
   "title": "Lottery release manifest v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "release_id", "release_ref", "source_commit", "workflow_policy_sha256", "dependency_lock_sha256", "snapshot_sha256", "lot042_accessed"],
+  "required": ["schema", "release_id", "release_ref", "source_commit", "workflow_policy_sha256", "dependency_lock_sha256", "readiness_policy_sha256", "snapshot_sha256", "lot042_accessed"],
   "properties": {
     "schema": {"const": "lottery.release-manifest/v1"},
     "release_id": {"type": "string", "minLength": 1, "maxLength": 128},
@@ -12,6 +12,7 @@
     "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "workflow_policy_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "dependency_lock_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "readiness_policy_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "snapshot_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "lot042_accessed": {"type": "boolean"}
   }
