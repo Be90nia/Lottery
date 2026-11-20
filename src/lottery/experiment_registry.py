@@ -233,6 +233,19 @@ class ExperimentRegistry:
                         or not isinstance(spec, dict)
                         or _sha(canonicalize(spec)) != experiment_id):
                     raise ExperimentRegistryError("experiment registration content hash mismatch")
+                if registration.get("schema") != "lottery.experiment-registration/v1":
+                    raise ExperimentRegistryError("unsupported experiment registration record")
+                approval_hash = registration.get("approval_sha256")
+                if registration["spec"]["experiment_class"] == "confirmatory" and not _is_sha(approval_hash):
+                    raise ExperimentRegistryError("confirmatory experiment lacks its immutable approval receipt")
+                if approval_hash is not None:
+                    approval_path = self._approval_path(approval_hash)
+                    approval_raw = approval_path.read_bytes()
+                    approval = _read_canonical(approval_path)
+                    if (_sha(approval_raw) != approval_hash
+                            or approval.get("experiment_id") != experiment_id
+                            or approval.get("spec_sha256") != experiment_id):
+                        raise ExperimentRegistryError("experiment approval receipt is missing or mismatched")
                 experiments[experiment_id] = {"registration": registration, "attempts": {}}
             elif event.get("event_type") == "trial_started":
                 if experiment_id not in experiments:
@@ -293,6 +306,14 @@ class ExperimentRegistry:
         approval_hash = None
         with ledger_lock(self.events_path):
             snapshot = self._snapshot_unlocked()
+            existing = snapshot["experiments"].get(experiment_id)
+            if existing is not None:
+                registration = existing["registration"]
+                return {
+                    "experiment_id": experiment_id,
+                    "spec_sha256": experiment_id,
+                    "approval_sha256": registration.get("approval_sha256"),
+                }
             parent_id = spec["parent_experiment_id"]
             if parent_id is not None:
                 parent = snapshot["experiments"].get(parent_id)
