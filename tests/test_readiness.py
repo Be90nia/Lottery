@@ -162,7 +162,7 @@ class ReadinessTests(unittest.TestCase):
             evaluate_readiness(self.manifest, self.gates, bad_faults, self.evidence)
 
     def test_machine_readable_policy_matches_evaluator_constants(self):
-        policy_path = Path(__file__).resolve().parents[1] / "schemas" / "readiness-policy-v1.json"
+        policy_path = Path(__file__).resolve().parents[1] / "policies" / "readiness-policy-v1.json"
         policy = json.loads(policy_path.read_text(encoding="utf-8"))
         self.assertEqual(policy["schema"], "lottery.readiness-policy/v1")
         self.assertEqual(tuple(policy["gates"]), GATES)
