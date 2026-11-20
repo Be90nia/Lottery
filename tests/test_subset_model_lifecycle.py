@@ -286,9 +286,9 @@ class ChampionLifecycleTests(unittest.TestCase):
 
     def test_three_slot_generation_requires_three_verified_distinct_populations(self):
         population_keys = [
-            "regime-2020|reported-1",
-            "regime-2020|reported-2",
-            "regime-2020|reported-3",
+            "regime-2020|reported_set_index=1",
+            "regime-2020|reported_set_index=2",
+            "regime-2020|reported_set_index=3",
         ]
         generation = self.store.snapshot()["generation"]
         for population_key in population_keys:
