@@ -485,6 +485,24 @@ class ChampionLifecycleTests(unittest.TestCase):
         }
         self.assertEqual(resolved_ids, first_artifacts)
 
+
+    def test_boolean_generation_is_rejected_as_invalid_compare_and_swap_token(self):
+        with self.assertRaisesRegex(LifecycleError, "non-negative integer"):
+            self.store.register_challenger(
+                model_payload("front"),
+                population_key="pooled_equipment_blind",
+                zone="front",
+                expected_generation=True,
+                actor="test-suite",
+            )
+
+    def test_event_hash_chain_detects_tampering(self):
+        artifact_id, _, _ = self.register_and_validate()
+        raw = self.store.events_path.read_bytes()
+        self.store.events_path.write_bytes(raw.replace(artifact_id.encode("ascii"), b"sha256:" + b"0" * 64, 1))
+        with self.assertRaisesRegex(LifecycleError, "event hash chain failed"):
+            self.store.snapshot()
+
     def test_three_slot_resolution_is_all_or_none_and_reverifies_approval(self):
         with self.assertRaisesRegex(LifecycleError, "exactly three distinct"):
             self.store.resolve_three_slot_generation(["only-one"], approval_verifier=self.verifier)
