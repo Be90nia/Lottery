@@ -136,7 +136,7 @@ def validate_model_artifact(payload: dict) -> None:
     required = {
         "schema_version", "artifact_schema", "model_family", "zone",
         "population_size", "selection_size", "support", "feature_schema",
-        "parameters", "normalization", "fit", "training", "implementation",
+        "parameters", "model_configuration", "normalization", "fit", "training", "implementation",
         "training_snapshot_sha256", "training_cutoff_draw_id",
         "training_row_count", "code_revision", "runtime", "fit_diagnostics",
         "forecast_ready",
@@ -236,6 +236,21 @@ def validate_model_artifact(payload: dict) -> None:
             raise ArtifactValidationError("feature schema moments must be finite numeric values")
     if any(value < 0 for value in standard_deviations):
         raise ArtifactValidationError("feature standard deviations cannot be negative")
+    expected_feature_hash = "sha256:" + hashlib.sha256(canonicalize(feature_schema)).hexdigest()
+    if payload["feature_schema_hash"] != expected_feature_hash:
+        raise ArtifactValidationError("feature_schema_hash does not bind the canonical feature schema")
+    model_configuration = payload["model_configuration"]
+    if not isinstance(model_configuration, dict):
+        raise ArtifactValidationError("model_configuration must be an object")
+    expected_config_hash = "sha256:" + hashlib.sha256(canonicalize(model_configuration)).hexdigest()
+    if payload["model_configuration_hash"] != expected_config_hash:
+        raise ArtifactValidationError("model_configuration_hash does not bind the canonical configuration")
+    if (model_configuration.get("model_family") != payload["model_family"]
+            or model_configuration.get("zone") != payload["zone"]
+            or model_configuration.get("population_size") != expected[0]
+            or model_configuration.get("selection_size") != expected[1]
+            or model_configuration.get("feature_schema_hash") != payload["feature_schema_hash"]):
+        raise ArtifactValidationError("model_configuration does not match artifact identity/schema")
 
     normalization = payload["normalization"]
     if not isinstance(normalization, dict) or (
