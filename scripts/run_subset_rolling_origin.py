@@ -774,6 +774,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "baseline_solver": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
         "baseline_solver_tolerance": 1e-8,
         "baseline_solver_max_iterations": 5000,
+        "baseline_solver_history_size": 10,
         "solver_policy_note": "Unbounded L-BFGS-B specialization: this model has no box constraints, so the active-set step reduces to L-BFGS; deterministic strong-Wolfe line search is used.",
         "bootstrap": {
             "replicates": BOOTSTRAP_REPLICATES,
