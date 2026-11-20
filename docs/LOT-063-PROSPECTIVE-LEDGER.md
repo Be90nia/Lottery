@@ -42,10 +42,11 @@ version and score records.
 - Probability-evaluator failures and invalid probability outputs are
   retained as immutable `score_failed` attempts with stable failure codes;
   they never receive an artificial NLL.
-- Expected forecast slots can be pre-registered before cutoff; the cutoff
-  finalizer appends an immutable missing-at-cutoff terminal record and prevents
-  later backfill. Automated scheduler integration to register every expected
-  slot and invoke the finalizer remains to be integrated.
+- Expected forecast slots must be pre-registered before cutoff; issuance
+  must match that expectation. The cutoff finalizer appends an immutable
+  missing-at-cutoff terminal record and prevents later backfill. Coverage
+  reports expected, issued, missing and unresolved denominators. Automated
+  scheduler integration to register every slot and invoke the finalizer remains.
 - This does not enable model refresh, Champion mutation, rollback or serving.
 - The existing operational forecast/outcome ledger remains the raw ingestion
   and ticket-provenance layer; this exact-subset ledger is a separate statistical
