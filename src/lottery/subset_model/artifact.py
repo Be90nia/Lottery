@@ -276,6 +276,10 @@ def validate_model_artifact(payload: dict) -> None:
     parameters = payload["parameters"]
     if not isinstance(parameters, dict) or parameters.get("parameter_order") != "feature_schema.names":
         raise ArtifactValidationError("parameter order must bind to feature_schema.names")
+    if fit["status"] != "converged":
+        raise ArtifactValidationError("non-converged fits cannot be serialized as fitted model artifacts")
+    if fit["gradient_inf_norm"] > 1e-8:
+        raise ArtifactValidationError("converged artifact exceeds the registered gradient tolerance")
 
     family = payload["model_family"]
     if family == "complete_subset_exponential":
@@ -309,9 +313,19 @@ def validate_model_artifact(payload: dict) -> None:
                 raise ArtifactValidationError(f"conditional-Poisson {field} are invalid")
         if payload.get("solver_status") != fit.get("status"):
             raise ArtifactValidationError("conditional-Poisson solver status mismatch")
+        target_marginals = payload["target_marginals"]
+        achieved_marginals = payload["achieved_marginals"]
+        if (abs(sum(target_marginals) - expected[1]) > 1e-10
+                or abs(sum(achieved_marginals) - expected[1]) > 1e-10):
+            raise ArtifactValidationError("conditional-Poisson marginals must sum to selection_size")
         residual = payload.get("calibration_residual")
-        if type(residual) not in (int, float) or not math.isfinite(residual) or residual < 0:
-            raise ArtifactValidationError("conditional-Poisson calibration residual is invalid")
+        actual_residual = max(abs(a - b) for a, b in zip(target_marginals, achieved_marginals))
+        if (type(residual) not in (int, float) or not math.isfinite(residual)
+                or residual < 0 or residual > 1e-8
+                or abs(residual - actual_residual) > 1e-10):
+            raise ArtifactValidationError("conditional-Poisson calibration residual is invalid or exceeds tolerance")
+        if fit["gradient_inf_norm"] > 1e-8:
+            raise ArtifactValidationError("conditional-Poisson fit exceeds gradient tolerance")
         if fit.get("lambda") is not None:
             raise ArtifactValidationError("conditional-Poisson artifact cannot carry exponential L2 lambda")
     else:
