@@ -107,6 +107,18 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
         self.assertLessEqual(result.gradient_infinity_norm, 1e-8)
         self.assertAlmostEqual(sum(result.centered_log_weights), 0.0, places=12)
 
+    def test_strong_wolfe_calibration_handles_high_dynamic_range_marginals(self):
+        source = ConditionalPoisson(
+            tuple((index - 17) * 0.07 for index in range(35)), 5
+        )
+        target = source.inclusion_marginals()
+        first = ConditionalPoisson.calibrate(target, 5)
+        second = ConditionalPoisson.calibrate(target, 5)
+        self.assertTrue(first.converged, msg=first)
+        self.assertLessEqual(first.maximum_absolute_residual, 1e-8)
+        self.assertLessEqual(first.gradient_infinity_norm, 1e-8)
+        self.assertEqual(first, second)
+
     def test_calibration_rejects_boundary_and_wrong_sum_without_repair(self):
         with self.assertRaises(ValueError):
             ConditionalPoisson.calibrate((1.0, 0.5, 0.5), 2)
