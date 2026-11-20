@@ -716,8 +716,10 @@ class ChampionLifecycle:
 
     def mark_shadow(
         self, *, population_key: str, zone: str, artifact_id: str,
-        expected_generation: int, actor: str, workflow_run_id: str | None = None,
+        shadow_receipt: dict[str, Any], expected_generation: int,
+        actor: str, workflow_run_id: str | None = None,
     ) -> dict[str, Any]:
+        """Record a prospective paired shadow evaluation; only a complete PASS enters shadow."""
         _require_generation(expected_generation)
         key = _slot_key(population_key, zone)
         with ledger_lock(self.registry_path):
@@ -728,23 +730,49 @@ class ChampionLifecycle:
             slots = dict(registry["slots"])
             if key not in slots or slots[key].get("challenger_artifact_id") != artifact_id:
                 raise LifecycleError("only the registered challenger can enter shadow")
-            validation = slots[key].get("validation", {}).get(artifact_id)
-            if not validation or validation.get("eligible") is not True:
-                raise LifecycleError("candidate cannot enter shadow before passing validation")
             slot = dict(slots[key])
+            champion_id = slot.get("champion_artifact_id")
+            if champion_id is None or slot.get("suspended") is True:
+                raise LifecycleError("prospective shadow evaluation requires an active Champion")
             if slot.get("shadow_artifact_id") is not None:
                 raise LifecycleError("slot already contains a shadow artifact")
-            slot["challenger_artifact_id"] = None
-            slot["shadow_artifact_id"] = artifact_id
+            validation = slot.get("validation", {}).get(artifact_id)
+            if not validation or validation.get("eligible") is not True:
+                raise LifecycleError("candidate cannot enter shadow before passing retrospective validation")
+            artifact = self._load_artifact(artifact_id)
+            eligible = _validate_shadow_receipt(
+                shadow_receipt, artifact=artifact, artifact_id=artifact_id,
+                population_key=population_key, zone=zone,
+                champion_artifact_id=champion_id,
+            )
+            raw = canonicalize(shadow_receipt)
+            shadow_hash = _sha(raw)
+            _write_once(self.evaluations / f"{shadow_hash}.json", raw)
+            shadow_validation = dict(slot.get("shadow_validation", {}))
+            shadow_validation[artifact_id] = {
+                "eligible": eligible,
+                "receipt_sha256": shadow_hash,
+                "shadow_manifest_sha256": shadow_receipt["shadow_manifest_sha256"],
+                "target_list_sha256": shadow_receipt["target_list_sha256"],
+                "target_count": shadow_receipt["target_count"],
+                "champion_artifact_id": champion_id,
+            }
+            slot["shadow_validation"] = shadow_validation
+            if eligible:
+                slot["challenger_artifact_id"] = None
+                slot["shadow_artifact_id"] = artifact_id
             slots[key] = slot
             new_registry = {**registry, "slots": slots}
             return self._commit_locked(
-                registry, new_registry, event_type="candidate_entered_shadow",
+                registry, new_registry,
+                event_type="candidate_entered_shadow" if eligible else "candidate_shadow_failed",
                 population_key=population_key, zone=zone, artifact_id=artifact_id,
-                previous_artifact_id=slot.get("champion_artifact_id"), actor=actor,
+                previous_artifact_id=champion_id, actor=actor,
                 workflow_run_id=workflow_run_id,
-                evidence_sha256=validation["receipt_sha256"],
-                reason_code="validated_candidate_waiting_for_shadow_outcomes",
+                evidence_sha256=shadow_hash,
+                reason_code=shadow_receipt["reason_code"] or (
+                    "prospective_shadow_gates_passed" if eligible else "prospective_shadow_gate_failed"
+                ),
             )
 
     def promote_three_slot_generation(
