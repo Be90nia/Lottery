@@ -467,6 +467,19 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                 artifact_bytes, artifact_id = create_artifact(candidate_payload)
                 model_artifacts["candidate"] = {
                     "artifact_id": artifact_id, "payload": verify_artifact(artifact_bytes)}
+            else:
+                model_artifacts["candidate"] = _create_fit_failure_artifact(
+                    model_family="complete_subset_exponential", zone=zone,
+                    population_size=m, selection_size=k, snapshot_digest=snapshot_digest,
+                    training_rows=training, code_revision=header["code_commit"],
+                    feature_schema=feature_schema, model_configuration=candidate_config,
+                    status=fit.terminal_status, reason=fit.message,
+                    objective=fit.penalized_objective,
+                    gradient_inf_norm=fit.gradient_infinity_norm,
+                    iterations=fit.iterations, optimizer=fit.solver,
+                    regularization_lambda=fit.regularization_lambda,
+                    rng_algorithm="injected_rng.random_v1",
+                )
             for baseline in ("expanding", "ewma"):
                 try:
                     marginals = _probabilities(training, field, m, k, model=baseline,
