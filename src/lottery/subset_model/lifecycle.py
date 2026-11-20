@@ -449,6 +449,8 @@ class ChampionLifecycle:
 
     def _recover_locked(self) -> None:
         registry = self._read_registry()
+        # Validate the append-only event chain even when no recovery journal exists.
+        self._read_events()
         for journal_path in sorted(self.journals.glob("*.json")):
             try:
                 raw = journal_path.read_bytes()
