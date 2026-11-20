@@ -109,10 +109,6 @@ def _validate_manifest(manifest: dict[str, Any]) -> None:
         raise ReadinessError("source_commit must be a full lowercase Git SHA")
     if not isinstance(manifest["protected_release_ref"], str) or not manifest["protected_release_ref"]:
         raise ReadinessError("protected_release_ref must be non-empty")
-    if manifest["holdout_accessed"] is not False:
-        # This is a readiness blocker, not a parse error: retain it in the report.
-        return
-
     pins = manifest["workflow_action_pins"]
     if not isinstance(pins, list):
         raise ReadinessError("workflow_action_pins must be an array")
@@ -285,8 +281,7 @@ def build_readiness_report(
 
     slot_problem = _validate_three_slots(manifest)
     if statuses["G5"] == "PASS" and slot_problem:
-        blockers.append("G5 evidence conflicts with Champion slot policy: " + slot_problem)
-        statuses["G5"] = "FAIL"
+        raise ReadinessError("G5 cannot PASS: " + slot_problem)
 
     activation = manifest["activation"]
     offline_safe = (
