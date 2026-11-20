@@ -306,6 +306,8 @@ def _validate_approval(
         raise LifecycleError("approval shadow_receipt_sha256 must be null or a lowercase SHA-256")
     if action == "restore" and shadow_receipt_sha256 is not None:
         raise LifecycleError("restore approval must not claim a prospective shadow receipt")
+    if action == "promote" and expected_champion_artifact_id is not None and shadow_receipt_sha256 is None:
+        raise LifecycleError("replacement Champion promotion requires a prospective shadow receipt")
     if approval["action"] not in ("promote", "restore"):
         raise LifecycleError("approval action must be promote or restore")
     try:
@@ -861,6 +863,20 @@ class ChampionLifecycle:
             if artifact_id in artifact_ids_by_zone[zone]:
                 raise LifecycleError("three reported-index populations cannot reuse a zone artifact")
             artifact_ids_by_zone[zone].add(artifact_id)
+            shadow_validation = slot.get("shadow_validation", {}).get(artifact_id)
+            shadow_hash = None
+            if expected_champion is not None:
+                if (slot.get("shadow_artifact_id") != artifact_id or not shadow_validation
+                        or shadow_validation.get("eligible") is not True):
+                    raise LifecycleError("replacement three-slot candidate must pass prospective shadow evaluation")
+                shadow_hash = shadow_validation["receipt_sha256"]
+                shadow_receipt = self._load_shadow_receipt(shadow_hash)
+                if not _validate_shadow_receipt(
+                    shadow_receipt, artifact=artifact, artifact_id=artifact_id,
+                    population_key=population_key, zone=zone,
+                    champion_artifact_id=expected_champion,
+                ):
+                    raise LifecycleError("three-slot shadow receipt no longer passes its gates")
             _, approval_hash = self._verified_approval(
                 transition["approval"], approval_verifier=approval_verifier,
                 action="promote", artifact_id=artifact_id,
@@ -868,6 +884,7 @@ class ChampionLifecycle:
                 expected_champion_artifact_id=expected_champion,
                 evaluation_manifest_sha256=receipt["evaluation_manifest_sha256"],
                 evaluation_receipt_sha256=validation["receipt_sha256"],
+                shadow_receipt_sha256=shadow_hash,
             )
             normalized[key] = {
                 "population_key": population_key,
@@ -876,6 +893,7 @@ class ChampionLifecycle:
                 "expected_champion_artifact_id": expected_champion,
                 "approval_sha256": approval_hash,
                 "evaluation_receipt_sha256": validation["receipt_sha256"],
+                "shadow_receipt_sha256": shadow_hash,
             }
             verified.append(normalized[key])
 
@@ -936,6 +954,7 @@ class ChampionLifecycle:
                     "previous_artifact_id": item["expected_champion_artifact_id"],
                     "approval_sha256": item["approval_sha256"],
                     "evaluation_receipt_sha256": item["evaluation_receipt_sha256"],
+                    "shadow_receipt_sha256": item["shadow_receipt_sha256"],
                 }
                 for item in verified
             ]
