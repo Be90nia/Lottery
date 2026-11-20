@@ -415,7 +415,7 @@ class ProspectiveLedger:
         source_evidence_manifest_sha256: str | None = None,
     ) -> dict[str, Any]:
         """Finalize an expected forecast as missing once its cutoff has passed."""
-        if not isinstance(target_draw_id, str) or re.fullmatch(r"\\d{5}", target_draw_id) is None:
+        if not isinstance(target_draw_id, str) or re.fullmatch(r"\d{5}", target_draw_id) is None:
             raise ProspectiveLedgerError("target_draw_id must be a five-digit ID")
         if zone not in ("front", "back"):
             raise ProspectiveLedgerError("zone must be front or back")
@@ -443,9 +443,9 @@ class ProspectiveLedger:
         if population_key not in ("pooled", "pooled-equipment-blind") and source_evidence_manifest_sha256 is None:
             raise ProspectiveLedgerError("set-conditioned forecast requires a source evidence manifest digest")
         if (not isinstance(training_first_draw_id, str)
-                or re.fullmatch(r"\\d{5}", training_first_draw_id) is None
+                or re.fullmatch(r"\d{5}", training_first_draw_id) is None
                 or not isinstance(training_last_draw_id, str)
-                or re.fullmatch(r"\\d{5}", training_last_draw_id) is None
+                or re.fullmatch(r"\d{5}", training_last_draw_id) is None
                 or training_first_draw_id > training_last_draw_id):
             raise ProspectiveLedgerError("training draw range must use ordered five-digit IDs")
         if type(training_row_count) is not int or training_row_count < 1:
