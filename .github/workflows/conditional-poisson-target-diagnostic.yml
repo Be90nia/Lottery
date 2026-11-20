@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - feat/lot-063-prospective-score-ledger
+    paths:
+      - .github/workflows/conditional-poisson-target-diagnostic.yml
+      - src/lottery/subset_model/conditional_poisson.py
+      - scripts/diagnose_conditional_poisson_targets.py
+      - scripts/run_subset_rolling_origin.py
+      - src/lottery/backtest.py
+      - data/processed/draws-20261118.jsonl
   workflow_dispatch:
     inputs:
       front_target_ids:
