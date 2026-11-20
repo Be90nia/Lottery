@@ -231,8 +231,11 @@ def build_jiangsu_draw_candidate(
         raise JiangsuDrawCandidateError("not every frozen pilot row was cross-verified against A2 draw results")
 
     out_of_inventory = coverage.get("out_of_inventory_observations")
+    declared_out_of_inventory_count = coverage.get("out_of_inventory_observation_count")
     if (not isinstance(out_of_inventory, list)
-            or len(out_of_inventory) != coverage.get("summary", {}).get("out_of_inventory_observation_count")):
+            or type(declared_out_of_inventory_count) is not int
+            or declared_out_of_inventory_count < 0
+            or len(out_of_inventory) != declared_out_of_inventory_count):
         raise JiangsuDrawCandidateError("coverage report out-of-inventory count is inconsistent")
     if coverage.get("summary", {}).get("primary_verified_draws") != overlap_count:
         raise JiangsuDrawCandidateError("coverage primary-verified count differs from A2 result cross-check")
