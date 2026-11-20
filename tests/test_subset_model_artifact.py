@@ -244,7 +244,10 @@ class ModelArtifactTests(unittest.TestCase):
         self.assertEqual(verified["artifact_id"], cache_id)
         self.assertEqual(verified["parent_artifact_id"], parent_id)
 
-        _, other_parent_id = create_artifact(dict(exponential_payload(), theta=[0.2, -0.2, 0.3, 0.0, 0.05]))
+        other_payload = exponential_payload()
+        other_payload["theta"] = [0.2, -0.2, 0.3, 0.0, 0.05]
+        other_payload["parameters"] = dict(other_payload["parameters"], theta=other_payload["theta"])
+        _, other_parent_id = create_artifact(other_payload)
         with self.assertRaisesRegex(ArtifactValidationError, "parent artifact ID mismatch"):
             verify_derived_cache(raw, expected_parent_artifact_id=other_parent_id)
 
