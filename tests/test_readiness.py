@@ -16,7 +16,7 @@ def sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def make_manifest():
+def make_manifest(evidence_sha: str):
     return {
         "schema_version": "lottery.release-manifest/v1",
         "release_id": "lottery-test-release",
@@ -24,8 +24,12 @@ def make_manifest():
         "protected_release_ref": "refs/tags/test-release",
         "policy_version": "LOT-067-v1",
         "holdout_accessed": False,
-        "workflow_action_pins": [],
-        "runtime": {"python": "3.12", "dependency_lock_sha256": None},
+        "workflow_action_pins": [{
+            "workflow": "tests.yml",
+            "action": "actions/checkout",
+            "commit_sha": "11d5960a326750d5838078e36cf38b85af677262",
+        }],
+        "runtime": {"python": "3.12", "dependency_lock_sha256": evidence_sha},
         "data": {"snapshot_sha256": None, "evidence_ledger_sha256": None},
         "model_artifacts": [],
         "experiments": {"registry_sha256": None, "evaluation_manifest_sha256": None},
@@ -34,8 +38,8 @@ def make_manifest():
         "feedback": {"ledger_sha256": None, "monitoring_policy_sha256": None},
         "storage": {"commit_receipt_sha256": None, "backup_generation": None,
                     "restore_drill_receipt_sha256": None},
-        "security": {"sbom_sha256": None, "security_scan_sha256": None,
-                     "provenance_sha256": None, "signer_id": None,
+        "security": {"sbom_sha256": evidence_sha, "security_scan_sha256": evidence_sha,
+                     "provenance_sha256": evidence_sha, "signer_id": None,
                      "rollback_drill_receipt_sha256": None},
         "activation": {"scheduled_collection_enabled": False, "shadow_only": False,
                        "user_facing_serving_enabled": False,
@@ -90,7 +94,7 @@ class ReadinessTests(unittest.TestCase):
         self.manifest_path = self.root / "release-manifest.json"
         self.gates_path = self.root / "gate-results.json"
         self.report_path = self.root / "readiness-report.json"
-        self.manifest = make_manifest()
+        self.manifest = make_manifest(self.evidence_paths[0]["sha256"])
         self.gates = make_gates(self.evidence_paths)
         self.write_inputs()
 
