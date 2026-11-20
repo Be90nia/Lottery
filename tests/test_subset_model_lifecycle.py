@@ -362,9 +362,10 @@ class ChampionLifecycleTests(unittest.TestCase):
             "regime-2020|reported_set_index=3",
         ]
         generation = self.store.snapshot()["generation"]
+        evidence_hash = hashlib.sha256(b"shared-regime-evidence-manifest").hexdigest()
+        transitions = []
         for population_key in population_keys:
             training_hash = hashlib.sha256(population_key.encode("utf-8")).hexdigest()
-            evidence_hash = hashlib.sha256(("evidence:" + population_key).encode("utf-8")).hexdigest()
             for zone in ("front", "back"):
                 artifact_payload = model_payload(zone, training_hash)
                 from lottery.subset_model.artifact import create_artifact
@@ -384,19 +385,26 @@ class ChampionLifecycleTests(unittest.TestCase):
                     receipt=receipt, expected_generation=registered["generation"],
                     actor="test-suite",
                 )
-                approval = approval_for(artifact_id, population_key, zone, receipt)
-                promoted = self.store.promote_candidate(
-                    population_key=population_key, zone=zone, artifact_id=artifact_id,
-                    expected_champion_artifact_id=None,
-                    expected_generation=validated["generation"],
-                    approval=approval, approval_verifier=self.verifier, actor="test-suite",
-                )
-                generation = promoted["generation"]
+                transitions.append({
+                    "population_key": population_key,
+                    "zone": zone,
+                    "artifact_id": artifact_id,
+                    "expected_champion_artifact_id": None,
+                    "approval": approval_for(artifact_id, population_key, zone, receipt),
+                })
+                generation = validated["generation"]
+        promoted = self.store.promote_three_slot_generation(
+            transitions,
+            expected_generation=generation,
+            approval_verifier=self.verifier,
+            actor="test-suite",
+        )
         resolved = self.store.resolve_three_slot_generation(
             population_keys, approval_verifier=self.verifier
         )
         self.assertEqual(len(resolved["slots"]), 6)
-        self.assertEqual(resolved["registry_generation"], generation)
+        self.assertEqual(resolved["registry_generation"], promoted["generation"])
+        self.assertEqual(resolved["champion_generation"], promoted["generation"])
 
     def test_three_slot_resolution_is_all_or_none_and_reverifies_approval(self):
         with self.assertRaisesRegex(LifecycleError, "exactly three distinct"):
