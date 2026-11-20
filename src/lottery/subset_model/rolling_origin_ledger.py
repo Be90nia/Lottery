@@ -35,7 +35,8 @@ def _model_identity(zone: str, name: str, m: int, k: int,
         config = {"model_family": family, "baseline": name, "zone": zone,
                   "population_size": m, "selection_size": k, "alpha": 100.0,
                   "half_life": 100.0 if name == "ewma" else None,
-                  "weighting": "expanding" if name == "expanding" else "2^(-lag/100)"}
+                  "weighting": "expanding" if name == "expanding" else "2^(-lag/100)",
+                  "feature_schema_hash": _hash_object(schema)}
         schema = {
             "version": "lottery-item-inclusion/v1",
             "names": [f"item_{item}" for item in range(1, m + 1)],
