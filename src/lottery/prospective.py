@@ -543,18 +543,36 @@ class ProspectiveLedger:
             score["forecast_id"] for score in scores if score["outcome_id"] in latest_outcomes
         }
         eligible = [record for record in forecasts if record["status"] == "eligible"]
+        outcome_pending = 0
+        outcome_invalid = 0
+        score_pending = 0
+        for record in eligible:
+            outcome_id = snapshot["latest_outcome_by_draw"].get(record["target_draw_id"])
+            if outcome_id is None:
+                outcome_pending += 1
+            elif snapshot["outcomes"][outcome_id]["authority"] != "official_validated":
+                outcome_invalid += 1
+            elif record["forecast_id"] not in scored_forecasts:
+                score_pending += 1
         return {
             "expected_forecast_records": len(forecasts),
             "eligible": len(eligible),
             "ineligible": len(forecasts) - len(eligible),
             "outcome_versions": len(outcomes),
             "latest_outcomes": len(latest_outcomes),
+            "outcome_authority_counts": {
+                authority: sum(snapshot["outcomes"][outcome_id]["authority"] == authority for outcome_id in latest_outcomes)
+                for authority in sorted(AUTHORITIES)
+            },
             "official_validated_latest_outcomes": sum(
                 snapshot["outcomes"][outcome_id]["authority"] == "official_validated"
                 for outcome_id in latest_outcomes
             ),
             "scored_current_forecasts": len(scored_forecasts),
-            "eligible_pending": sum(record["forecast_id"] not in scored_forecasts for record in eligible),
+            "outcome_pending": outcome_pending,
+            "outcome_invalid": outcome_invalid,
+            "score_pending": score_pending,
+            "eligible_pending": outcome_pending + outcome_invalid + score_pending,
             "score_revisions": len(scores),
             "score_failed_attempts": len(snapshot["score_failures"]),
             "event_count": snapshot["event_count"],
