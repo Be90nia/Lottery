@@ -83,6 +83,10 @@ def _quote_string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
+def _is_finite_number(value: Any) -> bool:
+    return type(value) in (int, float) and math.isfinite(value)
+
+
 def _canonical(value: Any) -> str:
     if value is None:
         return "null"
@@ -198,6 +202,15 @@ def validate_model_artifact(payload: dict) -> None:
             raise ArtifactValidationError(f"{hash_field} must be a lowercase sha256 content identifier")
     if not isinstance(payload["runtime"], dict) or not isinstance(payload["fit_diagnostics"], dict):
         raise ArtifactValidationError("runtime and fit_diagnostics must be objects")
+    for diagnostic_name in (
+        "gradient_infinity_norm", "unregularized_mean_nll", "penalized_objective",
+        "objective", "calibration_residual",
+    ):
+        diagnostic_value = payload["fit_diagnostics"].get(diagnostic_name)
+        if diagnostic_value is not None and not _is_finite_number(diagnostic_value):
+            raise ArtifactValidationError(
+                f"fit_diagnostics.{diagnostic_name} must be finite numeric or null"
+            )
     if type(payload["forecast_ready"]) is not bool:
         raise ArtifactValidationError("forecast_ready must be boolean")
     if payload["forecast_ready"]:
@@ -216,6 +229,12 @@ def validate_model_artifact(payload: dict) -> None:
         or training.get("cutoff_inclusive") is not True
         or not isinstance(training.get("first_draw_id"), str)
         or not isinstance(training.get("last_draw_id"), str)
+        or len(training["first_draw_id"]) != 5 or not training["first_draw_id"].isdigit()
+        or len(training["last_draw_id"]) != 5 or not training["last_draw_id"].isdigit()
+        or training["first_draw_id"] > training["last_draw_id"]
+        or training["last_draw_id"] != training["cutoff_draw_id"]
+        or payload.get("training_first_draw_id", training["first_draw_id"]) != training["first_draw_id"]
+        or payload.get("training_last_draw_id", training["last_draw_id"]) != training["last_draw_id"]
     ):
         raise ArtifactValidationError("training provenance envelope is inconsistent")
 
@@ -281,6 +300,28 @@ def validate_model_artifact(payload: dict) -> None:
             or model_configuration.get("selection_size") != expected[1]
             or model_configuration.get("feature_schema_hash") != payload["feature_schema_hash"]):
         raise ArtifactValidationError("model_configuration does not match artifact identity/schema")
+    if family == "complete_subset_exponential":
+        if (model_configuration.get("objective_scale") != "mean_nll"
+                or not _is_finite_number(model_configuration.get("regularization_lambda"))
+                or model_configuration["regularization_lambda"] != 1.0
+                or not isinstance(model_configuration.get("solver"), str)
+                or not model_configuration["solver"]
+                or type(model_configuration.get("max_iterations")) is not int
+                or model_configuration["max_iterations"] < 1
+                or not _is_finite_number(model_configuration.get("gradient_tolerance"))
+                or model_configuration["gradient_tolerance"] <= 0):
+            raise ArtifactValidationError("exponential model configuration is invalid")
+    else:
+        if (not isinstance(model_configuration.get("baseline"), str)
+                or not model_configuration["baseline"]
+                or not _is_finite_number(model_configuration.get("alpha"))
+                or model_configuration["alpha"] <= 0
+                or (model_configuration.get("half_life") is not None
+                    and (not _is_finite_number(model_configuration["half_life"])
+                         or model_configuration["half_life"] <= 0))
+                or not isinstance(model_configuration.get("weighting"), str)
+                or not model_configuration["weighting"]):
+            raise ArtifactValidationError("conditional-Poisson model configuration is invalid")
 
     artifact_type = payload["artifact_type"]
     if artifact_type not in ("fitted_model", "fit_failure"):
@@ -369,11 +410,14 @@ def validate_model_artifact(payload: dict) -> None:
         parameter_theta = parameters.get("theta")
         if (not isinstance(theta, list) or not isinstance(feature_names, list)
                 or len(theta) != len(feature_names) or feature_names != names
-                or parameter_theta != theta or len(means) != len(theta)):
-            raise ArtifactValidationError("exponential artifact theta/schema/moments dimensions mismatch")
+                or parameter_theta != theta or len(means) != len(theta)
+                or any(not _is_finite_number(value) for value in theta)):
+            raise ArtifactValidationError("exponential artifact theta/schema/moments dimensions or numeric values are invalid")
         if payload.get("objective_scale") != "mean_nll":
             raise ArtifactValidationError("exponential artifact objective_scale must be mean_nll")
-        if payload.get("regularization_lambda") != 1.0 or fit.get("lambda") != 1.0:
+        if (not _is_finite_number(payload.get("regularization_lambda"))
+                or payload["regularization_lambda"] != 1.0
+                or not _is_finite_number(fit.get("lambda")) or fit["lambda"] != 1.0):
             raise ArtifactValidationError("exponential artifact lambda must match the frozen value 1.0")
         if fit.get("status") != payload["fit_diagnostics"].get("terminal_status"):
             raise ArtifactValidationError("fit status envelope does not match fit diagnostics")
@@ -381,9 +425,10 @@ def validate_model_artifact(payload: dict) -> None:
         weights = payload.get("centered_log_weights")
         parameter_weights = parameters.get("centered_log_weights")
         if (not isinstance(weights, list) or len(weights) != expected[0]
-                or parameter_weights != weights or len(names) != expected[0]):
-            raise ArtifactValidationError("conditional-Poisson weights/schema must match population_size")
-        if abs(sum(float(value) for value in weights)) > 1e-8:
+                or parameter_weights != weights or len(names) != expected[0]
+                or any(not _is_finite_number(value) for value in weights)):
+            raise ArtifactValidationError("conditional-Poisson weights/schema must be finite numeric values matching population_size")
+        if abs(sum(weights)) > 1e-8:
             raise ArtifactValidationError("conditional-Poisson log weights must use the zero-sum gauge")
         for field in ("target_marginals", "achieved_marginals"):
             values = payload.get(field)
