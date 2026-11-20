@@ -114,8 +114,7 @@ def create_backup(
     destination_input = Path(backup_root)
     if destination_input.is_symlink():
         raise BackupError("backup_root cannot be a symlink")
-    destination_input.mkdir(parents=True, exist_ok=True)
-    destination = destination_input.resolve(strict=True)
+    destination = destination_input.resolve(strict=False)
     try:
         source.relative_to(destination)
         raise BackupError("backup_root cannot contain source_root")
@@ -126,6 +125,8 @@ def create_backup(
         raise BackupError("backup_root cannot be inside source_root")
     except ValueError:
         pass
+    destination.mkdir(parents=True, exist_ok=True)
+    destination = destination.resolve(strict=True)
 
     final_dir = destination / backup_id
     lock_path = destination / f"{backup_id}.backup"
@@ -254,11 +255,14 @@ def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
     if payload_root.is_symlink() or not payload_root.is_dir():
         raise BackupError("backup payload directory is missing")
     actual_paths = []
+    actual_dirs = set()
     for directory, dirnames, filenames in os.walk(payload_root, topdown=True, followlinks=False):
         base = Path(directory)
         for dirname in dirnames:
-            if (base / dirname).is_symlink():
+            child_dir = base / dirname
+            if child_dir.is_symlink():
                 raise BackupError("backup contains a symlink directory")
+            actual_dirs.add(child_dir.relative_to(payload_root).as_posix())
         for filename in filenames:
             path = base / filename
             if path.is_symlink() or not path.is_file():
@@ -266,6 +270,14 @@ def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
             actual_paths.append(path.relative_to(payload_root).as_posix())
     if sorted(actual_paths) != paths:
         raise BackupError("backup payload contains missing or unexpected files")
+    expected_dirs = set()
+    for value in paths:
+        parent = PurePosixPath(value).parent
+        while parent.as_posix() not in ("", "."):
+            expected_dirs.add(parent.as_posix())
+            parent = parent.parent
+    if actual_dirs != expected_dirs:
+        raise BackupError("backup payload contains unexpected empty directories")
     for entry in entries:
         relative = _safe_relative(entry["path"])
         path = payload_root.joinpath(*relative.parts)
@@ -285,48 +297,64 @@ def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
 
 
 def restore_backup(backup_dir: str | Path, restore_root: str | Path) -> dict[str, Any]:
-    """Restore into an empty isolated root and verify storage reconciliation."""
+    """Restore into a new isolated root and atomically expose it after verification."""
     summary = verify_backup(backup_dir)
     backup = Path(backup_dir).resolve(strict=True)
-    destination = Path(restore_root)
-    if destination.exists():
-        if destination.is_symlink() or not destination.is_dir() or any(destination.iterdir()):
-            raise BackupError("restore_root must be absent or an empty non-symlink directory")
-    else:
-        destination.mkdir(parents=True)
-    destination = destination.resolve(strict=True)
+    destination_input = Path(restore_root)
+    if destination_input.exists() or destination_input.is_symlink():
+        raise BackupError("restore_root must not already exist; partial/overwriting restore is forbidden")
+    destination = destination_input.resolve(strict=False)
     try:
         destination.relative_to(backup)
         raise BackupError("restore_root cannot be inside the backup package")
     except ValueError:
         pass
-
+    destination.parent.mkdir(parents=True, exist_ok=True)
     manifest = _read_canonical(backup / "manifest.json")
     payload_root = backup / "payload"
-    for entry in manifest["files"]:
-        relative = _safe_relative(entry["path"])
-        source = payload_root.joinpath(*relative.parts)
-        target = destination.joinpath(*relative.parts)
-        _atomic_immutable(target, source.read_bytes())
-    restored = _inventory(destination)
-    if restored != manifest["files"]:
-        raise BackupError("restored file inventory differs from backup manifest")
+    temporary = Path(tempfile.mkdtemp(
+        prefix=f".{destination.name}.restore.", dir=destination.parent
+    ))
+    try:
+        for entry in manifest["files"]:
+            relative = _safe_relative(entry["path"])
+            source = payload_root.joinpath(*relative.parts)
+            target = temporary.joinpath(*relative.parts)
+            _atomic_immutable(target, source.read_bytes())
+        restored = _inventory(temporary)
+        if restored != manifest["files"]:
+            raise BackupError("restored file inventory differs from backup manifest")
 
-    reconciliation = FileSystemObjectStore(destination).reconcile()
-    corruption = {
-        key: reconciliation[key]
-        for key in _CORRUPTION_KEYS
-        if reconciliation.get(key)
-    }
-    if corruption:
-        raise BackupError(f"restored storage reconciliation found integrity failures: {corruption}")
-    return {
-        "schema": "lottery.storage-restore-drill/v1",
-        "backup_id": summary["backup_id"],
-        "backup_manifest_sha256": summary["manifest_sha256"],
-        "restored_inventory_sha256": _inventory_hash(restored),
-        "file_count": len(restored),
-        "total_bytes": sum(item["byte_length"] for item in restored),
-        "verified": True,
-        "reconciliation": reconciliation,
-    }
+        reconciliation = FileSystemObjectStore(temporary).reconcile()
+        corruption = {
+            key: reconciliation[key]
+            for key in _CORRUPTION_KEYS
+            if reconciliation.get(key)
+        }
+        if corruption:
+            raise BackupError(
+                f"restored storage reconciliation found integrity failures: {corruption}"
+            )
+        with ledger_lock(destination.parent / f"{destination.name}.restore"):
+            if destination.exists():
+                raise BackupError("restore_root appeared during restore; refusing overwrite")
+            os.rename(temporary, destination)
+            if hasattr(os, "O_DIRECTORY"):
+                fd = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+        return {
+            "schema": "lottery.storage-restore-drill/v1",
+            "backup_id": summary["backup_id"],
+            "backup_manifest_sha256": summary["manifest_sha256"],
+            "restored_inventory_sha256": _inventory_hash(restored),
+            "file_count": len(restored),
+            "total_bytes": sum(item["byte_length"] for item in restored),
+            "verified": True,
+            "reconciliation": reconciliation,
+        }
+    except Exception:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
