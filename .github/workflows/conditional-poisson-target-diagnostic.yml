@@ -1,0 +1,48 @@
+name: Conditional-Poisson Targeted Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      front_target_ids:
+        description: Comma-separated front-zone target draw IDs
+        required: true
+        default: "10060,21089,22067"
+        type: string
+      back_target_ids:
+        description: Comma-separated back-zone target draw IDs
+        required: true
+        default: "25135"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conditional-poisson-target-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  targeted-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install project
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Diagnose frozen failing targets
+        run: |
+          python scripts/diagnose_conditional_poisson_targets.py \
+            --snapshot data/processed/draws-20261118.jsonl \
+            --front-target-ids "${{ inputs.front_target_ids }}" \
+            --back-target-ids "${{ inputs.back_target_ids }}" \
+            --output conditional-poisson-target-diagnostic.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conditional-poisson-target-diagnostic
+          path: conditional-poisson-target-diagnostic.json
+          if-no-files-found: error
+          retention-days: 30
