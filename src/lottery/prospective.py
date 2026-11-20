@@ -88,8 +88,20 @@ def _write_once(path: Path, raw: bytes) -> None:
 class ProspectiveLedger:
     """One artifact × target × zone forecast unit, versioned outcomes and score revisions."""
 
-    def __init__(self, path: str | Path):
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ):
         self.path = Path(path)
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
+
+    def _now(self) -> datetime:
+        value = self._clock()
+        if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+            raise ProspectiveLedgerError("ledger clock must return a timezone-aware datetime")
+        return value.astimezone(timezone.utc)
 
     def _read_events(self) -> list[dict[str, Any]]:
         if not self.path.exists():
@@ -117,19 +129,29 @@ class ProspectiveLedger:
             events.append(event)
         return events
 
-    def _append_locked(self, event_id: str, event_type: str, record: dict[str, Any]) -> None:
+    def _append_locked(
+        self,
+        event_id: str,
+        event_type: str,
+        record: dict[str, Any],
+        *,
+        occurred_at: datetime | None = None,
+    ) -> None:
         events = self._read_events()
         existing = next((event for event in events if event["event_id"] == event_id), None)
         if existing is not None:
             if existing.get("record") != record or existing.get("event_type") != event_type:
                 raise ProspectiveLedgerError("prospective event id collision has different content")
             return
+        occurred = self._now() if occurred_at is None else occurred_at
+        if occurred.tzinfo is None or occurred.utcoffset() is None:
+            raise ProspectiveLedgerError("event occurrence time must be timezone-aware")
         previous = events[-1]["event_hash"] if events else GENESIS_HASH
         body = {
             "schema": LEDGER_SCHEMA,
             "event_id": event_id,
             "event_type": event_type,
-            "occurred_at_utc": datetime.now(timezone.utc).isoformat(),
+            "occurred_at_utc": occurred.astimezone(timezone.utc).isoformat(),
             "previous_event_hash": previous,
             "record": record,
         }
