@@ -10,7 +10,7 @@ import hmac
 from typing import Any, Callable
 
 from .storage import FileSystemObjectStore, StorageError
-from .subset_model.artifact import canonicalize, parse_json_strict
+from .subset_model.artifact import ArtifactValidationError, canonicalize, parse_json_strict
 from .subset_model.lifecycle import ChampionLifecycle, LifecycleError
 
 
@@ -306,16 +306,90 @@ class ThreeSlotBatchPublisher:
         raw = canonicalize(manifest)
 
         def validate_batch(candidate: bytes) -> bool:
-            parsed = parse_json_strict(candidate)
-            return (
-                canonicalize(parsed) == candidate
-                and parsed.get("schema") == BATCH_SCHEMA
-                and parsed.get("slot_count") == 3
-                and parsed.get("tickets_per_slot") == tickets_per_slot
-                and parsed.get("total_ticket_count") == 3 * tickets_per_slot
-                and len(parsed.get("slots", [])) == 3
-                and all(len(slot.get("tickets", [])) == tickets_per_slot for slot in parsed["slots"])
-            )
+            try:
+                parsed = parse_json_strict(candidate)
+                if (canonicalize(parsed) != candidate
+                        or parsed.get("schema") != BATCH_SCHEMA
+                        or parsed.get("batch_id") != request_id
+                        or parsed.get("request_id") != request_id
+                        or parsed.get("idempotency_key_sha256") != request_id
+                        or parsed.get("slot_count") != 3
+                        or parsed.get("tickets_per_slot") != tickets_per_slot
+                        or parsed.get("total_ticket_count") != 3 * tickets_per_slot
+                        or not _is_sha(parsed.get("seed_commitment_sha256"))
+                        or parsed.get("seed_material_ref") != seed_material_ref):
+                    return False
+                registry_snapshot = parsed.get("registry_snapshot")
+                if (not isinstance(registry_snapshot, dict)
+                        or _sha(canonicalize(registry_snapshot)) != parsed.get("registry_snapshot_sha256")
+                        or registry_snapshot.get("registry_generation") != parsed.get("registry_generation")
+                        or registry_snapshot.get("champion_generation") != parsed.get("champion_generation")):
+                    return False
+                registry_slots = registry_snapshot.get("slots")
+                if not isinstance(registry_slots, list) or len(registry_slots) != 6:
+                    return False
+                registry_by_key = {
+                    (item["population_key"], item["zone"]): item for item in registry_slots
+                }
+                if len(registry_by_key) != 6:
+                    return False
+                slots = parsed.get("slots")
+                if not isinstance(slots, list) or len(slots) != 3:
+                    return False
+                if sorted(slot["population_key"] for slot in slots) != parsed.get("population_keys"):
+                    return False
+                if len(set(parsed["population_keys"])) != 3:
+                    return False
+                seen_front: set[str] = set()
+                seen_back: set[str] = set()
+                provenance_fields = (
+                    "model_family", "artifact_schema", "feature_schema_hash",
+                    "population_size", "selection_size", "training_cutoff_draw_id",
+                    "training_snapshot_sha256", "training_row_count",
+                    "training_first_draw_id", "training_last_draw_id",
+                    "population_evidence_sha256", "evaluation_manifest_sha256",
+                    "evaluation_receipt_sha256", "shadow_receipt_sha256", "approval_sha256",
+                )
+                total_tickets = 0
+                for slot in slots:
+                    population_key = slot["population_key"]
+                    if (not isinstance(population_key, str)
+                            or (population_key, "front") not in registry_by_key
+                            or (population_key, "back") not in registry_by_key):
+                        return False
+                    for zone in ("front", "back"):
+                        registry_slot = registry_by_key[(population_key, zone)]
+                        artifact_id = slot[f"{zone}_artifact_id"]
+                        if artifact_id != registry_slot["artifact_id"]:
+                            return False
+                        if artifact_id in (seen_front if zone == "front" else seen_back):
+                            return False
+                        (seen_front if zone == "front" else seen_back).add(artifact_id)
+                        provenance = slot[f"{zone}_artifact_provenance"]
+                        if not isinstance(provenance, dict) or any(
+                            provenance.get(field) != registry_slot.get(field)
+                            for field in provenance_fields
+                        ):
+                            return False
+                        stream = slot["rng_streams"][zone]
+                        if (not isinstance(stream, dict)
+                                or stream.get("algorithm") != parsed.get("rng_algorithm")
+                                or stream.get("seed_material_ref") != seed_material_ref
+                                or not _is_sha(stream.get("stream_id"))):
+                            return False
+                    tickets = slot.get("tickets")
+                    if not isinstance(tickets, list) or len(tickets) != tickets_per_slot:
+                        return False
+                    for index, ticket in enumerate(tickets):
+                        if not isinstance(ticket, dict) or set(ticket) != {"ticket_id", "front", "back"}:
+                            return False
+                        legal = _validate_ticket({"front": ticket["front"], "back": ticket["back"]})
+                        if ticket["ticket_id"] != _ticket_id(request_id, population_key, index, legal):
+                            return False
+                    total_tickets += len(tickets)
+                return total_tickets == 3 * tickets_per_slot
+            except (ArtifactValidationError, BatchPublicationError, KeyError, TypeError, ValueError):
+                return False
 
         try:
             staged = self.store.stage(
