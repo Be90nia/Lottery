@@ -10,6 +10,14 @@ def sha(label):
     return hashlib.sha256(label.encode("utf-8")).hexdigest()
 
 
+def score_result(value):
+    return lambda record, subset: {
+        "artifact_sha256": record["artifact_sha256"],
+        "normalization_verified": True,
+        "log_probability": value,
+    }
+
+
 class ProspectiveLedgerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -107,7 +115,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(ProspectiveLedgerError, "ineligible forecast"):
             self.ledger.score_forecast(
                 forecast_id=late["forecast_id"], outcome_id="0" * 64,
-                scorer_version="score-v1", log_probability=lambda record, subset: -1.0,
+                scorer_version="score-v1", log_probability=score_result(-1.0),
             )
 
     def test_forecast_key_cannot_be_rewritten(self):
@@ -159,7 +167,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
                 forecast_id=self.forecast["forecast_id"],
                 outcome_id=outcome["outcome_id"],
                 scorer_version="score-v1",
-                log_probability=lambda record, subset: -1.0,
+                log_probability=score_result(-1.0),
             )
 
     def test_exact_set_score_is_one_forecast_zone_record_and_idempotent(self):
@@ -168,7 +176,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             forecast_id=self.forecast["forecast_id"],
             outcome_id=outcome["outcome_id"],
             scorer_version="exact-set-v1",
-            log_probability=lambda record, subset: -10.5,
+            log_probability=score_result(-10.5),
         )
         self.assertEqual(score["negative_log_score"], 10.5)
         self.assertAlmostEqual(score["uniform_negative_log_score"], 12.6904475)
@@ -177,7 +185,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             forecast_id=self.forecast["forecast_id"],
             outcome_id=outcome["outcome_id"],
             scorer_version="exact-set-v1",
-            log_probability=lambda record, subset: -10.5,
+            log_probability=score_result(-10.5),
         )
         self.assertEqual(score, retry)
         self.assertEqual(self.ledger.coverage_report()["score_revisions"], 1)
@@ -209,7 +217,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
                     forecast_id=self.forecast["forecast_id"],
                     outcome_id=outcome["outcome_id"],
                     scorer_version=f"bad-{value}",
-                    log_probability=lambda record, subset, value=value: value,
+                    log_probability=score_result(value),
                 )
 
     def test_outcome_correction_timestamp_cannot_move_backwards(self):
@@ -229,7 +237,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             forecast_id=self.forecast["forecast_id"],
             outcome_id=first["outcome_id"],
             scorer_version="exact-set-v1",
-            log_probability=lambda record, subset: -10.5,
+            log_probability=score_result(-10.5),
         )
         retry = self.record_official_outcome()
         self.assertEqual(first, retry)
@@ -244,13 +252,13 @@ class ProspectiveLedgerTests(unittest.TestCase):
                 forecast_id=self.forecast["forecast_id"],
                 outcome_id=first["outcome_id"],
                 scorer_version="exact-set-v2",
-                log_probability=lambda record, subset: -9.0,
+                log_probability=score_result(-9.0),
             )
         second_score = self.ledger.score_forecast(
             forecast_id=self.forecast["forecast_id"],
             outcome_id=corrected["outcome_id"],
             scorer_version="exact-set-v1",
-            log_probability=lambda record, subset: -11.0,
+            log_probability=score_result(-11.0),
         )
         snapshot = self.ledger.snapshot()
         self.assertIn(first["outcome_id"], snapshot["outcomes"])
@@ -311,7 +319,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             forecast_id=self.forecast["forecast_id"],
             outcome_id=official["outcome_id"],
             scorer_version="coverage-test-v1",
-            log_probability=lambda record, subset: -10.5,
+            log_probability=score_result(-10.5),
         )
         self.assertEqual(self.ledger.coverage_report()["eligible_pending"], 0)
 
