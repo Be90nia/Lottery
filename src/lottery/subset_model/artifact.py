@@ -18,9 +18,17 @@ class ArtifactValidationError(ValueError):
 
 def _number_to_jcs(value: int | float) -> str:
     if type(value) is int:
-        if abs(value) > 9007199254740991:
-            raise ArtifactValidationError("integer exceeds the interoperable IEEE-754 safe range")
-        return str(value)
+        try:
+            binary64_value = float(value)
+        except OverflowError as exc:
+            raise ArtifactValidationError(
+                "integer cannot be represented as finite IEEE-754 binary64"
+            ) from exc
+        if not math.isfinite(binary64_value) or int(binary64_value) != value:
+            raise ArtifactValidationError(
+                "integer cannot be represented exactly as IEEE-754 binary64"
+            )
+        value = binary64_value
     if type(value) is not float or not math.isfinite(value):
         raise ArtifactValidationError("JSON numbers must be finite int/float values")
     if value == 0.0:
