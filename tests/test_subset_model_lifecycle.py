@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from lottery.subset_model.artifact import canonicalize
+from lottery.subset_model import lifecycle as lifecycle_module
 from lottery.subset_model.lifecycle import (
     APPROVAL_SCHEMA,
     EVALUATION_SCHEMA,
@@ -474,6 +475,66 @@ class ChampionLifecycleTests(unittest.TestCase):
         self.assertEqual(slot["challenger_artifact_id"], artifact_id)
         self.assertEqual(recovered._read_events()[0]["event_type"], "challenger_registered")
         self.assertEqual(list(recovered.journals.glob("*.json")), [])
+
+    def test_interrupted_before_registry_commit_records_aborted_event(self):
+        root = Path(self.temp.name) / "crash-before-registry"
+        store = ChampionLifecycle(root)
+        artifact_payload = model_payload("front")
+        from lottery.subset_model.artifact import create_artifact
+        _, artifact_id = create_artifact(artifact_payload)
+        original_write = lifecycle_module._atomic_write
+
+        def fail_registry_write(path, raw):
+            if Path(path) == store.registry_path:
+                raise RuntimeError("simulated crash before registry replace")
+            return original_write(path, raw)
+
+        with patch("lottery.subset_model.lifecycle._atomic_write", side_effect=fail_registry_write):
+            with self.assertRaisesRegex(RuntimeError, "before registry replace"):
+                store.register_challenger(
+                    artifact_payload,
+                    population_key="pooled_equipment_blind",
+                    zone="front",
+                    expected_generation=0,
+                    actor="crash-test",
+                )
+        recovered = ChampionLifecycle(root)
+        snapshot = recovered.snapshot()
+        self.assertEqual(snapshot["generation"], 0)
+        self.assertIsNone(snapshot["slots"]["pooled_equipment_blind|front"]["challenger_artifact_id"])
+        event = recovered._read_events()[0]
+        self.assertEqual(event["event_type"], "operation_aborted")
+        self.assertEqual(event["registry_generation"], 0)
+        self.assertEqual(event["attempted_registry_generation"], 1)
+        self.assertEqual(list(recovered.journals.glob("*.json")), [])
+        self.assertTrue((recovered.artifacts / f"{artifact_id[7:]}.json").exists())
+
+    def test_corrupt_write_ahead_journal_is_not_silently_deleted(self):
+        root = Path(self.temp.name) / "corrupt-journal"
+        store = ChampionLifecycle(root)
+        artifact_payload = model_payload("front")
+        original_write = lifecycle_module._atomic_write
+
+        def fail_registry_write(path, raw):
+            if Path(path) == store.registry_path:
+                raise RuntimeError("simulated crash before registry replace")
+            return original_write(path, raw)
+
+        with patch("lottery.subset_model.lifecycle._atomic_write", side_effect=fail_registry_write):
+            with self.assertRaisesRegex(RuntimeError, "before registry replace"):
+                store.register_challenger(
+                    artifact_payload,
+                    population_key="pooled_equipment_blind",
+                    zone="front",
+                    expected_generation=0,
+                    actor="crash-test",
+                )
+        journal_path = next(store.journals.glob("*.json"))
+        journal_path.write_bytes(b'{"operation_id":null}')
+        recovered = ChampionLifecycle(root)
+        with self.assertRaisesRegex(LifecycleError, "invalid canonical schema"):
+            recovered.snapshot()
+        self.assertTrue(journal_path.exists())
 
     def test_three_slot_generation_requires_three_verified_distinct_populations(self):
         population_keys = [
