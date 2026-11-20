@@ -105,12 +105,17 @@ def create_backup(
         raise BackupError("source_commit must be a full lowercase Git SHA")
     if not isinstance(runtime, str) or not runtime or not isinstance(storage_adapter_version, str) or not storage_adapter_version:
         raise BackupError("runtime and storage_adapter_version must be non-empty")
-    source = Path(source_root).resolve(strict=True)
+    source_input = Path(source_root)
+    if source_input.is_symlink():
+        raise BackupError("source_root cannot be a symlink")
+    source = source_input.resolve(strict=True)
     if not source.is_dir():
         raise BackupError("source_root must be a directory")
-    destination = Path(backup_root)
-    destination.mkdir(parents=True, exist_ok=True)
-    destination = destination.resolve(strict=True)
+    destination_input = Path(backup_root)
+    if destination_input.is_symlink():
+        raise BackupError("backup_root cannot be a symlink")
+    destination_input.mkdir(parents=True, exist_ok=True)
+    destination = destination_input.resolve(strict=True)
     try:
         source.relative_to(destination)
         raise BackupError("backup_root cannot contain source_root")
@@ -131,6 +136,7 @@ def create_backup(
         temporary = Path(tempfile.mkdtemp(prefix=f".{backup_id}.", dir=destination))
         try:
             payload_root = temporary / "payload"
+            payload_root.mkdir()
             for entry in initial:
                 relative = _safe_relative(entry["path"])
                 source_path = source.joinpath(*relative.parts)
@@ -182,9 +188,12 @@ def create_backup(
 
 def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
     """Verify the canonical manifest, exact file inventory, lengths and hashes."""
-    root = Path(backup_dir).resolve(strict=True)
-    if not root.is_dir() or root.is_symlink():
-        raise BackupError("backup package must be a directory")
+    root_input = Path(backup_dir)
+    if root_input.is_symlink():
+        raise BackupError("backup package cannot be a symlink")
+    root = root_input.resolve(strict=True)
+    if not root.is_dir() or (root / "manifest.json").is_symlink():
+        raise BackupError("backup package or manifest must be a regular directory/file")
     try:
         manifest_raw = (root / "manifest.json").read_bytes()
         manifest = parse_json_strict(manifest_raw)
@@ -203,6 +212,13 @@ def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
             or not _BACKUP_ID.fullmatch(manifest["backup_id"])
             or root.name != manifest["backup_id"]):
         raise BackupError("backup ID does not match package directory")
+    if (type(manifest["file_count"]) is not int or manifest["file_count"] < 0
+            or type(manifest["total_bytes"]) is not int or manifest["total_bytes"] < 0
+            or not isinstance(manifest["inventory_sha256"], str)
+            or not _SHA256.fullmatch(manifest["inventory_sha256"])
+            or not isinstance(manifest["manifest_sha256"], str)
+            or not _SHA256.fullmatch(manifest["manifest_sha256"])):
+        raise BackupError("backup count or manifest digest fields are invalid")
     if not isinstance(manifest["source_commit"], str) or not _GIT_SHA.fullmatch(manifest["source_commit"]):
         raise BackupError("backup source commit is invalid")
     try:
@@ -236,9 +252,7 @@ def verify_backup(backup_dir: str | Path) -> dict[str, Any]:
 
     payload_root = root / "payload"
     if payload_root.is_symlink() or not payload_root.is_dir():
-        if entries:
-            raise BackupError("backup payload directory is missing")
-        payload_root.mkdir(exist_ok=True)
+        raise BackupError("backup payload directory is missing")
     actual_paths = []
     for directory, dirnames, filenames in os.walk(payload_root, topdown=True, followlinks=False):
         base = Path(directory)
