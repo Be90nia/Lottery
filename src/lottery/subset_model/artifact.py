@@ -134,7 +134,7 @@ def parse_json_strict(raw: bytes | str) -> dict:
 def validate_model_artifact(payload: dict) -> None:
     """Validate the complete Section 9 artifact envelope and family payload."""
     required = {
-        "schema_version", "artifact_schema", "model_family", "zone",
+        "schema_version", "artifact_schema", "artifact_type", "model_family", "zone",
         "population_size", "selection_size", "support", "feature_schema",
         "parameters", "model_configuration", "normalization", "fit", "training", "implementation",
         "training_snapshot_sha256", "training_cutoff_draw_id",
@@ -252,34 +252,49 @@ def validate_model_artifact(payload: dict) -> None:
             or model_configuration.get("feature_schema_hash") != payload["feature_schema_hash"]):
         raise ArtifactValidationError("model_configuration does not match artifact identity/schema")
 
+    artifact_type = payload["artifact_type"]
+    if artifact_type not in ("fitted_model", "fit_failure"):
+        raise ArtifactValidationError("artifact_type must be fitted_model or fit_failure")
     normalization = payload["normalization"]
-    if not isinstance(normalization, dict) or (
-        not isinstance(normalization.get("method"), str) or not normalization["method"]
-        or normalization.get("numeric_dtype") != "float64"
-        or type(normalization.get("log_partition")) not in (int, float)
-        or not math.isfinite(normalization["log_partition"])
-    ):
+    if not isinstance(normalization, dict) or normalization.get("numeric_dtype") != "float64":
+        raise ArtifactValidationError("normalization descriptor is invalid")
+    if artifact_type == "fit_failure":
+        if normalization.get("method") != "not_computed" or normalization.get("log_partition") is not None:
+            raise ArtifactValidationError("failed fit artifact must explicitly mark normalization as not computed")
+    elif (not isinstance(normalization.get("method"), str) or not normalization["method"]
+          or type(normalization.get("log_partition")) not in (int, float)
+          or not math.isfinite(normalization["log_partition"])):
         raise ArtifactValidationError("normalization descriptor is invalid")
 
     fit = payload["fit"]
     if not isinstance(fit, dict) or (
         not isinstance(fit.get("status"), str) or not fit["status"]
         or not isinstance(fit.get("termination_reason"), str) or not fit["termination_reason"]
-        or type(fit.get("objective")) not in (int, float) or not math.isfinite(fit["objective"])
-        or type(fit.get("gradient_inf_norm")) not in (int, float)
-        or not math.isfinite(fit["gradient_inf_norm"]) or fit["gradient_inf_norm"] < 0
         or type(fit.get("iterations")) is not int or fit["iterations"] < 0
         or not isinstance(fit.get("optimizer"), str) or not fit["optimizer"]
     ):
         raise ArtifactValidationError("fit diagnostics envelope is invalid")
+    for numeric_field in ("objective", "gradient_inf_norm"):
+        value = fit.get(numeric_field)
+        if value is not None and (type(value) not in (int, float) or not math.isfinite(value)):
+            raise ArtifactValidationError(f"fit {numeric_field} must be finite or null")
+    if fit.get("gradient_inf_norm") is not None and fit["gradient_inf_norm"] < 0:
+        raise ArtifactValidationError("fit gradient_inf_norm cannot be negative")
 
     parameters = payload["parameters"]
     if not isinstance(parameters, dict) or parameters.get("parameter_order") != "feature_schema.names":
         raise ArtifactValidationError("parameter order must bind to feature_schema.names")
+    if artifact_type == "fit_failure":
+        if (fit["status"] == "converged" or not isinstance(payload.get("failure_reason"), str)
+                or not payload["failure_reason"] or parameters.get("parameters_available") is not False):
+            raise ArtifactValidationError("fit failure artifact must carry a stable failure reason and no parameters")
+        if payload["fit_diagnostics"].get("terminal_status") != fit["status"]:
+            raise ArtifactValidationError("failed fit status envelope does not match diagnostics")
+        return
     if fit["status"] != "converged":
         raise ArtifactValidationError("non-converged fits cannot be serialized as fitted model artifacts")
-    if fit["gradient_inf_norm"] > 1e-8:
-        raise ArtifactValidationError("converged artifact exceeds the registered gradient tolerance")
+    if fit.get("objective") is None or fit.get("gradient_inf_norm") is None or fit["gradient_inf_norm"] > 1e-8:
+        raise ArtifactValidationError("converged artifact exceeds the registered fit diagnostics")
 
     family = payload["model_family"]
     if family == "complete_subset_exponential":
