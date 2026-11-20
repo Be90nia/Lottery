@@ -379,6 +379,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                     "zero_variance_features": list(model.table.stats.zero_variance_features),
                     "feature_schema_hash": _jcs_hash(feature_schema),
                     "model_configuration_hash": _jcs_hash(candidate_config),
+                    "model_configuration": candidate_config,
                     "theta": list(fit.theta), "objective_scale": fit.objective_scale,
                     "regularization_lambda": fit.regularization_lambda,
                     "normalization": {"method": "full_support_logsumexp",
@@ -473,6 +474,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                             "calibration_residual": calibration.maximum_absolute_residual,
                             "feature_schema_hash": _jcs_hash(baseline_schema),
                             "model_configuration_hash": _jcs_hash(baseline_config),
+                            "model_configuration": baseline_config,
                             "normalization": {
                                 "method": "exact_conditional_poisson_log_space_dp",
                                 "log_partition": conditional.log_normalizer,
