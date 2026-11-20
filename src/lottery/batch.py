@@ -57,6 +57,17 @@ def _is_sha(value: Any) -> bool:
     )
 
 
+def _ticket_id(request_id: str, population_key: str, index: int, ticket: dict[str, Any]) -> str:
+    return _sha(canonicalize({
+        "schema": "lottery.ticket/v1",
+        "request_id": request_id,
+        "population_key": population_key,
+        "ticket_index": index,
+        "front": ticket["front"],
+        "back": ticket["back"],
+    }))
+
+
 def _validate_ticket(ticket: Any) -> dict[str, list[int]]:
     if not isinstance(ticket, dict) or set(ticket) != {"front", "back"}:
         raise BatchPublicationError("sampler must return ticket objects with exactly front and back")
@@ -187,14 +198,7 @@ class ThreeSlotBatchPublisher:
             all_ticket_keys.extend(ticket_keys)
             ticket_records = [
                 {
-                    "ticket_id": _sha(canonicalize({
-                        "schema": "lottery.ticket/v1",
-                        "request_id": request_id,
-                        "population_key": population_key,
-                        "ticket_index": index,
-                        "front": ticket["front"],
-                        "back": ticket["back"],
-                    })),
+                    "ticket_id": _ticket_id(request_id, population_key, index, ticket),
                     "front": ticket["front"],
                     "back": ticket["back"],
                 }
@@ -208,16 +212,20 @@ class ThreeSlotBatchPublisher:
                 "back_artifact_id": artifacts["back"],
                 "front_artifact_provenance": {
                     key: front_meta[key] for key in (
-                        "training_cutoff_draw_id", "training_snapshot_sha256",
-                        "training_row_count", "training_first_draw_id", "training_last_draw_id",
+                        "model_family", "artifact_schema", "feature_schema_hash",
+                        "population_size", "selection_size", "training_cutoff_draw_id",
+                        "training_snapshot_sha256", "training_row_count",
+                        "training_first_draw_id", "training_last_draw_id",
                         "population_evidence_sha256", "evaluation_manifest_sha256",
                         "evaluation_receipt_sha256", "shadow_receipt_sha256", "approval_sha256",
                     )
                 },
                 "back_artifact_provenance": {
                     key: back_meta[key] for key in (
-                        "training_cutoff_draw_id", "training_snapshot_sha256",
-                        "training_row_count", "training_first_draw_id", "training_last_draw_id",
+                        "model_family", "artifact_schema", "feature_schema_hash",
+                        "population_size", "selection_size", "training_cutoff_draw_id",
+                        "training_snapshot_sha256", "training_row_count",
+                        "training_first_draw_id", "training_last_draw_id",
                         "population_evidence_sha256", "evaluation_manifest_sha256",
                         "evaluation_receipt_sha256", "shadow_receipt_sha256", "approval_sha256",
                     )
@@ -260,6 +268,14 @@ class ThreeSlotBatchPublisher:
             "batch_id": request_id,
             "request_id": request_id,
             "idempotency_key_sha256": request_id,
+            "registry_snapshot": {
+                "registry_generation": resolved["registry_generation"],
+                "champion_generation": resolved["champion_generation"],
+                "slots": sorted(
+                    resolved["slots"],
+                    key=lambda item: (item["population_key"], item["zone"]),
+                ),
+            },
             "registry_snapshot_sha256": _sha(canonicalize({
                 "registry_generation": resolved["registry_generation"],
                 "champion_generation": resolved["champion_generation"],
