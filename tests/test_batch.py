@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import hashlib
 import tempfile
 import unittest
@@ -51,6 +52,13 @@ class FakeLifecycle:
             result["registry_generation"] = 8
             result["champion_generation"] = 8
         return result
+
+
+    @contextmanager
+    def generation_guard(self, expected_generation):
+        if self.snapshot["registry_generation"] != expected_generation:
+            raise LifecycleError("Champion registry generation changed before dependent publication")
+        yield self.snapshot
 
 
 class ThreeSlotBatchPublisherTests(unittest.TestCase):
@@ -156,6 +164,24 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
         with self.assertRaisesRegex(BatchPublicationError, "pointer generation"):
             self.publish(key="batch-second", generation=0)
         self.assertEqual(self.store.read_pointer("published-batch"), first["pointer"])
+
+
+    def test_registry_change_after_object_commit_blocks_pointer_publication(self):
+        lifecycle = FakeLifecycle()
+        original_commit = self.store.commit
+
+        def commit_then_change_registry(*, operation_id):
+            result = original_commit(operation_id=operation_id)
+            lifecycle.snapshot["registry_generation"] = 8
+            return result
+
+        self.store.commit = commit_then_change_registry
+        with self.assertRaisesRegex(BatchPublicationError, "before batch pointer publication"):
+            self.publish(lifecycle=lifecycle)
+        self.assertFalse(self.store.pointers.exists())
+        # The immutable object may be orphaned for reconciliation, but no
+        # visible batch pointer can refer to a stale Champion generation.
+        self.assertTrue(self.store.operations.exists())
 
 
 if __name__ == "__main__":
