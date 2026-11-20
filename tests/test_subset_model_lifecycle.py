@@ -284,6 +284,70 @@ class ChampionLifecycleTests(unittest.TestCase):
                          ["challenger_registered", "candidate_validated", "promoted", "slot_suspended"])
 
 
+
+    def test_compatible_retired_champion_can_be_restored_with_new_approval(self):
+        population = "regime-a|reported-1"
+        first_id, first_receipt, first_validation = self.register_and_validate(
+            population, snapshot_hash="a" * 64
+        )
+        first_approval = approval_for(first_id, population, "front", first_receipt)
+        first_promoted = self.store.promote_candidate(
+            population_key=population, zone="front", artifact_id=first_id,
+            expected_champion_artifact_id=None,
+            expected_generation=first_validation["generation"],
+            approval=first_approval, approval_verifier=self.verifier, actor="test-suite",
+        )
+
+        second_id, second_receipt, second_validation = self.register_and_validate(
+            population, snapshot_hash="d" * 64
+        )
+        second_approval = approval_for(
+            second_id, population, "front", second_receipt,
+            expected_champion_artifact_id=first_id,
+        )
+        second_promoted = self.store.promote_candidate(
+            population_key=population, zone="front", artifact_id=second_id,
+            expected_champion_artifact_id=first_id,
+            expected_generation=second_validation["generation"],
+            approval=second_approval, approval_verifier=self.verifier, actor="test-suite",
+        )
+        restore_approval = approval_for(
+            first_id, population, "front", first_receipt,
+            action="restore", expected_champion_artifact_id=second_id,
+        )
+        restored = self.store.restore_retired(
+            population_key=population, zone="front", artifact_id=first_id,
+            expected_champion_artifact_id=second_id,
+            expected_generation=second_promoted["generation"],
+            approval=restore_approval, approval_verifier=self.verifier,
+            actor="test-suite",
+        )
+        self.assertEqual(
+            restored["slots"][f"{population}|front"]["champion_artifact_id"],
+            first_id,
+        )
+
+    def test_write_ahead_journal_recovers_registry_commit_without_event(self):
+        root = Path(self.temp.name) / "crash-recovery"
+        store = ChampionLifecycle(root)
+        artifact_payload = model_payload("front")
+        from lottery.subset_model.artifact import create_artifact
+        _, artifact_id = create_artifact(artifact_payload)
+        store._append_event_locked = lambda body: (_ for _ in ()).throw(RuntimeError("simulated crash"))
+        with self.assertRaisesRegex(RuntimeError, "simulated crash"):
+            store.register_challenger(
+                artifact_payload,
+                population_key="pooled_equipment_blind",
+                zone="front",
+                expected_generation=0,
+                actor="crash-test",
+            )
+        recovered = ChampionLifecycle(root)
+        slot = recovered.snapshot()["slots"]["pooled_equipment_blind|front"]
+        self.assertEqual(slot["challenger_artifact_id"], artifact_id)
+        self.assertEqual(recovered._read_events()[0]["event_type"], "challenger_registered")
+        self.assertEqual(list(recovered.journals.glob("*.json")), [])
+
     def test_three_slot_generation_requires_three_verified_distinct_populations(self):
         population_keys = [
             "regime-2020|reported_set_index=1",
