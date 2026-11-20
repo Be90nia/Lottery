@@ -6,7 +6,7 @@ model artifacts, generate a forecast, or authorize a user-facing prediction.
 
 ## Schedule contract
 
-A schedule JSON document has schema `lottery.prospective-schedule/v1`,
+A schedule JSON document has schema `lottery.prospective-schedule/v1` and an explicit `lot042_accessed: false` assertion,
 a canonical `schedule_id` (SHA-256 over the complete document excluding
 `schedule_id`), a timezone-aware `generated_at_utc`, and a non-empty
 `expected_forecasts` array. Each record contains the complete expectation
