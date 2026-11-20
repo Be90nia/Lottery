@@ -691,7 +691,7 @@ class ChampionLifecycle:
         expected_champion_artifact_id: str | None,
         evaluation_manifest_sha256: str,
         evaluation_receipt_sha256: str,
-        shadow_receipt_sha256: str | None,
+        shadow_receipt_sha256: str | None = None,
     ) -> tuple[bytes, str]:
         _validate_approval(
             approval, action=action, artifact_id=artifact_id,
