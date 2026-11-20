@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sys
 import unittest
@@ -29,6 +30,15 @@ def exponential_payload():
         "candidate_names": names, "zero_variance_features": [],
     }
     theta = [0.1, -0.2, 0.3, 0.0, 0.05]
+    feature_schema_hash = "sha256:" + hashlib.sha256(canonicalize(feature_schema)).hexdigest()
+    model_configuration = {
+        "model_family": "complete_subset_exponential", "zone": "front",
+        "population_size": 35, "selection_size": 5,
+        "feature_schema_hash": feature_schema_hash,
+        "objective_scale": "mean_nll", "regularization_lambda": 1.0,
+        "solver": "L-BFGS-B", "max_iterations": 5000, "gradient_tolerance": 1e-8,
+    }
+    model_configuration_hash = "sha256:" + hashlib.sha256(canonicalize(model_configuration)).hexdigest()
     return {
         "schema_version": 1,
         "artifact_schema": "lottery.subset-probability-model/v1",
@@ -48,8 +58,9 @@ def exponential_payload():
                            "library_versions": {}, "rng_algorithm": "injected_rng.random_v1"},
         "training_snapshot_sha256": "a" * 64,
         "training_cutoff_draw_id": "26130", "training_row_count": 2948,
-        "feature_schema_hash": "sha256:" + "c" * 64,
-        "model_configuration_hash": "sha256:" + "d" * 64,
+        "feature_schema_hash": feature_schema_hash,
+        "model_configuration_hash": model_configuration_hash,
+        "model_configuration": model_configuration,
         "training_first_draw_id": "07001", "training_last_draw_id": "26130",
         "code_revision": "abc123", "runtime": runtime,
         "fit_diagnostics": {"terminal_status": "converged", "gradient_infinity_norm": 1e-9},
@@ -193,6 +204,15 @@ class ModelArtifactTests(unittest.TestCase):
             "target_marginals": [p] * 12, "achieved_marginals": [p] * 12,
             "solver_status": "converged", "calibration_residual": 0.0,
         }
+        payload["feature_schema_hash"] = "sha256:" + hashlib.sha256(canonicalize(payload["feature_schema"])).hexdigest()
+        model_configuration = {
+            "model_family": "conditional_poisson", "zone": "back",
+            "population_size": 12, "selection_size": 2, "alpha": 100.0,
+            "half_life": None, "weighting": "expanding",
+            "feature_schema_hash": payload["feature_schema_hash"],
+        }
+        payload["model_configuration"] = model_configuration
+        payload["model_configuration_hash"] = "sha256:" + hashlib.sha256(canonicalize(model_configuration)).hexdigest()
         raw, artifact_id = create_artifact(payload)
         self.assertEqual(verify_artifact(raw)["artifact_id"], artifact_id)
         payload["centered_log_weights"] = [1.0] * 12
