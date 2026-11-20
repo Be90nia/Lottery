@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from contextlib import contextmanager
 import hashlib
 import tempfile
 import unittest
@@ -6,6 +7,7 @@ from pathlib import Path
 
 from lottery.batch import BatchPublicationError, ThreeSlotBatchPublisher
 from lottery.storage import FileSystemObjectStore
+from lottery.subset_model.artifact import canonicalize
 from lottery.subset_model.lifecycle import LifecycleError
 
 
@@ -76,9 +78,14 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def publish(self, *, key="batch-001", n=2, sampler=None, generation=0, lifecycle=None):
+    def publish(
+        self, *, key="batch-001", n=2, sampler=None, generation=0,
+        lifecycle=None, master_seed=None, seed_commitment=None,
+    ):
+        if master_seed is None:
+            master_seed = b"lottery-test-master-seed-material-2026"
         if sampler is None:
-            sampler = lambda population, front, back, count: [
+            sampler = lambda population, front, back, count, front_seed, back_seed: [
                 {"front": [1, 2, 3, 4, 5], "back": [1, 2]}
                 for _ in range(count)
             ]
@@ -88,8 +95,10 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
             approval_verifier=lambda approval, expected: True,
             tickets_per_slot=n,
             idempotency_key=key,
-            seed_commitment_sha256=sha("seed-commitment"),
-            rng_algorithm="hmac-sha256-counter-v1",
+            master_seed=master_seed,
+            seed_material_ref="secret-store://lottery/test-batch-seed",
+            seed_commitment_sha256=seed_commitment or hashlib.sha256(master_seed).hexdigest(),
+            rng_algorithm="hmac-sha256-derived/python-mt19937-v1",
             sampler_version="exact-subset-sampler/v1",
             producer_commit="a" * 40,
             producer_runtime="CPython 3.12",
@@ -115,7 +124,7 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
     def test_sampler_failure_publishes_nothing(self):
         calls = {"count": 0}
 
-        def fail_second(population, front, back, count):
+        def fail_second(population, front, back, count, front_seed, back_seed):
             calls["count"] += 1
             if calls["count"] == 2:
                 raise RuntimeError("sampler failed")
@@ -127,7 +136,7 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
         self.assertFalse(self.store.operations.exists())
 
     def test_invalid_ticket_is_rejected_before_any_storage_write(self):
-        def invalid(population, front, back, count):
+        def invalid(population, front, back, count, front_seed, back_seed):
             return [{"front": [1, 1, 2, 3, 4], "back": [1, 2]}] * count
 
         with self.assertRaisesRegex(BatchPublicationError, "front ticket"):
@@ -157,13 +166,46 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
 
     def test_sampler_must_return_exactly_n_tickets(self):
         with self.assertRaisesRegex(BatchPublicationError, "expected exactly"):
-            self.publish(sampler=lambda population, front, back, count: [])
+            self.publish(sampler=lambda population, front, back, count, front_seed, back_seed: [])
 
     def test_stale_pointer_cas_does_not_replace_prior_batch(self):
         first = self.publish(key="batch-first")
         with self.assertRaisesRegex(BatchPublicationError, "pointer generation"):
             self.publish(key="batch-second", generation=0)
         self.assertEqual(self.store.read_pointer("published-batch"), first["pointer"])
+
+
+    def test_seed_commitment_must_match_protected_master_seed(self):
+        with self.assertRaisesRegex(BatchPublicationError, "match the supplied master seed"):
+            self.publish(seed_commitment=sha("wrong-seed"))
+
+    def test_rng_streams_are_slot_and_zone_specific_and_reproducible(self):
+        first = self.publish(key="rng-first", n=1)
+        second = self.publish(key="rng-second", n=1)
+        first_streams = [
+            (slot["rng_streams"]["front"]["stream_id"], slot["rng_streams"]["back"]["stream_id"])
+            for slot in first["manifest"]["slots"]
+        ]
+        second_streams = [
+            (slot["rng_streams"]["front"]["stream_id"], slot["rng_streams"]["back"]["stream_id"])
+            for slot in second["manifest"]["slots"]
+        ]
+        self.assertEqual(first_streams, second_streams)
+        flattened = [stream for pair in first_streams for stream in pair]
+        self.assertEqual(len(flattened), 6)
+        self.assertEqual(len(set(flattened)), 6)
+        self.assertEqual(
+            first["manifest"]["seed_material_ref"],
+            "secret-store://lottery/test-batch-seed",
+        )
+        self.assertEqual(
+            first["manifest"]["seed_derivation"],
+            "HMAC-SHA256(lottery.three-slot-rng.v1, population_key, zone, artifact_id)",
+        )
+        self.assertNotIn(
+            b"lottery-test-master-seed-material-2026",
+            canonicalize(first["manifest"]),
+        )
 
 
     def test_registry_change_after_object_commit_blocks_pointer_publication(self):
