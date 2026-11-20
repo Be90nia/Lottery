@@ -40,8 +40,8 @@ jobs:
         run: |
           python scripts/diagnose_conditional_poisson_targets.py \
             --snapshot data/processed/draws-20261118.jsonl \
-            --front-target-ids "${{ inputs.front_target_ids }}" \
-            --back-target-ids "${{ inputs.back_target_ids }}" \
+            --front-target-ids "${{ inputs.front_target_ids || '10060,21089,22067' }}" \
+            --back-target-ids "${{ inputs.back_target_ids || '25135' }}" \
             --output conditional-poisson-target-diagnostic.json
       - uses: actions/upload-artifact@v4
         with:
