@@ -1,3 +1,4 @@
+import hashlib
 import math
 import sys
 import unittest
@@ -6,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from lottery.subset_model.artifact import create_artifact
+from lottery.subset_model.artifact import canonicalize, create_artifact
 from run_subset_rolling_origin import (
     _checkpoint_record_hash,
     _confirmatory_gate,
@@ -81,6 +82,16 @@ class CheckpointIntegrityTests(unittest.TestCase):
             active_feature_names=names, theta=[0.0, 0.0, 0.0, 0.0],
             objective_scale="mean_nll", regularization_lambda=1.0,
         )
+        candidate["feature_schema_hash"] = "sha256:" + hashlib.sha256(canonicalize(candidate["feature_schema"])).hexdigest()
+        candidate_config = {
+            "model_family": "complete_subset_exponential", "zone": "front",
+            "population_size": 35, "selection_size": 5,
+            "feature_schema_hash": candidate["feature_schema_hash"],
+            "objective_scale": "mean_nll", "regularization_lambda": 1.0,
+            "solver": "L-BFGS-B", "max_iterations": 5000, "gradient_tolerance": 1e-8,
+        }
+        candidate["model_configuration"] = candidate_config
+        candidate["model_configuration_hash"] = "sha256:" + hashlib.sha256(canonicalize(candidate_config)).hexdigest()
         candidate_raw, candidate_id = create_artifact(candidate)
         p = 5 / 35
         item_names = [f"item_{item}" for item in range(1, 36)]
@@ -105,6 +116,14 @@ class CheckpointIntegrityTests(unittest.TestCase):
             "code_revision": "abc123", "runtime": runtime, "library_versions": {},
             "rng_algorithm": "conditional_poisson_backward_dp_with_injected_rng_v1",
         }
+        conditional["feature_schema_hash"] = "sha256:" + hashlib.sha256(canonicalize(conditional["feature_schema"])).hexdigest()
+        conditional_config = {
+            "model_family": "conditional_poisson", "zone": "front",
+            "population_size": 35, "selection_size": 5,
+            "feature_schema_hash": conditional["feature_schema_hash"],
+        }
+        conditional["model_configuration"] = conditional_config
+        conditional["model_configuration_hash"] = "sha256:" + hashlib.sha256(canonicalize(conditional_config)).hexdigest()
         conditional["normalization"] = {
             "method": "exact_conditional_poisson_log_space_dp",
             "log_partition": 0.0, "numeric_dtype": "float64",
