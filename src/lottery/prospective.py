@@ -467,7 +467,7 @@ class ProspectiveLedger:
         forecast_id: str,
         outcome_id: str,
         scorer_version: str,
-        log_probability: Callable[[dict[str, Any], list[int]], float],
+        log_probability: Callable[[dict[str, Any], list[int]], dict[str, Any]],
         attempt_id: str | None = None,
     ) -> dict[str, Any]:
         if not _is_sha(forecast_id) or not _is_sha(outcome_id):
@@ -529,10 +529,17 @@ class ProspectiveLedger:
                 self._append_locked(event_id, "score_failed", failure)
 
             try:
-                raw_logp = log_probability(forecast, actual)
+                evaluation = log_probability(forecast, actual)
             except Exception as exc:
                 record_failure("artifact_probability_evaluation_failed")
                 raise ProspectiveLedgerError("artifact probability evaluation failed") from exc
+            if (not isinstance(evaluation, dict)
+                    or set(evaluation) != {"artifact_sha256", "normalization_verified", "log_probability"}
+                    or evaluation.get("artifact_sha256") != forecast["artifact_sha256"]
+                    or evaluation.get("normalization_verified") is not True):
+                record_failure("artifact_normalization_or_identity_unverified")
+                raise ProspectiveLedgerError("exact-set evaluator must verify the bound artifact and full-support normalization")
+            raw_logp = evaluation["log_probability"]
             try:
                 if isinstance(raw_logp, bool):
                     raise TypeError("boolean is not a probability score")
