@@ -377,6 +377,8 @@ class FileSystemObjectStore:
             "validated_without_commit": [],
             "committed_unreferenced": [],
             "dangling_pointers": [],
+            "missing_publication_receipts": [],
+            "corrupt_publication_receipts": [],
             "corrupt_commit_receipts": [],
             "orphan_objects": [],
             "corrupt_objects": [],
@@ -411,6 +413,33 @@ class FileSystemObjectStore:
             try:
                 pointer = self.read_pointer(path.stem)
                 referenced.add(pointer["object_sha256"])
+                publication_path = self.publications / (
+                    f"{path.stem}.{pointer['last_operation_id']}.json"
+                )
+                if not publication_path.exists():
+                    report["missing_publication_receipts"].append(
+                        f"{path.stem}:{pointer['last_operation_id']}"
+                    )
+                else:
+                    try:
+                        publication = _read_canonical(publication_path)
+                    except StorageError:
+                        report["corrupt_publication_receipts"].append(
+                            f"{path.stem}:{pointer['last_operation_id']}"
+                        )
+                    else:
+                        expected_publication = {
+                            "schema": "lottery.storage-publication/v1",
+                            "pointer_name": path.stem,
+                            "generation": pointer["generation"],
+                            "object_sha256": pointer["object_sha256"],
+                            "operation_id": pointer["last_operation_id"],
+                            "previous_object_sha256": pointer.get("previous_object_sha256"),
+                        }
+                        if publication != expected_publication:
+                            report["corrupt_publication_receipts"].append(
+                                f"{path.stem}:{pointer['last_operation_id']}"
+                            )
             except (StorageError, OSError, KeyError):
                 report["dangling_pointers"].append(path.stem)
         for digest, operation_ids in commits_by_hash.items():
@@ -428,7 +457,8 @@ class FileSystemObjectStore:
             elif path.stem not in commits_by_hash:
                 report["orphan_objects"].append(path.stem)
         for key in ("staged_without_validation", "validated_without_commit",
-                    "committed_unreferenced", "dangling_pointers", "corrupt_commit_receipts",
+                    "committed_unreferenced", "dangling_pointers", "missing_publication_receipts",
+                    "corrupt_publication_receipts", "corrupt_commit_receipts",
                     "orphan_objects", "corrupt_objects"):
             report[key] = sorted(set(report[key]))
         return report
