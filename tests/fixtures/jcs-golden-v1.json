@@ -12,12 +12,12 @@
       1e21,
       -0.0
     ],
-    "text": "quote\\\" slash/ newline\\n",
+    "text": "quote\" slash/ newline\n",
     "unicode": {
-      "\\ue000": 2,
+      "\ue000": 2,
       "😀": 1
     }
   },
-  "canonical_utf8": "{\\\"numbers\\\":[333333333.3333333,1e+30,4.5,0.002,1e-27,0.000001,1e-7,100000000000000000000,1e+21,0],\\\"text\\\":\\\"quote\\\\\\\" slash/ newline\\\\n\\\",\\\"unicode\\\":{\\\"😀\\\":1,\\\"\\\":2}}",
+  "canonical_utf8": "{\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27,0.000001,1e-7,100000000000000000000,1e+21,0],\"text\":\"quote\\\" slash/ newline\\n\",\"unicode\":{\"😀\":1,\"\":2}}",
   "sha256": "f1bdde78e7b155597b1715f2e7158a00202e503ffccac195cef6cc27306acabf"
 }
