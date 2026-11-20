@@ -105,6 +105,7 @@ class ThreeSlotBatchPublisher:
             slots_by_population.setdefault(slot["population_key"], {})[slot["zone"]] = slot["artifact_id"]
         ordered_populations = sorted(slots_by_population)
         slot_payloads = []
+        all_ticket_keys: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
         for population_key in ordered_populations:
             artifacts = slots_by_population[population_key]
             if set(artifacts) != {"front", "back"}:
@@ -122,6 +123,7 @@ class ThreeSlotBatchPublisher:
                 )
             legal_tickets = [_validate_ticket(ticket) for ticket in tickets]
             ticket_keys = [(tuple(ticket["front"]), tuple(ticket["back"])) for ticket in legal_tickets]
+            all_ticket_keys.extend(ticket_keys)
             slot_payloads.append({
                 "population_key": population_key,
                 "front_artifact_id": artifacts["front"],
@@ -133,6 +135,9 @@ class ThreeSlotBatchPublisher:
         total = sum(len(slot["tickets"]) for slot in slot_payloads)
         if total != 3 * tickets_per_slot:
             raise BatchPublicationError("complete batch must contain exactly 3N tickets")
+        within_slot_duplicates = sum(slot["duplicate_ticket_count"] for slot in slot_payloads)
+        total_duplicates = len(all_ticket_keys) - len(set(all_ticket_keys))
+        cross_slot_duplicates = total_duplicates - within_slot_duplicates
         # Re-resolve immediately before staging so a registry change during
         # sampling cannot silently bind tickets to a stale or mixed generation.
         try:
@@ -159,7 +164,10 @@ class ThreeSlotBatchPublisher:
             "sampler_version": sampler_version,
             "producer_commit": producer_commit,
             "producer_runtime": producer_runtime,
-            "duplicate_ticket_count": sum(slot["duplicate_ticket_count"] for slot in slot_payloads),
+            "duplicate_ticket_count": total_duplicates,
+            "within_slot_duplicate_ticket_count": within_slot_duplicates,
+            "cross_slot_duplicate_ticket_count": cross_slot_duplicates,
+            "requested_by": actor,
             "slots": slot_payloads,
         }
         raw = canonicalize(manifest)
