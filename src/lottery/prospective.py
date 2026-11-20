@@ -984,6 +984,42 @@ class ProspectiveLedger:
             score["forecast_id"] for score in scores if score["outcome_id"] in latest_outcomes
         }
         eligible = [record for record in forecasts if record["status"] == "eligible"]
+        forecast_by_expectation = {
+            record["expected_forecast_id"]: record for record in forecasts
+        }
+
+        def build_breakdown(field: str) -> dict[str, dict[str, int]]:
+            grouped: dict[str, dict[str, int]] = {}
+            for expected_id, expected in snapshot["expectations"].items():
+                label = str(expected[field])
+                stats = grouped.setdefault(label, {
+                    "expected": 0, "issued": 0, "eligible": 0, "ineligible": 0,
+                    "missing_at_cutoff": 0, "unresolved": 0, "outcome_pending": 0,
+                    "outcome_invalid": 0, "score_pending": 0, "scored_current": 0,
+                })
+                stats["expected"] += 1
+                forecast = forecast_by_expectation.get(expected_id)
+                if forecast is None:
+                    stats["unresolved"] += 1
+                    continue
+                if forecast["status"] == "missing_at_cutoff":
+                    stats["missing_at_cutoff"] += 1
+                    continue
+                stats["issued"] += 1
+                if forecast["status"] == "ineligible":
+                    stats["ineligible"] += 1
+                    continue
+                stats["eligible"] += 1
+                outcome_id = snapshot["latest_outcome_by_draw"].get(forecast["target_draw_id"])
+                if outcome_id is None:
+                    stats["outcome_pending"] += 1
+                elif snapshot["outcomes"][outcome_id]["authority"] != "official_validated":
+                    stats["outcome_invalid"] += 1
+                elif forecast["forecast_id"] in scored_forecasts:
+                    stats["scored_current"] += 1
+                else:
+                    stats["score_pending"] += 1
+            return {key: grouped[key] for key in sorted(grouped)}
         outcome_pending = 0
         outcome_invalid = 0
         score_pending = 0
@@ -1021,5 +1057,8 @@ class ProspectiveLedger:
             "eligible_pending": outcome_pending + outcome_invalid + score_pending,
             "score_revisions": len(scores),
             "score_failed_attempts": len(snapshot["score_failures"]),
+            "by_zone": build_breakdown("zone"),
+            "by_population_key": build_breakdown("population_key"),
+            "by_model_family": build_breakdown("model_family"),
             "event_count": snapshot["event_count"],
         }
