@@ -1,13 +1,15 @@
 name: exact-subset-research
 
 on:
-  # One-shot launch path for the explicitly requested frozen research run.
-  # Restrict to this exact PR branch and workflow-file changes only.
+  # One-shot frozen research launch for the preregistered branch and the
+  # explicit numerical-solver amendment branch. Never run on arbitrary pushes.
   push:
     branches:
       - feat/lot-055-preregistered-holm-inference
+      - feat/lot-063-prospective-score-ledger
     paths:
       - .github/workflows/subset-research.yml
+      - src/lottery/subset_model/conditional_poisson.py
       - src/lottery/subset_model/exponential.py
       - src/lottery/subset_model/artifact.py
       - src/lottery/subset_model/rolling_origin_ledger.py
