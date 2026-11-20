@@ -15,7 +15,9 @@ as a production durable-storage deployment.
 - Pointer read-back verification against the immutable commit receipt and
   object bytes.
 - Read-only reconciliation of staged, validated, committed, and referenced
-  objects.
+  objects, including missing or corrupt publication receipts after a pointer
+  replacement. A crash window is visible until the same operation is retried
+  and its immutable publication receipt is recovered.
 
 ## Deliberate limits
 
