@@ -171,10 +171,53 @@ class ReportedIndexPilotTests(unittest.TestCase):
 
     def test_inadequate_number_of_blocks_suppresses_inference(self):
         with patch("lottery.reported_index_pilot.MIN_COMPLETE_BLOCKS", 10):
-            with self.assertRaisesRegex(ReportedIndexPilotError, "complete blocks"):
-                build_reported_index_pilot(
-                    self.view, self.manifest, code_commit="d" * 40
+            report = build_reported_index_pilot(
+                self.view, self.manifest, code_commit="d" * 40
+            )
+        self.assertEqual(report["score_coverage"]["complete_coverage"], True)
+        self.assertEqual(report["inference"]["status"], "suppressed_insufficient_blocks")
+        self.assertEqual(report["inference"]["comparison_count"], 0)
+        self.assertEqual(report["comparisons"], {})
+        self.assertEqual(
+            report["reported_index_pilot_status"], "inference_suppressed_insufficient_blocks"
+        )
+
+    def test_fit_failure_is_preserved_and_suppresses_the_full_holm_family(self):
+        from lottery.reported_index_pilot import _calibrated_nll
+
+        def fail_one(train, target, *, field, pool_size, pick, model):
+            if (target["draw_id"] == "26007" and model == "ewma"
+                    and field == "front_numbers"):
+                raise ReportedIndexPilotError(
+                    "ewma calibration failed at target 26007 (front_numbers): max_iterations"
                 )
+            return _calibrated_nll(
+                train, target, field=field, pool_size=pool_size, pick=pick, model=model
+            )
+
+        with patch("lottery.reported_index_pilot._calibrated_nll", side_effect=fail_one):
+            report = build_reported_index_pilot(
+                self.view, self.manifest, code_commit="d" * 40
+            )
+        self.assertEqual(report["reported_index_pilot_status"], "incomplete_with_explicit_failures")
+        self.assertFalse(report["score_coverage"]["complete_coverage"])
+        self.assertEqual(report["score_coverage"]["expected_model_zone_target_records"], 36)
+        self.assertEqual(report["score_coverage"]["scored_model_zone_target_records"], 35)
+        self.assertEqual(report["score_coverage"]["failure_count"], 1)
+        self.assertEqual(report["inference"]["status"], "suppressed_incomplete_coverage")
+        self.assertEqual(report["inference"]["comparison_count"], 0)
+        self.assertEqual(report["comparisons"], {})
+        self.assertEqual(len(report["failures"]), 1)
+        failure = report["failures"][0]
+        self.assertEqual(failure["target_draw_id"], "26007")
+        self.assertEqual(failure["model"], "ewma")
+        self.assertEqual(failure["zone"], "front")
+        self.assertEqual(failure["terminal_status"], "fit_failed")
+        failed_row = next(row for row in report["score_rows"] if row["target_draw_id"] == "26007")
+        self.assertEqual(
+            failed_row["model_scores"]["ewma"]["front"]["terminal_status"], "fit_failed"
+        )
+        self.assertIsNone(failed_row["model_scores"]["ewma"]["front"]["exact_subset_nll"])
 
 
 if __name__ == "__main__":
