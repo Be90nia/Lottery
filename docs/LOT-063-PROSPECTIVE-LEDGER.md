@@ -34,10 +34,11 @@ version and score records.
 ## Deliberate limits
 
 - Raw official source bytes remain in the separate source-evidence archive;
-  this ledger stores their SHA-256 reference only.
+  this ledger stores their SHA-256, immutable object reference and retrieval
+  metadata, but does not duplicate the raw bytes.
 - Evidence and artifact probability verification are injected protected
-  callbacks; this PR does not supply official credentials or model artifact
-  loading.
+  callbacks; score receipts must attest the exact artifact hash and full-support
+  normalization. This PR does not supply official credentials or model loading.
 - Probability-evaluator failures and invalid probability outputs are
   retained as immutable `score_failed` attempts with stable failure codes;
   they never receive an artificial NLL.
