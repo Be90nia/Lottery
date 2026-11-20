@@ -547,7 +547,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                                 "objective": calibration.objective,
                                 "gradient_inf_norm": calibration.gradient_infinity_norm,
                                 "iterations": calibration.iterations,
-                                "optimizer": "conditional_poisson_calibration_lbfgs_v1",
+                                "optimizer": calibration.solver,
                                 "lambda": None,
                             },
                             "training": {
@@ -592,7 +592,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                             objective=calibration.objective,
                             gradient_inf_norm=calibration.gradient_infinity_norm,
                             iterations=calibration.iterations,
-                            optimizer="conditional_poisson_calibration_lbfgs_v1",
+                            optimizer=calibration.solver,
                             regularization_lambda=None,
                             rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
                         )
@@ -606,7 +606,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                         feature_schema=baseline_schema, model_configuration=baseline_config,
                         status=statuses[baseline], reason=str(exc),
                         objective=None, gradient_inf_norm=None, iterations=0,
-                        optimizer="conditional_poisson_calibration_lbfgs_v1",
+                        optimizer=calibration.solver,
                         regularization_lambda=None,
                         rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
                     )
