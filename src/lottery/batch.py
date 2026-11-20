@@ -212,11 +212,20 @@ class ThreeSlotBatchPublisher:
                 validator_id="three-slot-3N-batch/v1",
             )
             committed = self.store.commit(operation_id=staged["operation_id"])
-            pointer = self.store.publish_pointer(
-                name=pointer_name,
-                operation_id=staged["operation_id"],
-                expected_generation=expected_pointer_generation,
-            )
+            try:
+                # Keep the Champion CAS lock held through the single visible
+                # pointer update. A check immediately before staging alone
+                # leaves a race while objects are being committed.
+                with lifecycle.generation_guard(resolved["registry_generation"]):
+                    pointer = self.store.publish_pointer(
+                        name=pointer_name,
+                        operation_id=staged["operation_id"],
+                        expected_generation=expected_pointer_generation,
+                    )
+            except LifecycleError as exc:
+                raise BatchPublicationError(
+                    "Champion registry changed before batch pointer publication"
+                ) from exc
         except (StorageError, ValueError) as exc:
             raise BatchPublicationError(f"batch storage/publication failed closed: {exc}") from exc
         return {
