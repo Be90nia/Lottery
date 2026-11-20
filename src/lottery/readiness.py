@@ -211,15 +211,35 @@ def _validate_gates(gate_document: dict[str, Any], evidence_root: Path) -> tuple
         fault_tests = gate.get("fault_tests", [])
         if not isinstance(fault_tests, list):
             raise ReadinessError(f"{gate_id}.fault_tests must be an array")
+        verified_fault_tests = []
         for fault_index, fault in enumerate(fault_tests):
             fault = _require_mapping(fault, f"{gate_id}.fault_tests[{fault_index}]")
             if (not isinstance(fault.get("test_id"), str) or not fault["test_id"]
                     or not isinstance(fault.get("expected_state"), str)
                     or not isinstance(fault.get("observed_state"), str)
+                    or not isinstance(fault.get("recovery_action"), str)
+                    or not fault["recovery_action"]
                     or type(fault.get("passed")) is not bool):
                 raise ReadinessError(f"{gate_id}.fault_tests[{fault_index}] has an invalid receipt")
+            fault_evidence = _verify_evidence(
+                fault.get("evidence", []), evidence_root,
+                f"{gate_id}.fault_tests[{fault_index}]",
+            )
+            if not fault_evidence:
+                raise ReadinessError(
+                    f"{gate_id}.fault_tests[{fault_index}] requires immutable evidence"
+                )
             if status == "PASS" and not fault["passed"]:
                 raise ReadinessError(f"{gate_id} cannot PASS with a failed fault-injection receipt")
+            verified_fault_tests.append({
+                **fault,
+                "verified_evidence": fault_evidence,
+            })
+            all_evidence.extend({
+                "gate_id": gate_id,
+                "fault_test_id": fault["test_id"],
+                **item,
+            } for item in fault_evidence)
         by_id[gate_id] = {
             "gate_id": gate_id,
             "name": GATE_NAMES[gate_id],
@@ -227,7 +247,7 @@ def _validate_gates(gate_document: dict[str, Any], evidence_root: Path) -> tuple
             "summary": gate.get("summary", ""),
             "blockers": list(blockers),
             "verified_evidence": verified,
-            "fault_tests": fault_tests,
+            "fault_tests": verified_fault_tests,
         }
         all_evidence.extend({"gate_id": gate_id, **item} for item in verified)
     missing = set(GATE_IDS).difference(by_id)
