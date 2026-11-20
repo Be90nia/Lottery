@@ -49,6 +49,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         common = {
             "schema_version": 1,
             "artifact_schema": "lottery.subset-probability-model/v1",
+                    "artifact_type": "fitted_model",
             "zone": "front", "population_size": 35, "selection_size": 5,
             "support": {"population_size": 35, "selection_size": 5,
                         "support_count": 324632, "subset_order": "lexicographic_ascending"},
