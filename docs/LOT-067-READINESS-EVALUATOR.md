@@ -3,7 +3,7 @@
 This slice implements an offline, fail-closed evaluator. It does not claim the
 system is ready merely because code or an issue exists.
 
-## Inputs
+## Machine-readable contracts\n\nThe versioned policy and JSON Schemas live in `schemas/readiness-policy-v1.json`, `schemas/release-manifest-v1.schema.json`, `schemas/readiness-gate-results-v1.schema.json`, `schemas/readiness-fault-results-v1.schema.json`, and `schemas/readiness-report-v1.schema.json`. Unit tests assert that the executable evaluator constants match the policy file.\n\n## Inputs
 
 - A release manifest pins an immutable source commit, workflow policy,
   dependency lock, canonical snapshot digest, and explicit LOT-042 isolation.
