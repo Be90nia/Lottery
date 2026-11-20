@@ -9,6 +9,7 @@ on:
       - feat/lot-063-prospective-score-ledger
     paths:
       - .github/workflows/subset-research.yml
+      - src/lottery/subset_model/artifact.py
       - src/lottery/subset_model/conditional_poisson.py
       - src/lottery/subset_model/exponential.py
       - src/lottery/subset_model/artifact.py
