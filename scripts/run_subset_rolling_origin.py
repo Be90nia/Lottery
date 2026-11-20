@@ -575,8 +575,19 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "objective_scale": "mean_nll", "regularization_lambda": 1.0,
         "solver": "deterministic_unbounded_lbfgsb_strong_wolfe_v1",
         "solver_policy_note": "Unbounded L-BFGS-B specialization: this model has no box constraints, so the active-set step reduces to L-BFGS; deterministic strong-Wolfe line search is used.",
-        "bootstrap": {"replicates": BOOTSTRAP_REPLICATES, "block_length": BOOTSTRAP_BLOCK,
-                      "seed": BOOTSTRAP_SEED, "method": "paired non-circular moving-block percentile CI"},
+        "bootstrap": {
+            "replicates": BOOTSTRAP_REPLICATES,
+            "block_length": BOOTSTRAP_BLOCK,
+            "seed": BOOTSTRAP_SEED,
+            "seeds_by_zone_and_comparison": {
+                "front": {"uniform": BOOTSTRAP_SEED, "expanding": BOOTSTRAP_SEED + 1,
+                          "ewma": BOOTSTRAP_SEED + 2},
+                "back": {"uniform": BOOTSTRAP_SEED + 1, "expanding": BOOTSTRAP_SEED + 2,
+                         "ewma": BOOTSTRAP_SEED + 3},
+            },
+            "seed_policy": "zone base seed plus comparator index in uniform/expanding/ewma order",
+            "method": "paired non-circular moving-block percentile CI and null-centered one-sided bootstrap test",
+        },
         "front": front, "back": back,
         "descriptive_ci_pass": bool(descriptive_ci_pass),
         "confirmatory_family": {
