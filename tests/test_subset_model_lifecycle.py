@@ -110,7 +110,9 @@ def model_payload(zone="front", snapshot_hash="a" * 64):
     }
 
 
-def evaluation_receipt(artifact_id, population_key, zone, *, passed=True,\n                       snapshot_hash="a" * 64, population_eligibility="pooled_equipment_blind",\n                       population_evidence_sha256=None):
+def evaluation_receipt(artifact_id, population_key, zone, *, passed=True,
+                       snapshot_hash="a" * 64, population_eligibility="pooled_equipment_blind",
+                       population_evidence_sha256=None):
     return {
         "schema_version": EVALUATION_SCHEMA,
         "artifact_id": artifact_id,
@@ -166,7 +168,9 @@ class ChampionLifecycleTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def register_and_validate(self, population_key="regime-a|reported-1", zone="front", passed=True,\n                              snapshot_hash="a" * 64, population_eligibility="pooled_equipment_blind",\n                              population_evidence_sha256=None):
+    def register_and_validate(self, population_key="regime-a|reported-1", zone="front", passed=True,
+                              snapshot_hash="a" * 64, population_eligibility="pooled_equipment_blind",
+                              population_evidence_sha256=None):
         artifact_payload = model_payload(zone, snapshot_hash)
         from lottery.subset_model.artifact import create_artifact
         _, artifact_id = create_artifact(artifact_payload)
@@ -179,7 +183,11 @@ class ChampionLifecycleTests(unittest.TestCase):
             actor="test-suite",
             workflow_run_id="run-fixture",
         )
-        receipt = evaluation_receipt(\n            artifact_id, population_key, zone, passed=passed, snapshot_hash=snapshot_hash,\n            population_eligibility=population_eligibility,\n            population_evidence_sha256=population_evidence_sha256,\n        )
+        receipt = evaluation_receipt(
+            artifact_id, population_key, zone, passed=passed, snapshot_hash=snapshot_hash,
+            population_eligibility=population_eligibility,
+            population_evidence_sha256=population_evidence_sha256,
+        )
         validated = self.store.validate_candidate(
             population_key=population_key,
             zone=zone,
