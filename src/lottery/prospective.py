@@ -514,7 +514,6 @@ class ProspectiveLedger:
             "status": "eligible" if not reasons else "ineligible",
             "reason_codes": reasons,
         }
-        record["forecast_id"] = _sha(canonicalize(record))
         key = (
             front_artifact_sha256, back_artifact_sha256, target_draw_id,
             zone, population_key, forecast_policy_version,
@@ -522,6 +521,24 @@ class ProspectiveLedger:
         )
         with ledger_lock(self.path):
             snapshot = self._snapshot_unlocked()
+            expected_id = snapshot["expectation_keys"].get(key)
+            if expected_id is None:
+                raise ProspectiveLedgerError("forecast must be pre-registered before issuance")
+            expected = snapshot["expectations"][expected_id]
+            bound_fields = (
+                "target_draw_id", "target_draw_at_utc", "target_cutoff_utc",
+                "target_cutoff_timezone_source", "front_artifact_sha256",
+                "back_artifact_sha256", "active_registry_snapshot_id", "lifecycle_state",
+                "model_spec_sha256", "zone", "population_key", "training_snapshot_sha256",
+                "training_first_draw_id", "training_last_draw_id", "training_row_count",
+                "training_last_draw_date", "registry_generation", "forecast_policy_version",
+                "scoring_policy_version", "model_family", "code_commit", "runtime",
+                "source_evidence_manifest_sha256",
+            )
+            if any(record[field] != expected[field] for field in bound_fields):
+                raise ProspectiveLedgerError("issued forecast does not match its pre-registered expectation")
+            record["expected_forecast_id"] = expected_id
+            record["forecast_id"] = _sha(canonicalize(record))
             existing_id = snapshot["forecast_keys"].get(key)
             if existing_id is not None:
                 if existing_id == record["forecast_id"]:
@@ -647,7 +664,6 @@ class ProspectiveLedger:
             "status": "missing_at_cutoff",
             "reason_codes": ["forecast_missing_at_cutoff"],
         }
-        record["forecast_id"] = _sha(canonicalize(record))
         key = (
             front_artifact_sha256, back_artifact_sha256, target_draw_id,
             zone, population_key, forecast_policy_version,
@@ -655,6 +671,24 @@ class ProspectiveLedger:
         )
         with self._lock():
             snapshot = self._snapshot_unlocked()
+            expected_id = snapshot["expectation_keys"].get(key)
+            if expected_id is None:
+                raise ProspectiveLedgerError("missing-at-cutoff finalization requires a pre-registered expectation")
+            expected = snapshot["expectations"][expected_id]
+            bound_fields = (
+                "target_draw_id", "target_draw_at_utc", "target_cutoff_utc",
+                "target_cutoff_timezone_source", "expected_at_utc", "front_artifact_sha256",
+                "back_artifact_sha256", "active_registry_snapshot_id", "lifecycle_state",
+                "model_spec_sha256", "zone", "population_key", "training_snapshot_sha256",
+                "training_first_draw_id", "training_last_draw_id", "training_row_count",
+                "training_last_draw_date", "registry_generation", "forecast_policy_version",
+                "scoring_policy_version", "model_family", "code_commit", "runtime",
+                "source_evidence_manifest_sha256",
+            )
+            if any(record[field] != expected[field] for field in bound_fields):
+                raise ProspectiveLedgerError("missing forecast does not match its pre-registered expectation")
+            record["expected_forecast_id"] = expected_id
+            record["forecast_id"] = _sha(canonicalize(record))
             existing = snapshot["forecast_keys"].get(key)
             if existing is not None:
                 if existing == record["forecast_id"]:
