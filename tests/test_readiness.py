@@ -80,12 +80,12 @@ class ReadinessTests(unittest.TestCase):
             gate["evidence"] = [{"path": "receipt.txt", "sha256": self.proof_hash}]
         for fault in self.faults:
             fault["status"] = "PASS"
-        report = evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
+        report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         self.assertEqual(report["readiness"], "READY_FOR_SHADOW")
         self.assertFalse(report["production_ready"])
 
     def test_missing_gate_and_fault_results_fail_closed_with_named_blockers(self):
-        report = evaluate_readiness(
+        report = self.evaluate(
             self.manifest, self.gates[:-1], self.faults[:-1], self.evidence
         )
         self.assertEqual(report["readiness"], "READY_FOR_OFFLINE_VALIDATION")
@@ -94,20 +94,20 @@ class ReadinessTests(unittest.TestCase):
 
     def test_pass_without_evidence_is_downgraded(self):
         self.gates[0]["evidence"] = []
-        report = evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
+        report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         self.assertEqual(report["readiness"], "NOT_READY")
         self.assertEqual(report["gate_states"]["G0"], "FAIL")
         self.assertIn("G0:pass_without_evidence", report["blockers"])
 
     def test_evidence_hash_mismatch_fails_gate(self):
         self.gates[0]["evidence"][0]["sha256"] = "f" * 64
-        report = evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
+        report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         self.assertEqual(report["gate_states"]["G0"], "FAIL")
         self.assertEqual(report["readiness"], "NOT_READY")
 
     def test_path_traversal_and_symlinks_are_rejected(self):
         self.gates[0]["evidence"] = [{"path": "../outside", "sha256": self.proof_hash}]
-        report = evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
+        report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         self.assertEqual(report["gate_states"]["G0"], "FAIL")
         link = self.evidence / "linked.txt"
         try:
@@ -115,13 +115,13 @@ class ReadinessTests(unittest.TestCase):
         except (OSError, NotImplementedError):
             self.skipTest("symlinks unavailable")
         self.gates[0]["evidence"] = [{"path": "linked.txt", "sha256": self.proof_hash}]
-        report = evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
+        report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         self.assertEqual(report["gate_states"]["G0"], "FAIL")
 
     def test_fault_mismatch_or_uninjected_fault_is_not_a_pass(self):
         self.faults[0]["observed_state"] = "published_partial_output"
         self.faults[1]["injected"] = False
-        report = evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
+        report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         self.assertNotEqual(report["fault_states"]["F01"], "PASS")
         self.assertNotEqual(report["fault_states"]["F02"], "PASS")
         self.assertIn("F02:blocked", report["blockers"])
@@ -134,20 +134,20 @@ class ReadinessTests(unittest.TestCase):
             gate["evidence"] = [{"path": "receipt.txt", "sha256": self.proof_hash}]
         for fault in self.faults:
             fault["status"] = "PASS"
-        report = evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
+        report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         self.assertEqual(report["readiness"], "NOT_READY")
         self.assertTrue(any("LOT-042" in blocker for blocker in report["blockers"]))
 
     def test_mutable_release_ref_and_duplicate_gate_are_rejected(self):
         self.manifest["release_ref"] = "main"
         with self.assertRaisesRegex(ReadinessError, "mutable refs"):
-            evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
+            self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         self.manifest["release_ref"] = self.manifest["source_commit"]
         with self.assertRaisesRegex(ReadinessError, "duplicate gate_results"):
-            evaluate_readiness(self.manifest, self.gates + [self.gates[0]], self.faults, self.evidence)
+            self.evaluate(self.manifest, self.gates + [self.gates[0]], self.faults, self.evidence)
 
     def test_report_is_immutable_no_clobber(self):
-        report = evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
+        report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         output = self.root / "readiness.json"
         write_readiness_report(report, output)
         original = output.read_bytes()
@@ -158,15 +158,15 @@ class ReadinessTests(unittest.TestCase):
     def test_closed_input_schemas_reject_unknown_fields(self):
         bad_manifest = dict(self.manifest, unexpected=True)
         with self.assertRaisesRegex(ReadinessError, "unknown fields"):
-            evaluate_readiness(bad_manifest, self.gates, self.faults, self.evidence)
+            self.evaluate(bad_manifest, self.gates, self.faults, self.evidence)
         bad_gates = [dict(item) for item in self.gates]
         bad_gates[0]["unexpected"] = True
         with self.assertRaisesRegex(ReadinessError, "gate result has missing or unknown"):
-            evaluate_readiness(self.manifest, bad_gates, self.faults, self.evidence)
+            self.evaluate(self.manifest, bad_gates, self.faults, self.evidence)
         bad_faults = [dict(item) for item in self.faults]
         bad_faults[0]["unexpected"] = True
         with self.assertRaisesRegex(ReadinessError, "fault result has missing or unknown"):
-            evaluate_readiness(self.manifest, self.gates, bad_faults, self.evidence)
+            self.evaluate(self.manifest, self.gates, bad_faults, self.evidence)
 
     def test_machine_readable_policy_matches_evaluator_constants(self):
         policy_path = Path(__file__).resolve().parents[1] / "policies" / "readiness-policy-v1.json"
