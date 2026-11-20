@@ -228,6 +228,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.assertEqual(report["expected_forecast_records"], 2)
         self.assertEqual(report["forecast_records"], 1)
         self.assertEqual(report["unresolved_expected_forecasts"], 1)
+        self.assertEqual(report["by_zone"]["front"]["unresolved"], 1)
 
     def test_missing_forecast_at_cutoff_is_immutable_terminal_record(self):
         kwargs = {
@@ -269,6 +270,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.assertEqual(report["unresolved_expected_forecasts"], 0)
         self.assertEqual(report["forecast_missing_at_cutoff"], 1)
         self.assertEqual(report["ineligible"], 1)
+        self.assertEqual(report["by_zone"]["front"]["missing_at_cutoff"], 1)
         changed = dict(kwargs, checked_at_utc="2026-11-21T12:02:00+00:00")
         with self.assertRaisesRegex(ProspectiveLedgerError, "duplicate artifact"):
             self.ledger.record_missing_forecast(**changed)
@@ -501,7 +503,11 @@ class ProspectiveLedgerTests(unittest.TestCase):
             scorer_version="coverage-test-v1",
             log_probability=score_result(-10.5),
         )
-        self.assertEqual(self.ledger.coverage_report()["eligible_pending"], 0)
+        final_report = self.ledger.coverage_report()
+        self.assertEqual(final_report["eligible_pending"], 0)
+        self.assertEqual(final_report["by_zone"]["front"]["scored_current"], 1)
+        self.assertEqual(final_report["by_population_key"]["pooled-equipment-blind"]["scored_current"], 1)
+        self.assertEqual(final_report["by_model_family"]["complete_subset_exponential"]["scored_current"], 1)
 
     def test_ledger_hash_chain_detects_tampering(self):
         self.record_official_outcome()
