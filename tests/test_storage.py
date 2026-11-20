@@ -159,7 +159,7 @@ class FileSystemObjectStoreTests(unittest.TestCase):
         self.assertEqual(recovered, pointer)
         receipt = self.store.publications / f"active-inventory.{staged['operation_id']}.json"
         self.assertTrue(receipt.exists())
-        self.assertEqual(_read_canonical(receipt)["published_at_utc"], pointer["published_at_utc"])
+        self.assertEqual(storage_module._read_canonical(receipt)["published_at_utc"], pointer["published_at_utc"])
         self.assertEqual(self.store.reconcile()["missing_publication_receipts"], [])
 
     def test_reconciliation_detects_corrupt_publication_receipt(self):
