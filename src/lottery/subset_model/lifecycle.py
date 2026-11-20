@@ -383,6 +383,11 @@ class ChampionLifecycle:
                 self._artifact_path(artifact_id)
             if any(not isinstance(v, dict) for v in slot["validation"].values()):
                 raise LifecycleError("Champion validation references are malformed")
+            for shadow_record in slot["shadow_validation"].values():
+                if (not isinstance(shadow_record, dict)
+                        or type(shadow_record.get("eligible")) is not bool
+                        or not _is_sha(shadow_record.get("receipt_sha256"))):
+                    raise LifecycleError("Champion shadow validation references are malformed")
             for approval_hash in slot["approval"].values():
                 if not _is_sha(approval_hash):
                     raise LifecycleError("Champion approval hash is malformed")
@@ -930,6 +935,13 @@ class ChampionLifecycle:
                     or slot.get("champion_artifact_id") != transition["expected_champion_artifact_id"]
                 ):
                     raise StaleRegistryError("a three-slot pointer changed before atomic commit")
+                shadow_hash = transition["shadow_receipt_sha256"]
+                if shadow_hash is not None:
+                    current_shadow = slot.get("shadow_validation", {}).get(transition["artifact_id"])
+                    if (slot.get("shadow_artifact_id") != transition["artifact_id"] or not current_shadow
+                            or current_shadow.get("eligible") is not True
+                            or current_shadow.get("receipt_sha256") != shadow_hash):
+                        raise StaleRegistryError("a three-slot shadow receipt changed before atomic commit")
                 retired = list(slot.get("retired_artifact_ids", []))
                 old_champion = transition["expected_champion_artifact_id"]
                 if old_champion is not None and old_champion not in retired:
@@ -1033,6 +1045,12 @@ class ChampionLifecycle:
                 raise StaleRegistryError("Champion/challenger/shadow pointers changed before promotion")
             if slot.get("suspended") is True:
                 raise LifecycleError("suspended slot cannot be promoted without an explicit revalidation")
+            if shadow_hash is not None:
+                current_shadow = slot.get("shadow_validation", {}).get(artifact_id)
+                if (slot.get("shadow_artifact_id") != artifact_id or not current_shadow
+                        or current_shadow.get("eligible") is not True
+                        or current_shadow.get("receipt_sha256") != shadow_hash):
+                    raise StaleRegistryError("prospective shadow receipt changed before promotion")
             retired = list(slot.get("retired_artifact_ids", []))
             if expected_champion_artifact_id is not None and expected_champion_artifact_id not in retired:
                 retired.append(expected_champion_artifact_id)
