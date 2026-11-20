@@ -22,7 +22,8 @@ version and score records.
   current version; prior outcomes and prior scores remain immutable.
 - Exact-set scoring is per forecast artifact × target × zone, using a supplied
   evaluator receipt that must bind the exact artifact hash and attest full-support
-  normalization; uniform exact-set NLL is recorded on the identical outcome.
+  normalization; the receipt digest, paired front/back artifact hashes and
+  uniform exact-set NLL are persisted against the identical outcome.
 - Invalid, positive, zero or non-finite log probabilities fail closed; no
   arbitrary penalty score is assigned.
 - Duplicate forecast/outcome/score retries are idempotent; changed forecast
@@ -45,8 +46,9 @@ version and score records.
 - Expected forecast slots must be pre-registered before cutoff; issuance
   must match that expectation. The cutoff finalizer appends an immutable
   missing-at-cutoff terminal record and prevents later backfill. Coverage
-  reports expected, issued, missing and unresolved denominators. Automated
-  scheduler integration to register every slot and invoke the finalizer remains.
+  reports expected, issued, missing, unresolved, outcome and score states by
+  zone, population key and model family. Automated scheduler integration to
+  register every slot and invoke the finalizer remains.
 - This does not enable model refresh, Champion mutation, rollback or serving.
 - The existing operational forecast/outcome ledger remains the raw ingestion
   and ticket-provenance layer; this exact-subset ledger is a separate statistical
