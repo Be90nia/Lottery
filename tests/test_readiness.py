@@ -148,6 +148,15 @@ class ReadinessTests(unittest.TestCase):
             write_readiness_report(report, output)
         self.assertEqual(output.read_bytes(), original)
 
+    def test_machine_readable_policy_matches_evaluator_constants(self):
+        policy_path = Path(__file__).resolve().parents[1] / "schemas" / "readiness-policy-v1.json"
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
+        self.assertEqual(policy["schema"], "lottery.readiness-policy/v1")
+        self.assertEqual(tuple(policy["gates"]), GATES)
+        self.assertEqual(tuple(policy["faults"]), FAULTS)
+        self.assertEqual(tuple(policy["offline"]["required_gates"]), ("G0", "G1", "G2", "G3"))
+        self.assertFalse(policy["production"]["enabled"])
+
     def test_strict_json_rejects_duplicate_keys(self):
         path = self.root / "duplicate.json"
         path.write_text('{"a":1,"a":2}', encoding="utf-8")
