@@ -62,8 +62,15 @@ def main() -> int:
 
         for number, line in enumerate(lines, 1):
             if re.match(r"^\s*-?\s*uses:\s*actions/checkout@", line):
-                block = "\n".join(lines[number : min(number + 4, len(lines))])
-                if not re.search(r"persist-credentials:\s*false", block):
+                line_indent = len(line) - len(line.lstrip())
+                step_indent = line_indent if line.lstrip().startswith("- uses:") else line_indent - 2
+                step_lines: list[str] = []
+                for candidate in lines[number:]:
+                    candidate_indent = len(candidate) - len(candidate.lstrip())
+                    if candidate.strip().startswith("- ") and candidate_indent <= step_indent:
+                        break
+                    step_lines.append(candidate)
+                if not re.search(r"persist-credentials:\s*false", "\n".join(step_lines)):
                     errors.append(
                         f"{path}:{number}: checkout must set persist-credentials: false"
                     )
