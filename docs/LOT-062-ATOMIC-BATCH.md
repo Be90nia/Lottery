@@ -18,6 +18,11 @@ verified Champion resolver with the LOT-065 immutable object store.
   HMAC-SHA256 over population key, zone and exact artifact ID. The sampler
   receives only derived seed bytes; the manifest stores stream IDs and the
   protected seed reference, never the raw master seed.
+- Includes the full sorted registry snapshot and its SHA-256 identity, per-zone
+  artifact training cutoff/inventory/evidence/evaluation/approval provenance,
+  and stable ticket IDs bound to request, population slot and ticket contents.
+- Enforces a conservative offline maximum of 100 tickets per slot (300 total)
+  before resolving the registry or invoking the sampler.
 - Holds the Champion registry CAS lock through the batch-pointer publication.
   A registry change after object commit but before pointer publication leaves
   only an unreferenced immutable object for reconciliation; it cannot publish
@@ -33,10 +38,12 @@ verified Champion resolver with the LOT-065 immutable object store.
 
 ## Deliberate limits
 
-- The sampler is injected; this PR verifies the per-slot seed inputs and
-  provenance but cannot prove an injected callback actually uses those seeds
-  or samples from the bound artifacts. The production sampler must be a
-  separately verified adapter over the exact model artifacts.
+- The sampler is injected; this PR verifies and passes the per-slot seed inputs
+  and pinned algorithm/version but cannot prove an injected callback actually
+  consumes those seeds or samples from the bound artifacts. The production
+  sampler must be a separately verified adapter over the exact model artifacts.
+- The 100-ticket ceiling is a conservative offline cap, not a production load
+  certification; raise it only after measured resource and latency testing.
 - This PR does not claim three statistically independent ball populations
   or infer physical set identity.
 - The protected seed itself is not stored in the manifest; only its commitment
