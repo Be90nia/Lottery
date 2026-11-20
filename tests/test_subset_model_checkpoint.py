@@ -17,6 +17,7 @@ from run_subset_rolling_origin import (
 class ConfirmatoryGateTests(unittest.TestCase):
     def test_all_four_policy_and_result_gates_are_required(self):
         accepted = dict(
+            experiment_registration_approved=True,
             solver_policy_approved=True,
             multiplicity_policy_approved=True,
             non_regression_policy_approved=True,
