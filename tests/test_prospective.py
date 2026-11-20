@@ -30,9 +30,40 @@ def outcome_metadata(source, retrieved="2026-11-20T13:30:00+00:00"):
 
 
 class ProspectiveLedgerTests(unittest.TestCase):
+    def register_expectation(self, **overrides):
+        values = {
+            "target_draw_id": "26131",
+            "target_draw_at_utc": "2026-11-20T13:00:00+00:00",
+            "target_cutoff_utc": "2026-11-20T12:00:00+00:00",
+            "target_cutoff_timezone_source": "official_schedule/v1",
+            "expected_at_utc": "2026-11-20T10:00:00+00:00",
+            "zone": "front",
+            "population_key": "pooled-equipment-blind",
+            "front_artifact_sha256": sha("artifact-front"),
+            "back_artifact_sha256": sha("artifact-back"),
+            "active_registry_snapshot_id": sha("registry-snapshot"),
+            "lifecycle_state": "champion",
+            "model_spec_sha256": sha("model-spec"),
+            "training_snapshot_sha256": sha("training-snapshot"),
+            "training_first_draw_id": "09054",
+            "training_last_draw_id": "26130",
+            "training_row_count": 2948,
+            "training_last_draw_date": "2026-11-19",
+            "registry_generation": 7,
+            "forecast_policy_version": "prospective-v1",
+            "scoring_policy_version": "exact-set-nll/v1",
+            "model_family": "complete_subset_exponential",
+            "code_commit": "a" * 40,
+            "runtime": "CPython 3.12",
+            "source_evidence_manifest_sha256": sha("source-evidence"),
+        }
+        values.update(overrides)
+        return self.ledger.register_expected_forecast(**values)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.ledger = ProspectiveLedger(Path(self.temp.name) / "prospective.jsonl")
+        self.register_expectation()
         self.forecast = self.ledger.issue_forecast(
             target_draw_id="26131",
             target_draw_at_utc="2026-11-20T13:00:00+00:00",
@@ -92,6 +123,22 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.assertEqual(self.ledger.snapshot()["forecasts"][self.forecast["forecast_id"]], self.forecast)
 
     def test_late_forecast_and_training_leakage_are_recorded_ineligible(self):
+        self.register_expectation(
+            target_draw_id="26132",
+            target_draw_at_utc="2026-11-21T13:00:00+00:00",
+            target_cutoff_utc="2026-11-21T12:00:00+00:00",
+            expected_at_utc="2026-11-21T10:00:00+00:00",
+            zone="back",
+            front_artifact_sha256=sha("front-artifact-late"),
+            back_artifact_sha256=sha("artifact-late"),
+            active_registry_snapshot_id=sha("registry-snapshot-late"),
+            model_spec_sha256=sha("model-spec"),
+            training_snapshot_sha256=sha("training-late"),
+            training_last_draw_id="26131",
+            training_last_draw_date="2026-11-20",
+            code_commit="b" * 40,
+            source_evidence_manifest_sha256=None,
+        )
         late = self.ledger.issue_forecast(
             target_draw_id="26132",
             target_draw_at_utc="2026-11-21T13:00:00+00:00",
@@ -157,6 +204,9 @@ class ProspectiveLedgerTests(unittest.TestCase):
             "code_commit": "a" * 40,
             "runtime": "CPython 3.12",
         }
+        self.ledger.register_expected_forecast(**{
+            key: value for key, value in kwargs.items() if key != "checked_at_utc"
+        })
         first = self.ledger.record_missing_forecast(**kwargs)
         self.assertEqual(first["status"], "missing_at_cutoff")
         self.assertEqual(first["reason_codes"], ["forecast_missing_at_cutoff"])
