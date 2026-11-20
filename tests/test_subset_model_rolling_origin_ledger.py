@@ -169,7 +169,29 @@ def _fixture(fail_candidate=False):
         if fail_candidate:
             statuses["candidate"] = "line_search_failed"
             scores["exponential_family"] = None
-            artifacts["candidate"] = None
+            failure_payload = dict(candidate_payload)
+            failure_payload["artifact_type"] = "fit_failure"
+            failure_payload["fit"] = dict(
+                failure_payload["fit"], status="line_search_failed",
+                termination_reason="line search failed", objective=None,
+                gradient_inf_norm=None,
+            )
+            failure_payload["fit_diagnostics"] = {
+                "terminal_status": "line_search_failed", "converged": False,
+                "message": "line search failed",
+            }
+            failure_payload["parameters"] = {
+                "parameter_order": "feature_schema.names", "parameters_available": False,
+            }
+            failure_payload["normalization"] = {
+                "method": "not_computed", "log_partition": None, "numeric_dtype": "float64",
+            }
+            failure_payload["failure_reason"] = "line_search_failed"
+            failure_payload.pop("theta", None)
+            failure_raw, failure_id = create_artifact(failure_payload)
+            artifacts["candidate"] = {
+                "artifact_id": failure_id, "payload": json.loads(failure_raw)
+            }
         records[zone] = {
             "target_draw_id": rows[300]["draw_id"],
             "target_draw_date": rows[300]["draw_date"],
@@ -251,6 +273,8 @@ class ImmutableRollingOriginLedgerTests(unittest.TestCase):
             self.assertTrue(all(r["terminal_status"] == "fit_failed" for r in candidate_rows))
             self.assertTrue(all(r["negative_log_score"] is None for r in candidate_rows))
             self.assertTrue(all(r["predicted_log_probability"] is None for r in candidate_rows))
+            self.assertTrue(all(r["artifact_id"] and r["diagnostic_ref"] == r["artifact_id"]
+                                for r in candidate_rows))
 
     def test_rejects_training_date_leakage_even_when_boolean_claim_is_true(self):
         rows, result = _fixture()
