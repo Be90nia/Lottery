@@ -164,6 +164,32 @@ class ModelArtifactTests(unittest.TestCase):
         with self.assertRaises(ArtifactValidationError):
             create_artifact(payload)
 
+    def test_failed_fit_has_content_addressed_diagnostic_artifact(self):
+        payload = exponential_payload()
+        payload["artifact_type"] = "fit_failure"
+        payload["fit"] = dict(
+            payload["fit"], status="line_search_failed",
+            termination_reason="strong-Wolfe search exhausted",
+            objective=None, gradient_inf_norm=None,
+        )
+        payload["fit_diagnostics"] = {
+            "terminal_status": "line_search_failed", "converged": False,
+            "message": "strong-Wolfe search exhausted",
+        }
+        payload["parameters"] = {
+            "parameter_order": "feature_schema.names", "parameters_available": False,
+        }
+        payload["normalization"] = {
+            "method": "not_computed", "log_partition": None, "numeric_dtype": "float64",
+        }
+        payload["failure_reason"] = "line_search_failed"
+        payload.pop("theta", None)
+        raw, artifact_id = create_artifact(payload)
+        verified = verify_artifact(raw)
+        self.assertEqual(verified["artifact_id"], artifact_id)
+        self.assertEqual(verified["artifact_type"], "fit_failure")
+        self.assertFalse(verified["forecast_ready"])
+
     def test_conditional_poisson_family_requires_centered_weights(self):
         p = 2 / 12
         runtime = {}
