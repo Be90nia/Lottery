@@ -285,11 +285,19 @@ def validate_model_artifact(payload: dict) -> None:
     if not isinstance(parameters, dict) or parameters.get("parameter_order") != "feature_schema.names":
         raise ArtifactValidationError("parameter order must bind to feature_schema.names")
     if artifact_type == "fit_failure":
+        if payload["model_family"] not in ("complete_subset_exponential", "conditional_poisson"):
+            raise ArtifactValidationError("fit failure artifact has an unknown model family")
         if (fit["status"] == "converged" or not isinstance(payload.get("failure_reason"), str)
                 or not payload["failure_reason"] or parameters.get("parameters_available") is not False):
             raise ArtifactValidationError("fit failure artifact must carry a stable failure reason and no parameters")
         if payload["fit_diagnostics"].get("terminal_status") != fit["status"]:
             raise ArtifactValidationError("failed fit status envelope does not match diagnostics")
+        if payload["fit_diagnostics"].get("converged") is not False:
+            raise ArtifactValidationError("failed fit diagnostics must explicitly record converged=false")
+        if payload["model_family"] == "complete_subset_exponential" and fit.get("lambda") != 1.0:
+            raise ArtifactValidationError("failed exponential fit must preserve the registered lambda")
+        if payload["model_family"] == "conditional_poisson" and fit.get("lambda") is not None:
+            raise ArtifactValidationError("failed conditional-Poisson fit cannot carry exponential L2 lambda")
         return
     if fit["status"] != "converged":
         raise ArtifactValidationError("non-converged fits cannot be serialized as fitted model artifacts")
