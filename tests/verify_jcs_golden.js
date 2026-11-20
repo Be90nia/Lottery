@@ -32,4 +32,15 @@ const canonical = canonicalize(fixture.input);
 assert.equal(canonical, fixture.canonical_utf8);
 const digest = crypto.createHash("sha256").update(canonical, "utf8").digest("hex");
 assert.equal(digest, fixture.sha256);
-process.stdout.write("JCS cross-language golden vector passed: " + digest + "\n");
+for (const vector of fixture.binary64_vectors) {
+  const number = Buffer.from(vector.hex, "hex").readDoubleBE(0);
+  assert.equal(canonicalize(number), vector.expected, "RFC 8785 vector " + vector.hex);
+}
+for (const hex of fixture.invalid_binary64_vectors) {
+  const number = Buffer.from(hex, "hex").readDoubleBE(0);
+  assert.throws(() => canonicalize(number), "invalid binary64 vector " + hex);
+}
+process.stdout.write(
+  "JCS cross-language golden fixture and RFC 8785 Appendix B vectors passed: "
+  + digest + "\n"
+);
