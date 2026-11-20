@@ -801,8 +801,17 @@ class ProspectiveLedger:
                 if existing == record["forecast_id"]:
                     return snapshot["forecasts"][existing]
                 raise ProspectiveLedgerError("duplicate artifact × target × zone forecast")
+            occurred_at = self._now()
+            if occurred_at < cutoff:
+                raise ProspectiveLedgerError(
+                    "missing forecast cannot be finalized before the ledger clock reaches cutoff"
+                )
+            if checked_at > occurred_at:
+                raise ProspectiveLedgerError("checked_at_utc cannot be later than the ledger event time")
             event_id = _sha(f"forecast-missing:{record['forecast_id']}".encode("utf-8"))
-            self._append_locked(event_id, "forecast_missing", record)
+            self._append_locked(
+                event_id, "forecast_missing", record, occurred_at=occurred_at
+            )
         return record
 
     def record_outcome(
