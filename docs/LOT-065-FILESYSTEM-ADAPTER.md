@@ -17,7 +17,8 @@ as a production durable-storage deployment.
 - Read-only reconciliation of staged, validated, committed, and referenced
   objects, including missing or corrupt publication receipts after a pointer
   replacement. A crash window is visible until the same operation is retried
-  and its immutable publication receipt is recovered.
+  and its immutable publication receipt is recovered. The pointer and receipt
+  carry the same immutable UTC publication timestamp, which survives retries.
 
 ## Deliberate limits
 
