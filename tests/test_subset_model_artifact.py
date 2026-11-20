@@ -42,6 +42,7 @@ def exponential_payload():
     return {
         "schema_version": 1,
         "artifact_schema": "lottery.subset-probability-model/v1",
+                    "artifact_type": "fitted_model",
         "model_family": "complete_subset_exponential",
         "zone": "front", "population_size": 35, "selection_size": 5,
         "support": {"population_size": 35, "selection_size": 5,
@@ -174,6 +175,7 @@ class ModelArtifactTests(unittest.TestCase):
         names = [f"item_{item}" for item in range(1, 13)]
         payload = {
             "schema_version": 1, "artifact_schema": "lottery.subset-probability-model/v1",
+                    "artifact_type": "fitted_model",
             "model_family": "conditional_poisson", "zone": "back",
             "population_size": 12, "selection_size": 2,
             "support": {"population_size": 12, "selection_size": 2,
