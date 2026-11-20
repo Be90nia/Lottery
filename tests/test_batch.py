@@ -13,10 +13,11 @@ def sha(label):
 
 
 class FakeLifecycle:
-    def __init__(self, *, change_generation=False, fail=False):
+    def __init__(self, *, change_generation=False, fail=False, mixed_family=False):
         self.calls = 0
         self.change_generation = change_generation
         self.fail = fail
+        self.mixed_family = mixed_family
         self.snapshot = {
             "registry_generation": 7,
             "champion_generation": 7,
@@ -34,6 +35,8 @@ class FakeLifecycle:
                 for zone in ("front", "back")
             ],
         }
+        if self.mixed_family:
+            self.snapshot["slots"][0]["model_family"] = "incompatible_model_family"
 
     def resolve_three_slot_generation(self, population_keys, *, approval_verifier):
         self.calls += 1
@@ -123,6 +126,13 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
     def test_registry_generation_change_during_sampling_blocks_publication(self):
         lifecycle = FakeLifecycle(change_generation=True)
         with self.assertRaisesRegex(BatchPublicationError, "registry changed"):
+            self.publish(lifecycle=lifecycle)
+        self.assertFalse(self.store.operations.exists())
+        self.assertFalse(self.store.pointers.exists())
+
+    def test_mixed_model_families_within_a_zone_are_rejected(self):
+        lifecycle = FakeLifecycle(mixed_family=True)
+        with self.assertRaisesRegex(BatchPublicationError, "compatible model family"):
             self.publish(lifecycle=lifecycle)
         self.assertFalse(self.store.operations.exists())
         self.assertFalse(self.store.pointers.exists())
