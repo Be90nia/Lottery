@@ -388,12 +388,18 @@ class ProspectiveLedger:
         observed_at_utc: str,
         authority: str,
         source_evidence_sha256: str,
+        source_object_ref: str,
+        requested_url: str,
+        final_url: str,
+        retrieved_at_utc: str,
+        evidence_locator: str,
         parser_version: str,
         front_numbers: list[int] | None,
         back_numbers: list[int] | None,
         evidence_verifier: Callable[[dict[str, Any], dict[str, Any]], bool] | None = None,
         supersedes_outcome_id: str | None = None,
         reason_code: str | None = None,
+        conflict_group: str | None = None,
     ) -> dict[str, Any]:
         if not isinstance(draw_id, str) or re.fullmatch(r"\d{5}", draw_id) is None:
             raise ProspectiveLedgerError("draw_id must be a five-digit ID")
@@ -402,8 +408,31 @@ class ProspectiveLedger:
             raise ProspectiveLedgerError("unknown outcome authority class")
         if not _is_sha(source_evidence_sha256):
             raise ProspectiveLedgerError("source_evidence_sha256 must be a lowercase SHA-256")
-        if not isinstance(parser_version, str) or not parser_version:
-            raise ProspectiveLedgerError("parser_version must be a non-empty string")
+        for field, value in (
+            ("source_object_ref", source_object_ref),
+            ("requested_url", requested_url),
+            ("final_url", final_url),
+            ("evidence_locator", evidence_locator),
+            ("parser_version", parser_version),
+        ):
+            if not isinstance(value, str) or not value:
+                raise ProspectiveLedgerError(f"{field} must be a non-empty string")
+        from urllib.parse import urlsplit
+        for field, value in (("requested_url", requested_url), ("final_url", final_url)):
+            parsed_url = urlsplit(value)
+            if (parsed_url.scheme != "https" or not parsed_url.netloc
+                    or parsed_url.username is not None or parsed_url.password is not None
+                    or parsed_url.fragment):
+                raise ProspectiveLedgerError(f"{field} must be an absolute HTTPS URL without credentials/fragments")
+        retrieved = _timestamp(retrieved_at_utc, "retrieved_at_utc")
+        if retrieved > observed:
+            raise ProspectiveLedgerError("evidence retrieval cannot occur after the outcome observation")
+        if conflict_group is not None and (not isinstance(conflict_group, str) or not conflict_group):
+            raise ProspectiveLedgerError("conflict_group must be null or a non-empty string")
+        if authority == "official_validated" and requested_url != final_url:
+            raise ProspectiveLedgerError("official validated evidence cannot use a redirected final URL")
+        if authority == "conflict" and conflict_group is None:
+            raise ProspectiveLedgerError("conflicting outcome requires a conflict_group")
         front = _validate_subset(front_numbers, "front") if front_numbers is not None else None
         back = _validate_subset(back_numbers, "back") if back_numbers is not None else None
         if authority == "official_validated":
@@ -412,16 +441,19 @@ class ProspectiveLedger:
             expected = {
                 "draw_id": draw_id,
                 "source_evidence_sha256": source_evidence_sha256,
+                "source_object_ref": source_object_ref,
+                "requested_url": requested_url,
+                "final_url": final_url,
+                "retrieved_at_utc": retrieved.isoformat(),
+                "evidence_locator": evidence_locator,
                 "parser_version": parser_version,
                 "authority": authority,
             }
             candidate = {
-                "draw_id": draw_id,
-                "source_evidence_sha256": source_evidence_sha256,
-                "parser_version": parser_version,
-                "authority": authority,
+                **expected,
                 "front_numbers": front,
                 "back_numbers": back,
+                "conflict_group": conflict_group,
             }
             if evidence_verifier(candidate, expected) is not True:
                 raise ProspectiveLedgerError("official outcome evidence verifier rejected the observation")
@@ -438,11 +470,17 @@ class ProspectiveLedger:
                 "observed_at_utc": observed.isoformat(),
                 "authority": authority,
                 "source_evidence_sha256": source_evidence_sha256,
+                "source_object_ref": source_object_ref,
+                "requested_url": requested_url,
+                "final_url": final_url,
+                "retrieved_at_utc": retrieved.isoformat(),
+                "evidence_locator": evidence_locator,
                 "parser_version": parser_version,
                 "front_numbers": front,
                 "back_numbers": back,
                 "supersedes_outcome_id": supersedes_outcome_id,
                 "reason_code": reason_code,
+                "conflict_group": conflict_group,
             }
             record["outcome_id"] = _sha(canonicalize(record))
             existing = snapshot["outcomes"].get(record["outcome_id"])
