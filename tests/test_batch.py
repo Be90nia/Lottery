@@ -35,6 +35,14 @@ class FakeLifecycle:
                     "population_size": 35 if zone == "front" else 12,
                     "selection_size": 5 if zone == "front" else 2,
                     "training_cutoff_draw_id": "26130",
+                    "training_snapshot_sha256": sha(f"training-{index}"),
+                    "training_row_count": 2948,
+                    "training_first_draw_id": "07001",
+                    "training_last_draw_id": "26130",
+                    "population_evidence_sha256": sha(f"population-evidence-{index}"),
+                    "evaluation_manifest_sha256": sha(f"evaluation-manifest-{index}-{zone}"),
+                    "evaluation_receipt_sha256": sha(f"evaluation-receipt-{index}-{zone}"),
+                    "shadow_receipt_sha256": None,
                     "approval_sha256": sha(f"approval-{index}-{zone}"),
                 }
                 for index in (1, 2, 3)
@@ -117,6 +125,20 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
         self.assertEqual(manifest["duplicate_ticket_count"], 5)
         self.assertEqual(manifest["within_slot_duplicate_ticket_count"], 3)
         self.assertEqual(manifest["cross_slot_duplicate_ticket_count"], 2)
+        self.assertEqual(
+            manifest["registry_snapshot_sha256"],
+            hashlib.sha256(canonicalize(manifest["registry_snapshot"])).hexdigest(),
+        )
+        for slot in manifest["slots"]:
+            self.assertIn("ticket_id", slot["tickets"][0])
+            self.assertEqual(
+                slot["front_artifact_provenance"]["training_snapshot_sha256"],
+                slot["back_artifact_provenance"]["training_snapshot_sha256"],
+            )
+            self.assertEqual(
+                slot["front_artifact_provenance"]["population_evidence_sha256"],
+                slot["back_artifact_provenance"]["population_evidence_sha256"],
+            )
         self.assertEqual(self.store.read_pointer("published-batch"), result["pointer"])
         self.assertEqual(self.lifecycle.calls, 2)
 
@@ -180,16 +202,26 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
 
     def test_rng_streams_are_slot_and_zone_specific_and_reproducible(self):
         first = self.publish(key="rng-first", n=1)
-        second = self.publish(key="rng-second", n=1, generation=1)
+        replay = self.publish(key="rng-first", n=1, generation=1)
+        different_request = self.publish(key="rng-second", n=1, generation=1)
         first_streams = [
             (slot["rng_streams"]["front"]["stream_id"], slot["rng_streams"]["back"]["stream_id"])
             for slot in first["manifest"]["slots"]
         ]
-        second_streams = [
+        replay_streams = [
             (slot["rng_streams"]["front"]["stream_id"], slot["rng_streams"]["back"]["stream_id"])
-            for slot in second["manifest"]["slots"]
+            for slot in replay["manifest"]["slots"]
         ]
-        self.assertEqual(first_streams, second_streams)
+        different_streams = [
+            (slot["rng_streams"]["front"]["stream_id"], slot["rng_streams"]["back"]["stream_id"])
+            for slot in different_request["manifest"]["slots"]
+        ]
+        self.assertEqual(first_streams, replay_streams)
+        self.assertNotEqual(first_streams, different_streams)
+        self.assertEqual(
+            [ticket["ticket_id"] for slot in first["manifest"]["slots"] for ticket in slot["tickets"]],
+            [ticket["ticket_id"] for slot in replay["manifest"]["slots"] for ticket in slot["tickets"]],
+        )
         flattened = [stream for pair in first_streams for stream in pair]
         self.assertEqual(len(flattened), 6)
         self.assertEqual(len(set(flattened)), 6)
@@ -199,7 +231,7 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
         )
         self.assertEqual(
             first["manifest"]["seed_derivation"],
-            "HMAC-SHA256(lottery.three-slot-rng.v1, population_key, zone, artifact_id)",
+            "HMAC-SHA256(lottery.three-slot-rng.v1, request_id, population_key, zone, artifact_id, rng_algorithm, sampler_version)",
         )
         self.assertNotIn(
             b"lottery-test-master-seed-material-2026",
