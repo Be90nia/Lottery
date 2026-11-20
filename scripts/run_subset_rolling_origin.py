@@ -628,6 +628,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
                 name: (entry["artifact_id"] if entry is not None else None)
                 for name, entry in target_record.pop("model_artifacts").items()
             }
+            target_record["checkpoint_record_sha256"] = target_record.pop("record_sha256")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
                            encoding="utf-8")
