@@ -39,26 +39,74 @@ class CheckpointIntegrityTests(unittest.TestCase):
             "front_numbers": [1, 2, 3, 4, 5],
         }
         self.uniform_nll = math.log(math.comb(35, 5))
+        runtime = {}
+        training = {
+            "snapshot_sha256": "a" * 64, "row_count": 300,
+            "first_draw_id": "07001", "last_draw_id": "09053",
+            "cutoff_draw_id": "09053", "cutoff_inclusive": True,
+        }
         common = {
-            "schema_version": 1, "zone": "front", "population_size": 35,
-            "selection_size": 5, "training_snapshot_sha256": "a" * 64,
+            "schema_version": 1,
+            "artifact_schema": "lottery.subset-probability-model/v1",
+            "zone": "front", "population_size": 35, "selection_size": 5,
+            "support": {"population_size": 35, "selection_size": 5,
+                        "support_count": 324632, "subset_order": "lexicographic_ascending"},
+            "training_snapshot_sha256": "a" * 64,
             "training_first_draw_id": "07001", "training_last_draw_id": "09053",
             "training_cutoff_draw_id": "09053", "training_row_count": 300,
-            "code_revision": "abc123", "runtime": {},
+            "code_revision": "abc123", "runtime": runtime,
             "fit_diagnostics": {"terminal_status": "converged", "converged": True},
-            "forecast_ready": False,
+            "forecast_ready": False, "training": training,
+            "implementation": {"code_revision": "abc123", "runtime": runtime,
+                               "library_versions": {}, "rng_algorithm": "injected_rng.random_v1"},
+            "normalization": {"method": "full_support_logsumexp",
+                              "log_partition": 0.0, "numeric_dtype": "float64"},
+            "fit": {"status": "converged", "termination_reason": "gradient_tolerance",
+                    "objective": 0.0, "gradient_inf_norm": 0.0, "iterations": 20,
+                    "optimizer": "L-BFGS-B", "lambda": 1.0},
         }
+        names = ["sum", "odd_count", "range", "adjacent_count"]
         candidate = dict(
             common, model_family="complete_subset_exponential",
-            active_feature_names=["sum", "odd_count", "range", "adjacent_count"],
-            theta=[0.0, 0.0, 0.0, 0.0],
+            feature_schema={
+                "version": "lot-051-symmetric-v1", "names": names,
+                "uniform_means": [0.0] * 4, "uniform_population_stds": [1.0] * 4,
+                "zero_variance_policy": "drop_and_record",
+                "candidate_names": names, "zero_variance_features": [],
+            },
+            parameters={"theta": [0.0, 0.0, 0.0, 0.0],
+                        "parameter_order": "feature_schema.names"},
+            active_feature_names=names, theta=[0.0, 0.0, 0.0, 0.0],
             objective_scale="mean_nll", regularization_lambda=1.0,
         )
         candidate_raw, candidate_id = create_artifact(candidate)
+        p = 5 / 35
+        item_names = [f"item_{item}" for item in range(1, 36)]
         conditional = dict(
             common, model_family="conditional_poisson",
+            feature_schema={
+                "version": "lottery-item-inclusion/v1", "names": item_names,
+                "uniform_means": [p] * 35,
+                "uniform_population_stds": [(p * (1 - p)) ** 0.5] * 35,
+                "zero_variance_policy": "not_applicable_item_indicator_schema",
+            },
+            parameters={"centered_log_weights": [0.0] * 35,
+                        "parameter_order": "feature_schema.names"},
+            fit=dict(common["fit"], lambda_=None),
             centered_log_weights=[0.0] * 35,
+            target_marginals=[p] * 35, achieved_marginals=[p] * 35,
+            solver_status="converged", calibration_residual=0.0,
         )
+        conditional["fit"]["lambda"] = None
+        conditional["fit"]["optimizer"] = "conditional_poisson_calibration_lbfgs_v1"
+        conditional["implementation"] = {
+            "code_revision": "abc123", "runtime": runtime, "library_versions": {},
+            "rng_algorithm": "conditional_poisson_backward_dp_with_injected_rng_v1",
+        }
+        conditional["normalization"] = {
+            "method": "exact_conditional_poisson_log_space_dp",
+            "log_partition": 0.0, "numeric_dtype": "float64",
+        }
         conditional_raw, conditional_id = create_artifact(conditional)
         self.artifacts = {
             "candidate": {"artifact_id": candidate_id, "payload": __import__("json").loads(candidate_raw)},
