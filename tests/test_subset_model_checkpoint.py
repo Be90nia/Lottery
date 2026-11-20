@@ -52,6 +52,8 @@ class CheckpointIntegrityTests(unittest.TestCase):
             "support": {"population_size": 35, "selection_size": 5,
                         "support_count": 324632, "subset_order": "lexicographic_ascending"},
             "training_snapshot_sha256": "a" * 64,
+            "feature_schema_hash": "sha256:" + "c" * 64,
+            "model_configuration_hash": "sha256:" + "d" * 64,
             "training_first_draw_id": "07001", "training_last_draw_id": "09053",
             "training_cutoff_draw_id": "09053", "training_row_count": 300,
             "code_revision": "abc123", "runtime": runtime,
