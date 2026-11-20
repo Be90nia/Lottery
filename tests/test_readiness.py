@@ -16,7 +16,7 @@ def sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def make_manifest(evidence_sha: str):
+def make_manifest(evidence_hashes: list[str]):
     return {
         "schema_version": "lottery.release-manifest/v1",
         "release_id": "lottery-test-release",
@@ -29,17 +29,41 @@ def make_manifest(evidence_sha: str):
             "action": "actions/checkout",
             "commit_sha": "11d5960a326750d5838078e36cf38b85af677262",
         }],
-        "runtime": {"python": "3.12", "dependency_lock_sha256": evidence_sha},
-        "data": {"snapshot_sha256": None, "evidence_ledger_sha256": None},
-        "model_artifacts": [],
-        "experiments": {"registry_sha256": None, "evaluation_manifest_sha256": None},
-        "champion": {"registry_generation": "generation-1", "slots": []},
+        "runtime": {"python": "3.12", "dependency_lock_sha256": evidence_hashes[0]},
+        "data": {
+            "snapshot_sha256": evidence_hashes[1],
+            "evidence_ledger_sha256": evidence_hashes[1],
+            "regime_evidence_sha256": evidence_hashes[4],
+        },
+        "model_artifacts": [{
+            "artifact_id": "artifact-fixture",
+            "model_family": "complete_subset_exponential",
+            "training_cutoff_draw_id": "09053",
+            "artifact_sha256": evidence_hashes[2],
+            "feature_schema_hash": evidence_hashes[2],
+        }],
+        "experiments": {
+            "registry_sha256": evidence_hashes[3],
+            "evaluation_manifest_sha256": evidence_hashes[3],
+        },
+        "champion": {
+            "registry_generation": "generation-1",
+            "registry_receipt_sha256": evidence_hashes[5],
+            "slots": [],
+        },
         "sampler": {"algorithm": "conditional-poisson-v1", "rng_version": "python-random-v1"},
-        "feedback": {"ledger_sha256": None, "monitoring_policy_sha256": None},
-        "storage": {"commit_receipt_sha256": None, "backup_generation": None,
-                    "restore_drill_receipt_sha256": None},
-        "security": {"sbom_sha256": evidence_sha, "security_scan_sha256": evidence_sha,
-                     "provenance_sha256": evidence_sha, "signer_id": None,
+        "feedback": {
+            "ledger_sha256": evidence_hashes[6],
+            "monitoring_policy_sha256": evidence_hashes[6],
+        },
+        "storage": {
+            "commit_receipt_sha256": evidence_hashes[7],
+            "backup_manifest_sha256": evidence_hashes[7],
+            "backup_generation": "backup-generation-fixture",
+            "restore_drill_receipt_sha256": evidence_hashes[7],
+        },
+        "security": {"sbom_sha256": evidence_hashes[0], "security_scan_sha256": evidence_hashes[0],
+                     "provenance_sha256": evidence_hashes[0], "signer_id": None,
                      "rollback_drill_receipt_sha256": None},
         "activation": {"scheduled_collection_enabled": False, "shadow_only": False,
                        "user_facing_serving_enabled": False,
@@ -94,7 +118,7 @@ class ReadinessTests(unittest.TestCase):
         self.manifest_path = self.root / "release-manifest.json"
         self.gates_path = self.root / "gate-results.json"
         self.report_path = self.root / "readiness-report.json"
-        self.manifest = make_manifest(self.evidence_paths[0]["sha256"])
+        self.manifest = make_manifest([item["sha256"] for item in self.evidence_paths])
         self.gates = make_gates(self.evidence_paths)
         self.write_inputs()
 
