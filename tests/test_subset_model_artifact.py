@@ -347,7 +347,7 @@ class ModelArtifactTests(unittest.TestCase):
         }
         payload["feature_schema_hash"] = "sha256:" + hashlib.sha256(canonicalize(payload["feature_schema"])).hexdigest()
         model_configuration = {
-            "model_family": "conditional_poisson", "zone": "back",
+            "model_family": "conditional_poisson", "baseline": "expanding", "zone": "back",
             "population_size": 12, "selection_size": 2, "alpha": 100.0,
             "half_life": None, "weighting": "expanding",
             "feature_schema_hash": payload["feature_schema_hash"],
