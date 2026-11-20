@@ -995,6 +995,23 @@ class ChampionLifecycle:
         evaluation = self._load_evaluation_receipt(validation["receipt_sha256"])
         if evaluation["population_eligibility"] == "verified_regime":
             raise LifecycleError("verified regime candidates must be promoted as one atomic three-slot generation")
+        shadow_hash = None
+        if expected_champion_artifact_id is not None:
+            shadow_validation = slot_snapshot.get("shadow_validation", {}).get(artifact_id)
+            if (slot_snapshot.get("shadow_artifact_id") != artifact_id or not shadow_validation
+                    or shadow_validation.get("eligible") is not True):
+                raise LifecycleError("replacement Champion requires a passing prospective shadow receipt")
+            shadow_hash = shadow_validation["receipt_sha256"]
+            shadow_receipt = self._load_shadow_receipt(shadow_hash)
+            artifact = self._load_artifact(artifact_id)
+            if not _validate_shadow_receipt(
+                shadow_receipt, artifact=artifact, artifact_id=artifact_id,
+                population_key=population_key, zone=zone,
+                champion_artifact_id=expected_champion_artifact_id,
+            ):
+                raise LifecycleError("prospective shadow receipt no longer passes its gates")
+        elif slot_snapshot.get("challenger_artifact_id") != artifact_id:
+            raise LifecycleError("initial Champion must be promoted from challenger, not shadow")
         manifest_hash = validation["evaluation_manifest_sha256"]
         _, approval_hash = self._verified_approval(
             approval, approval_verifier=approval_verifier, action="promote",
@@ -1002,6 +1019,7 @@ class ChampionLifecycle:
             expected_champion_artifact_id=expected_champion_artifact_id,
             evaluation_manifest_sha256=manifest_hash,
             evaluation_receipt_sha256=validation["receipt_sha256"],
+            shadow_receipt_sha256=shadow_hash,
         )
         with ledger_lock(self.registry_path):
             self._recover_locked()
