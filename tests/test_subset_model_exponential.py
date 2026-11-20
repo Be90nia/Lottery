@@ -87,6 +87,20 @@ class ExponentialFamilyTests(unittest.TestCase):
 
         self.assertEqual(_dot((1e16, 1.0, -1e16), (1.0, 1.0, 1.0)), 1.0)
 
+    def test_strong_wolfe_search_handles_sub_ulp_armijo_decrease(self):
+        from lottery.subset_model.exponential import _strong_wolfe_search
+
+        def near_stationary(point):
+            value = point[0]
+            objective = 1e6 + 0.5 * value * value
+            return objective, (value,), objective
+
+        accepted = _strong_wolfe_search(
+            near_stationary, (1e-8,), (-1e-8,), 1e6, (1e-8,)
+        )
+        self.assertIsNotNone(accepted)
+        self.assertLessEqual(abs(accepted[2][0]), 1e-16)
+
     def test_strong_wolfe_search_rejects_non_descent_direction(self):
         from lottery.subset_model.exponential import _strong_wolfe_search
 
