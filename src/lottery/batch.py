@@ -105,7 +105,7 @@ class ThreeSlotBatchPublisher:
         producer_runtime: str,
         pointer_name: str,
         expected_pointer_generation: int,
-        sampler: Callable[[str, str, str, int, bytes, bytes], list[dict[str, Any]]],
+        sampler: Callable[[str, str, str, int, bytes, bytes, str, str], list[dict[str, Any]]],
         actor: str,
     ) -> dict[str, Any]:
         if type(tickets_per_slot) is not int or tickets_per_slot < 1:
@@ -190,6 +190,7 @@ class ThreeSlotBatchPublisher:
                 tickets = sampler(
                     population_key, artifacts["front"], artifacts["back"],
                     tickets_per_slot, front_seed, back_seed,
+                    rng_algorithm, sampler_version,
                 )
             except Exception as exc:
                 raise BatchPublicationError(f"sampler failed for population {population_key}") from exc
