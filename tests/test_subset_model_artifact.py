@@ -73,6 +73,31 @@ class JCSCanonicalizationTests(unittest.TestCase):
 
 
 class ModelArtifactTests(unittest.TestCase):
+    def test_unknown_top_level_schema_fields_are_rejected(self):
+        payload = exponential_payload()
+        payload["unregistered_debug_field"] = "must not be silently hashed"
+        with self.assertRaisesRegex(ArtifactValidationError, "unknown artifact fields"):
+            create_artifact(payload)
+
+        conditional = {
+            "schema_version": 1,
+            "model_family": "conditional_poisson",
+            "zone": "back",
+            "population_size": 12,
+            "selection_size": 2,
+            "training_snapshot_sha256": "b" * 64,
+            "training_cutoff_draw_id": "26130",
+            "training_row_count": 2948,
+            "code_revision": "abc123",
+            "runtime": {},
+            "fit_diagnostics": {"terminal_status": "converged"},
+            "forecast_ready": False,
+            "centered_log_weights": [0.0] * 12,
+            "unregistered_debug_field": "must not be silently hashed",
+        }
+        with self.assertRaisesRegex(ArtifactValidationError, "unknown artifact fields"):
+            create_artifact(conditional)
+
     def test_create_verify_and_content_address(self):
         raw, artifact_id = create_artifact(exponential_payload())
         parsed = verify_artifact(raw)
