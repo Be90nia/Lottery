@@ -28,6 +28,10 @@ class FakeLifecycle:
                     "artifact_id": "sha256:" + sha(f"{index}-{zone}"),
                     "artifact_sha256": sha(f"{index}-{zone}"),
                     "model_family": "complete_subset_exponential",
+                    "artifact_schema": "lottery.subset-probability-model/v1",
+                    "feature_schema_hash": sha("shared-feature-schema"),
+                    "population_size": 35 if zone == "front" else 12,
+                    "selection_size": 5 if zone == "front" else 2,
                     "training_cutoff_draw_id": "26130",
                     "approval_sha256": sha(f"approval-{index}-{zone}"),
                 }
