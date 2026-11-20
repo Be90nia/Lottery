@@ -94,7 +94,7 @@ def run(snapshot_path: Path, output_path: Path, front_ids: list[str], back_ids: 
                     "terminal_status": calibration.terminal_status,
                     "converged": calibration.converged,
                     "iterations": calibration.iterations,
-                    "gradient_inf_norm": calibration.gradient_inf_norm,
+                    "gradient_inf_norm": calibration.gradient_infinity_norm,
                     "maximum_absolute_residual": calibration.maximum_absolute_residual,
                     "objective": calibration.objective,
                     "failure_reason": None if calibration.converged else calibration.message,
