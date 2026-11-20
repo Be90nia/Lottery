@@ -115,6 +115,12 @@ class ReadinessTests(unittest.TestCase):
             raw = json.dumps({"gate": index}, sort_keys=True).encode()
             (self.evidence_root / name).write_bytes(raw)
             self.evidence_paths.append({"path": name, "sha256": sha(raw)})
+        self.slot_evidence_paths = []
+        for index in range(3):
+            name = f"slot-{index}.json"
+            raw = json.dumps({"slot": index}, sort_keys=True).encode()
+            (self.evidence_root / name).write_bytes(raw)
+            self.slot_evidence_paths.append({"path": name, "sha256": sha(raw)})
         self.manifest_path = self.root / "release-manifest.json"
         self.gates_path = self.root / "gate-results.json"
         self.report_path = self.root / "readiness-report.json"
@@ -135,7 +141,7 @@ class ReadinessTests(unittest.TestCase):
         )
         self.assertEqual(report["readiness_state"], "READY_FOR_OFFLINE_VALIDATION")
         self.assertEqual(report["gate_statuses"]["G4"], "UNKNOWN")
-        self.assertEqual(len(report["verified_evidence"]), 4)
+        self.assertEqual(len(report["verified_evidence"]), 8)
         self.assertFalse(report["activation_performed"])
         self.assertFalse(report["serving_enabled_by_report"])
         self.assertEqual(report["production_approval"], "not_implemented_fail_closed")
@@ -187,6 +193,9 @@ class ReadinessTests(unittest.TestCase):
                 "eligible": True,
             })
         self.manifest["champion"]["slots"] = slots
+        for index, slot in enumerate(slots):
+            slot["artifact_sha256"] = self.slot_evidence_paths[index]["sha256"]
+        self.gates["gates"][5]["evidence"].extend(self.slot_evidence_paths)
         self.write_inputs()
         report = build_readiness_report(
             self.manifest_path, self.gates_path, self.evidence_root
