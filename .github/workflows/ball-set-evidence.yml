@@ -1,0 +1,298 @@
+name: Official ball-set evidence archive
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 16 * * *"
+  push:
+    branches:
+      - "feat/integrate-reported-set-evidence"
+    paths:
+      - ".github/workflows/ball-set-evidence.yml"
+      - "config/ball_set_source_registry.json"
+      - "src/lottery/ball_set_evidence.py"
+      - "src/lottery/ball_set_coverage.py"
+      - "src/lottery/reported_set_index.py"
+      - "src/lottery/reported_index_pilot.py"
+      - "src/lottery/jiangsu_draw_candidate.py"
+      - "src/lottery/live_reported_index_mvp.py"
+      - "src/lottery/reported_index_mvp.py"
+      - "src/lottery/ingest.py"
+      - "src/lottery/validate.py"
+      - "src/lottery/backtest.py"
+      - "src/lottery/conditional_poisson.py"
+      - "src/lottery/mvp.py"
+      - "src/lottery/tickets.py"
+      - "tests/test_validate.py"
+      - "tests/test_ball_set_evidence.py"
+      - "tests/test_ball_set_coverage.py"
+      - "tests/test_reported_set_index.py"
+      - "tests/test_reported_index_pilot.py"
+      - "tests/test_jiangsu_draw_candidate.py"
+      - "tests/test_live_reported_index_mvp.py"
+      - "tests/test_reported_index_mvp.py"
+      - "tests/test_mvp.py"
+      - "tests/test_tickets.py"
+      - "scripts/collect_ball_set_evidence.py"
+      - "scripts/build_ball_set_coverage.py"
+      - "scripts/build_reported_set_index_view.py"
+      - "scripts/run_reported_set_index_pilot.py"
+      - "scripts/build_jiangsu_draw_candidate.py"
+      - "scripts/run_live_reported_index_mvp.py"
+      - "scripts/run_reported_set_index_mvp.py"
+      - "scripts/run_mvp.py"
+      - "docs/REPORTED_SET_INDEX_CONDITIONAL_MODEL_PREREGISTRATION.md"
+      - "docs/BALL_SET_EVIDENCE_ARCHIVE.md"
+      - "README.md"
+      - "data/ball_set/draw-inventory-20261118.jsonl"
+      - "data/ball_set/draw-inventory-20261118.jsonl.manifest.json"
+  pull_request:
+    paths:
+      - ".github/workflows/ball-set-evidence.yml"
+      - "config/ball_set_source_registry.json"
+      - "src/lottery/ball_set_evidence.py"
+      - "src/lottery/ball_set_coverage.py"
+      - "src/lottery/reported_set_index.py"
+      - "src/lottery/reported_index_pilot.py"
+      - "src/lottery/jiangsu_draw_candidate.py"
+      - "src/lottery/live_reported_index_mvp.py"
+      - "src/lottery/reported_index_mvp.py"
+      - "src/lottery/ingest.py"
+      - "src/lottery/validate.py"
+      - "src/lottery/backtest.py"
+      - "src/lottery/conditional_poisson.py"
+      - "src/lottery/mvp.py"
+      - "src/lottery/tickets.py"
+      - "tests/test_validate.py"
+      - "tests/test_ball_set_evidence.py"
+      - "tests/test_ball_set_coverage.py"
+      - "tests/test_reported_set_index.py"
+      - "tests/test_reported_index_pilot.py"
+      - "tests/test_jiangsu_draw_candidate.py"
+      - "tests/test_live_reported_index_mvp.py"
+      - "tests/test_reported_index_mvp.py"
+      - "tests/test_mvp.py"
+      - "tests/test_tickets.py"
+      - "scripts/collect_ball_set_evidence.py"
+      - "scripts/build_ball_set_coverage.py"
+      - "scripts/build_reported_set_index_view.py"
+      - "scripts/run_reported_set_index_pilot.py"
+      - "scripts/build_jiangsu_draw_candidate.py"
+      - "scripts/run_live_reported_index_mvp.py"
+      - "scripts/run_reported_set_index_mvp.py"
+      - "scripts/run_mvp.py"
+      - "docs/REPORTED_SET_INDEX_CONDITIONAL_MODEL_PREREGISTRATION.md"
+      - "docs/BALL_SET_EVIDENCE_ARCHIVE.md"
+      - "README.md"
+      - "data/ball_set/draw-inventory-20261118.jsonl"
+      - "data/ball_set/draw-inventory-20261118.jsonl.manifest.json"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ball-set-evidence-${{ github.head_ref || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Restore cumulative evidence archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence-archive
+          previous="$(gh run list --workflow ball-set-evidence.yml --branch "$BRANCH" --limit 20 \
+            --json databaseId,status \
+            --jq 'map(select(.status == "completed")) | first // empty')"
+          if [ -z "$previous" ]; then
+            echo "No previous completed archive artifact; initialize from the configured seed page."
+            exit 0
+          fi
+          previous_run="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["databaseId"])' "$previous")"
+          if gh run download "$previous_run" --name ball-set-evidence-archive --dir previous-artifact; then
+            cp -a previous-artifact/. evidence-archive/
+            echo "Restored cumulative archive from run $previous_run."
+          else
+            echo "Previous run has no archive artifact; initialize from the configured seed page."
+          fi
+
+      - name: Archive prior collector receipt
+        run: |
+          set -euo pipefail
+          if [ -f evidence-archive/receipt.json ]; then
+            mkdir -p evidence-archive/receipt-history
+            digest="$(sha256sum evidence-archive/receipt.json | awk '{print $1}')"
+            cp --no-clobber evidence-archive/receipt.json "evidence-archive/receipt-history/receipt-${digest}.json"
+            rm evidence-archive/receipt.json
+          fi
+
+      - name: Collect official per-draw labels
+        id: collect
+        continue-on-error: true
+        run: |
+          python scripts/collect_ball_set_evidence.py \
+            --registry config/ball_set_source_registry.json \
+            --archive-dir evidence-archive \
+            --ledger evidence-archive/observations.jsonl \
+            --receipt evidence-archive/receipt.json \
+            --draw-inventory data/ball_set/draw-inventory-20261118.jsonl \
+            --delay 1.0 \
+            --max-forward-pages 2000
+
+      - name: Write fallback failure receipt
+        if: always()
+        env:
+          COLLECT_OUTCOME: ${{ steps.collect.outcome }}
+          GIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          root = Path("evidence-archive")
+          root.mkdir(exist_ok=True)
+          path = root / "receipt.json"
+          if not path.exists():
+              path.write_text(json.dumps({
+                  "schema_version": 1,
+                  "status": "collector_failed_before_receipt",
+                  "collector_step_outcome": os.environ["COLLECT_OUTCOME"],
+                  "created_at": datetime.now(timezone.utc).isoformat(),
+                  "code_commit": os.environ["GIT_SHA"],
+                  "workflow_event": os.environ["EVENT_NAME"],
+                  "source_completeness_verified": False,
+                  "model_training_or_promotion": False,
+                  "holdout_accessed": False
+              }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Build reproducible evidence coverage report
+        id: coverage
+        if: always()
+        continue-on-error: true
+        run: |
+          python scripts/build_ball_set_coverage.py \
+            --draw-inventory data/ball_set/draw-inventory-20261118.jsonl \
+            --ledger evidence-archive/observations.jsonl \
+            --archive-dir evidence-archive \
+            --output-json evidence-archive/coverage/coverage.json \
+            --output-csv evidence-archive/coverage/per-draw.csv \
+            --output-per-set-csv evidence-archive/coverage/per-set.csv \
+            --output-per-year-csv evidence-archive/coverage/per-year.csv \
+            --output-markdown evidence-archive/coverage/coverage.md \
+            --code-commit "${GITHUB_SHA}"
+
+      - name: Build immutable reported set-index evidence view
+        id: reported_view
+        if: steps.coverage.outcome == 'success'
+        continue-on-error: true
+        run: |
+          python scripts/build_reported_set_index_view.py \
+            --inventory data/ball_set/draw-inventory-20261118.jsonl \
+            --coverage-json evidence-archive/coverage/coverage.json \
+            --ledger evidence-archive/observations.jsonl \
+            --archive-dir evidence-archive \
+            --output-dir evidence-archive/coverage/reported-set-index
+
+      - name: Build A2-cross-checked append-only draw candidate and live index view
+        id: source_candidate
+        if: steps.collect.outcome == 'success' && steps.reported_view.outcome == 'success'
+        continue-on-error: true
+        run: |
+          REPORT_SHA="$(python -c 'import json; print(json.load(open("evidence-archive/coverage/coverage.json", encoding="utf-8"))["report_sha256"])')"
+          VIEW_STEM="reported-set-index-${REPORT_SHA:0:16}"
+          python scripts/build_jiangsu_draw_candidate.py \
+            --inventory data/ball_set/draw-inventory-20261118.jsonl \
+            --inventory-manifest data/ball_set/draw-inventory-20261118.jsonl.manifest.json \
+            --coverage evidence-archive/coverage/coverage.json \
+            --ledger evidence-archive/observations.jsonl \
+            --archive-dir evidence-archive \
+            --frozen-view "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.jsonl" \
+            --frozen-manifest "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.manifest.json" \
+            --output-dir evidence-archive/candidates \
+            --live-view-dir evidence-archive/coverage/reported-set-index-live \
+            --code-commit "$GITHUB_SHA"
+
+      - name: Generate standard MVP tickets from the A2-extended candidate dataset
+        id: standard_mvp
+        if: steps.source_candidate.outcome == 'success'
+        continue-on-error: true
+        run: |
+          REPORT_SHA="$(python -c 'import json; print(json.load(open("evidence-archive/coverage/coverage.json", encoding="utf-8"))["report_sha256"])')"
+          CANDIDATE="evidence-archive/candidates/jiangsu-draw-candidate-${REPORT_SHA:0:16}.jsonl"
+          python scripts/run_mvp.py \
+            --dataset "$CANDIDATE" \
+            --output "evidence-archive/candidates/standard-mvp-${REPORT_SHA:0:16}.json" \
+            --tickets-per-strategy 5 \
+            --seed 20261119 \
+            --code-commit "$GITHUB_SHA"
+
+      - name: Run preregistered reported-index rolling-origin pilot
+        id: pilot
+        if: steps.collect.outcome == 'success' && steps.reported_view.outcome == 'success'
+        continue-on-error: true
+        run: |
+          REPORT_SHA="$(python -c 'import json; print(json.load(open("evidence-archive/coverage/coverage.json", encoding="utf-8"))["report_sha256"])')"
+          VIEW_STEM="reported-set-index-${REPORT_SHA:0:16}"
+          python scripts/run_reported_set_index_pilot.py \
+            --view "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.jsonl" \
+            --manifest "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.manifest.json" \
+            --code-commit "$GITHUB_SHA" \
+            --output-dir evidence-archive/coverage/reported-set-index-pilot
+
+      - name: Generate all live reported-index candidate lanes
+        id: candidates
+        if: steps.pilot.outcome == 'success' && steps.source_candidate.outcome == 'success'
+        continue-on-error: true
+        run: |
+          REPORT_SHA="$(python -c 'import json; print(json.load(open("evidence-archive/coverage/coverage.json", encoding="utf-8"))["report_sha256"])')"
+          VIEW_STEM="reported-set-index-${REPORT_SHA:0:16}"
+          VIEW_MANIFEST="evidence-archive/coverage/reported-set-index/${VIEW_STEM}.manifest.json"
+          VIEW_MANIFEST_SHA="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["manifest_sha256"])' "$VIEW_MANIFEST")"
+          LIVE_STEM="reported-set-index-live-${REPORT_SHA:0:16}"
+          CANDIDATE_STEM="jiangsu-draw-candidate-${REPORT_SHA:0:16}"
+          PILOT_PATH="evidence-archive/coverage/reported-set-index-pilot/reported-set-index-pilot-${VIEW_MANIFEST_SHA:0:12}-${GITHUB_SHA:0:12}.json"
+          python scripts/run_live_reported_index_mvp.py \
+            --frozen-view "evidence-archive/coverage/reported-set-index/${VIEW_STEM}.jsonl" \
+            --frozen-manifest "$VIEW_MANIFEST" \
+            --live-view "evidence-archive/coverage/reported-set-index-live/${LIVE_STEM}.jsonl" \
+            --live-manifest "evidence-archive/coverage/reported-set-index-live/${LIVE_STEM}.jsonl.manifest.json" \
+            --candidate-dataset "evidence-archive/candidates/${CANDIDATE_STEM}.jsonl" \
+            --candidate-manifest "evidence-archive/candidates/${CANDIDATE_STEM}.jsonl.manifest.json" \
+            --pilot-report "$PILOT_PATH" \
+            --tickets-per-strategy 5 \
+            --seed 20261119 \
+            --code-commit "$GITHUB_SHA" \
+            --output-dir evidence-archive/candidates/live-reported-index-mvp
+
+      - name: Upload cumulative evidence archive
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ball-set-evidence-archive
+          path: evidence-archive/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Fail visibly when evidence needs intervention
+        if: steps.collect.outcome == 'failure' || steps.coverage.outcome == 'failure' || steps.reported_view.outcome == 'failure' || steps.source_candidate.outcome == 'failure' || steps.standard_mvp.outcome == 'failure' || steps.pilot.outcome == 'failure' || steps.candidates.outcome == 'failure'
+        run: |
+          echo "Ball-set evidence collection or coverage verification failed. The previous and newly captured evidence artifact was uploaded."
+          exit 1
