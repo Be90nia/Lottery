@@ -202,6 +202,35 @@ class ModelArtifactTests(unittest.TestCase):
         with self.assertRaises(ArtifactValidationError):
             create_artifact(payload)
 
+    def test_model_artifact_rejects_non_numeric_parameters_and_cutoff_mismatch(self):
+        payload = exponential_payload()
+        payload["theta"][0] = "0.1"
+        payload["parameters"]["theta"][0] = "0.1"
+        with self.assertRaisesRegex(ArtifactValidationError, "theta/schema"):
+            create_artifact(payload)
+
+        payload = exponential_payload()
+        payload["training"]["last_draw_id"] = "26129"
+        with self.assertRaisesRegex(ArtifactValidationError, "training provenance"):
+            create_artifact(payload)
+
+        payload = exponential_payload()
+        payload["code_revision"] = "abc123"
+        payload["implementation"]["code_revision"] = "abc123"
+        with self.assertRaisesRegex(ArtifactValidationError, "full lowercase 40-character"):
+            create_artifact(payload)
+
+    def test_nested_closed_schema_rejects_unknown_support_and_feature_fields(self):
+        payload = exponential_payload()
+        payload["support"]["surprise"] = 1
+        with self.assertRaisesRegex(ArtifactValidationError, "support descriptor"):
+            create_artifact(payload)
+
+        payload = exponential_payload()
+        payload["feature_schema"]["surprise"] = 1
+        with self.assertRaisesRegex(ArtifactValidationError, "feature_schema"):
+            create_artifact(payload)
+
     def test_failed_fit_has_content_addressed_diagnostic_artifact(self):
         payload = exponential_payload()
         payload["artifact_type"] = "fit_failure"
@@ -329,6 +358,10 @@ class ModelArtifactTests(unittest.TestCase):
         self.assertEqual(verify_artifact(raw)["artifact_id"], artifact_id)
         payload["centered_log_weights"] = [1.0] * 12
         with self.assertRaises(ArtifactValidationError):
+            create_artifact(payload)
+        payload["centered_log_weights"] = ["0.0"] * 12
+        payload["parameters"]["centered_log_weights"] = ["0.0"] * 12
+        with self.assertRaisesRegex(ArtifactValidationError, "finite numeric"):
             create_artifact(payload)
 
 
