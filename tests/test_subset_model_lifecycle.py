@@ -3,6 +3,7 @@ import math
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from lottery.subset_model.artifact import canonicalize
 from lottery.subset_model.lifecycle import (
@@ -12,6 +13,7 @@ from lottery.subset_model.lifecycle import (
     ChampionLifecycle,
     LifecycleError,
     StaleRegistryError,
+    _write_once,
 )
 
 
@@ -187,6 +189,30 @@ def approval_for(artifact_id, population_key, zone, receipt, *, action="promote"
         "signer_id": "fixture-signer",
         "signature": "fixture-signature-not-for-production",
     }
+
+
+class AtomicImmutableObjectTests(unittest.TestCase):
+    def test_publication_failure_never_exposes_a_partial_object(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "objects" / "model.json"
+            with patch(
+                "lottery.subset_model.lifecycle.os.link",
+                side_effect=OSError("simulated atomic publication failure"),
+            ):
+                with self.assertRaisesRegex(OSError, "simulated atomic publication failure"):
+                    _write_once(target, b'{"complete":true}')
+            self.assertFalse(target.exists())
+            self.assertEqual(list(target.parent.iterdir()), [])
+
+    def test_write_once_is_idempotent_but_rejects_content_collision(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "objects" / "model.json"
+            _write_once(target, b"immutable")
+            _write_once(target, b"immutable")
+            self.assertEqual(target.read_bytes(), b"immutable")
+            with self.assertRaisesRegex(LifecycleError, "immutable object collision"):
+                _write_once(target, b"different")
+            self.assertEqual(target.read_bytes(), b"immutable")
 
 
 class ChampionLifecycleTests(unittest.TestCase):
