@@ -12,6 +12,7 @@ from lottery.readiness import ReadinessError, evaluate_readiness, load_json, wri
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", required=True)
+    parser.add_argument("--policy", required=True, help="versioned readiness-policy-v1.json")
     parser.add_argument("--gate-results", required=True)
     parser.add_argument("--fault-results", required=True)
     parser.add_argument("--evidence-root", required=True)
@@ -19,9 +20,12 @@ def main() -> int:
     args = parser.parse_args()
     try:
         manifest = load_json(args.manifest)
+        policy = load_json(args.policy)
         gates = load_json(args.gate_results)
         faults = load_json(args.fault_results)
-        report = evaluate_readiness(manifest, gates, faults, args.evidence_root)
+        report = evaluate_readiness(
+            manifest, gates, faults, args.evidence_root, policy=policy
+        )
         write_readiness_report(report, args.output)
     except (ReadinessError, OSError) as exc:
         print(f"readiness evaluation failed closed: {exc}", file=sys.stderr)
