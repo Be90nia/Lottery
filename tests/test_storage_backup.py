@@ -86,6 +86,13 @@ class StorageBackupTests(unittest.TestCase):
         with self.assertRaisesRegex(BackupError, "integrity mismatch"):
             verify_backup(created["backup_path"])
 
+    def test_backup_rejects_unlisted_empty_directories(self):
+        self.create_committed_pointer()
+        created = self.create()
+        (Path(created["backup_path"]) / "payload" / "unexpected-empty").mkdir()
+        with self.assertRaisesRegex(BackupError, "unexpected empty directories"):
+            verify_backup(created["backup_path"])
+
     def test_source_mutation_during_copy_aborts_backup(self):
         self.store_root.mkdir()
         source_file = self.store_root / "snapshot.json"
@@ -105,6 +112,14 @@ class StorageBackupTests(unittest.TestCase):
             with self.assertRaisesRegex(BackupError, "source changed"):
                 self.create()
         self.assertFalse((self.backup_root / "backup-001").exists())
+
+    def test_restore_rejects_existing_destination_even_when_empty(self):
+        self.create_committed_pointer()
+        created = self.create()
+        empty = self.root / "empty-destination"
+        empty.mkdir()
+        with self.assertRaisesRegex(BackupError, "must not already exist"):
+            restore_backup(created["backup_path"], empty)
 
     def test_restore_rejects_nonempty_destination(self):
         self.create_committed_pointer()
