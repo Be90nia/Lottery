@@ -153,11 +153,15 @@ class ProspectiveLedger:
             record = event.get("record")
             if not isinstance(record, dict):
                 raise ProspectiveLedgerError("prospective event record must be an object")
-            if event["event_type"] == "forecast_issued":
+            if event["event_type"] in ("forecast_issued", "forecast_missing"):
                 if record.get("schema") != FORECAST_SCHEMA or _sha(canonicalize({
                     key: value for key, value in record.items() if key != "forecast_id"
                 })) != record.get("forecast_id"):
                     raise ProspectiveLedgerError("forecast record content hash mismatch")
+                expected_status = "missing_at_cutoff" if event["event_type"] == "forecast_missing" else None
+                if (expected_status is not None and record.get("status") != expected_status
+                        or expected_status is None and record.get("status") not in ("eligible", "ineligible")):
+                    raise ProspectiveLedgerError("forecast event type and terminal status disagree")
                 forecast_id = record["forecast_id"]
                 key = (
                     record["front_artifact_sha256"], record["back_artifact_sha256"],
@@ -380,6 +384,137 @@ class ProspectiveLedger:
                 raise ProspectiveLedgerError("forecast key already has an immutable record")
             self._append_locked(f"forecast:{record['forecast_id']}", "forecast_issued", record)
             return record
+
+    def record_missing_forecast(
+        self,
+        *,
+        target_draw_id: str,
+        target_draw_at_utc: str,
+        target_cutoff_utc: str,
+        target_cutoff_timezone_source: str,
+        expected_at_utc: str,
+        checked_at_utc: str,
+        zone: str,
+        population_key: str,
+        front_artifact_sha256: str,
+        back_artifact_sha256: str,
+        active_registry_snapshot_id: str,
+        lifecycle_state: str,
+        model_spec_sha256: str,
+        training_snapshot_sha256: str,
+        training_first_draw_id: str,
+        training_last_draw_id: str,
+        training_row_count: int,
+        training_last_draw_date: str,
+        registry_generation: int,
+        forecast_policy_version: str,
+        scoring_policy_version: str,
+        model_family: str,
+        code_commit: str,
+        runtime: str,
+        source_evidence_manifest_sha256: str | None = None,
+    ) -> dict[str, Any]:
+        """Finalize an expected forecast as missing once its cutoff has passed."""
+        if not isinstance(target_draw_id, str) or re.fullmatch(r"\\d{5}", target_draw_id) is None:
+            raise ProspectiveLedgerError("target_draw_id must be a five-digit ID")
+        if zone not in ("front", "back"):
+            raise ProspectiveLedgerError("zone must be front or back")
+        draw_at = _timestamp(target_draw_at_utc, "target_draw_at_utc")
+        cutoff = _timestamp(target_cutoff_utc, "target_cutoff_utc")
+        expected_at = _timestamp(expected_at_utc, "expected_at_utc")
+        checked_at = _timestamp(checked_at_utc, "checked_at_utc")
+        if draw_at <= cutoff or expected_at >= cutoff or checked_at < cutoff:
+            raise ProspectiveLedgerError("missing forecast must be expected before and finalized at/after cutoff")
+        if lifecycle_state not in ("champion", "shadow"):
+            raise ProspectiveLedgerError("only active Champion/shadow slots may have expected forecasts")
+        if type(registry_generation) is not int or registry_generation < 0:
+            raise ProspectiveLedgerError("registry_generation must be a non-negative integer")
+        for field, value in (
+            ("front_artifact_sha256", front_artifact_sha256),
+            ("back_artifact_sha256", back_artifact_sha256),
+            ("active_registry_snapshot_id", active_registry_snapshot_id),
+            ("model_spec_sha256", model_spec_sha256),
+            ("training_snapshot_sha256", training_snapshot_sha256),
+        ):
+            if not _is_sha(value):
+                raise ProspectiveLedgerError(f"{field} must be a lowercase SHA-256")
+        if source_evidence_manifest_sha256 is not None and not _is_sha(source_evidence_manifest_sha256):
+            raise ProspectiveLedgerError("source_evidence_manifest_sha256 must be null or a lowercase SHA-256")
+        if population_key not in ("pooled", "pooled-equipment-blind") and source_evidence_manifest_sha256 is None:
+            raise ProspectiveLedgerError("set-conditioned forecast requires a source evidence manifest digest")
+        if (not isinstance(training_first_draw_id, str)
+                or re.fullmatch(r"\\d{5}", training_first_draw_id) is None
+                or not isinstance(training_last_draw_id, str)
+                or re.fullmatch(r"\\d{5}", training_last_draw_id) is None
+                or training_first_draw_id > training_last_draw_id):
+            raise ProspectiveLedgerError("training draw range must use ordered five-digit IDs")
+        if type(training_row_count) is not int or training_row_count < 1:
+            raise ProspectiveLedgerError("training_row_count must be a positive integer")
+        training_date = date.fromisoformat(training_last_draw_date)
+        if training_date >= cutoff.date():
+            raise ProspectiveLedgerError("training date must be strictly before target cutoff")
+        for field, value in (
+            ("target_cutoff_timezone_source", target_cutoff_timezone_source),
+            ("population_key", population_key),
+            ("forecast_policy_version", forecast_policy_version),
+            ("scoring_policy_version", scoring_policy_version),
+            ("model_family", model_family),
+            ("code_commit", code_commit),
+            ("runtime", runtime),
+        ):
+            if not isinstance(value, str) or not value:
+                raise ProspectiveLedgerError(f"{field} must be a non-empty string")
+        selected_artifact = front_artifact_sha256 if zone == "front" else back_artifact_sha256
+        record = {
+            "schema": FORECAST_SCHEMA,
+            "target_draw_id": target_draw_id,
+            "target_draw_at_utc": draw_at.isoformat(),
+            "target_cutoff_utc": cutoff.isoformat(),
+            "target_cutoff_timezone_source": target_cutoff_timezone_source,
+            "expected_at_utc": expected_at.isoformat(),
+            "checked_at_utc": checked_at.isoformat(),
+            "issued_at_utc": None,
+            "artifact_sha256": selected_artifact,
+            "distribution_sha256": None,
+            "front_artifact_sha256": front_artifact_sha256,
+            "back_artifact_sha256": back_artifact_sha256,
+            "front_distribution_sha256": None,
+            "back_distribution_sha256": None,
+            "active_registry_snapshot_id": active_registry_snapshot_id,
+            "lifecycle_state": lifecycle_state,
+            "model_spec_sha256": model_spec_sha256,
+            "zone": zone,
+            "population_key": population_key,
+            "training_snapshot_sha256": training_snapshot_sha256,
+            "training_first_draw_id": training_first_draw_id,
+            "training_last_draw_id": training_last_draw_id,
+            "training_row_count": training_row_count,
+            "training_last_draw_date": training_date.isoformat(),
+            "registry_generation": registry_generation,
+            "forecast_policy_version": forecast_policy_version,
+            "scoring_policy_version": scoring_policy_version,
+            "model_family": model_family,
+            "code_commit": code_commit,
+            "runtime": runtime,
+            "source_evidence_manifest_sha256": source_evidence_manifest_sha256,
+            "status": "missing_at_cutoff",
+            "reason_codes": ["forecast_missing_at_cutoff"],
+        }
+        record["forecast_id"] = _sha(canonicalize(record))
+        key = (
+            front_artifact_sha256, back_artifact_sha256, target_draw_id,
+            zone, population_key, forecast_policy_version,
+        )
+        with self._lock():
+            snapshot = self._snapshot_unlocked()
+            existing = snapshot["forecast_keys"].get(key)
+            if existing is not None:
+                if existing == record["forecast_id"]:
+                    return snapshot["forecasts"][existing]
+                raise ProspectiveLedgerError("duplicate artifact × target × zone forecast")
+            event_id = _sha(f"forecast-missing:{record['forecast_id']}".encode("utf-8"))
+            self._append_locked(event_id, "forecast_missing", record)
+        return record
 
     def record_outcome(
         self,
@@ -641,6 +776,9 @@ class ProspectiveLedger:
             "expected_forecast_records": len(forecasts),
             "eligible": len(eligible),
             "ineligible": len(forecasts) - len(eligible),
+            "forecast_missing_at_cutoff": sum(
+                record["status"] == "missing_at_cutoff" for record in forecasts
+            ),
             "outcome_versions": len(outcomes),
             "latest_outcomes": len(latest_outcomes),
             "outcome_authority_counts": {
