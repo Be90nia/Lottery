@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 import hashlib
 import tempfile
 import unittest
@@ -36,7 +37,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             "target_draw_at_utc": "2026-11-20T13:00:00+00:00",
             "target_cutoff_utc": "2026-11-20T12:00:00+00:00",
             "target_cutoff_timezone_source": "official_schedule/v1",
-            "expected_at_utc": "2026-11-20T10:00:00+00:00",
+            "expected_at_utc": self.now.isoformat(),
             "zone": "front",
             "population_key": "pooled-equipment-blind",
             "front_artifact_sha256": sha("artifact-front"),
@@ -62,7 +63,10 @@ class ProspectiveLedgerTests(unittest.TestCase):
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.ledger = ProspectiveLedger(Path(self.temp.name) / "prospective.jsonl")
+        self.now = datetime.fromisoformat("2026-11-20T10:00:00+00:00")
+        self.ledger = ProspectiveLedger(
+            Path(self.temp.name) / "prospective.jsonl", clock=lambda: self.now
+        )
         self.register_expectation()
         self.forecast = self.ledger.issue_forecast(
             target_draw_id="26131",
@@ -115,6 +119,20 @@ class ProspectiveLedgerTests(unittest.TestCase):
             supersedes_outcome_id=supersedes,
         )
 
+    def test_expectation_cannot_be_backdated_after_cutoff(self):
+        self.now = datetime.fromisoformat("2026-11-20T12:01:00+00:00")
+        with self.assertRaisesRegex(ProspectiveLedgerError, "recorded after its cutoff"):
+            self.register_expectation(
+                target_draw_id="26132",
+                target_draw_at_utc="2026-11-20T13:00:00+00:00",
+                target_cutoff_utc="2026-11-20T12:00:00+00:00",
+                expected_at_utc="2026-11-20T10:00:00+00:00",
+                front_artifact_sha256=sha("late-expectation-front"),
+                back_artifact_sha256=sha("late-expectation-back"),
+                active_registry_snapshot_id=sha("late-expectation-registry"),
+                training_snapshot_sha256=sha("late-expectation-training"),
+            )
+
     def test_forecast_is_bound_to_artifact_target_zone_and_cutoff(self):
         self.assertEqual(self.forecast["status"], "eligible")
         self.assertEqual(self.forecast["target_draw_id"], "26131")
@@ -127,7 +145,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             target_draw_id="26132",
             target_draw_at_utc="2026-11-21T13:00:00+00:00",
             target_cutoff_utc="2026-11-21T12:00:00+00:00",
-            expected_at_utc="2026-11-21T10:00:00+00:00",
+            expected_at_utc=self.now.isoformat(),
             zone="back",
             front_artifact_sha256=sha("front-artifact-late"),
             back_artifact_sha256=sha("artifact-late"),
@@ -139,12 +157,13 @@ class ProspectiveLedgerTests(unittest.TestCase):
             code_commit="b" * 40,
             source_evidence_manifest_sha256=None,
         )
+        self.now = datetime.fromisoformat("2026-11-21T13:00:00+00:00")
         late = self.ledger.issue_forecast(
             target_draw_id="26132",
             target_draw_at_utc="2026-11-21T13:00:00+00:00",
             target_cutoff_utc="2026-11-21T12:00:00+00:00",
             target_cutoff_timezone_source="official_schedule/v1",
-            issued_at_utc="2026-11-21T13:00:00+00:00",
+            issued_at_utc="2026-11-21T11:00:00+00:00",
             artifact_sha256=sha("artifact-late"),
             distribution_sha256=sha("distribution-late"),
             front_artifact_sha256=sha("front-artifact-late"),
@@ -169,7 +188,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             runtime="CPython 3.12",
         )
         self.assertEqual(late["status"], "ineligible")
-        self.assertIn("forecast_after_cutoff", late["reason_codes"])
+        self.assertIn("forecast_recorded_after_cutoff", late["reason_codes"])
         self.assertIn("training_draw_not_before_target", late["reason_codes"])
         with self.assertRaisesRegex(ProspectiveLedgerError, "ineligible forecast"):
             self.ledger.score_forecast(
@@ -236,7 +255,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             "target_draw_at_utc": "2026-11-21T13:00:00+00:00",
             "target_cutoff_utc": "2026-11-21T12:00:00+00:00",
             "target_cutoff_timezone_source": "official_schedule/v1",
-            "expected_at_utc": "2026-11-21T10:00:00+00:00",
+            "expected_at_utc": self.now.isoformat(),
             "checked_at_utc": "2026-11-21T12:01:00+00:00",
             "zone": "front",
             "population_key": "pooled-equipment-blind",
@@ -257,9 +276,14 @@ class ProspectiveLedgerTests(unittest.TestCase):
             "code_commit": "a" * 40,
             "runtime": "CPython 3.12",
         }
+        kwargs["expected_at_utc"] = self.now.isoformat()
         self.ledger.register_expected_forecast(**{
             key: value for key, value in kwargs.items() if key != "checked_at_utc"
         })
+        self.now = datetime.fromisoformat("2026-11-21T11:59:00+00:00")
+        with self.assertRaisesRegex(ProspectiveLedgerError, "before the ledger clock reaches cutoff"):
+            self.ledger.record_missing_forecast(**kwargs)
+        self.now = datetime.fromisoformat(kwargs["checked_at_utc"])
         first = self.ledger.record_missing_forecast(**kwargs)
         self.assertEqual(first["status"], "missing_at_cutoff")
         self.assertEqual(first["reason_codes"], ["forecast_missing_at_cutoff"])
@@ -276,6 +300,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             self.ledger.record_missing_forecast(**changed)
 
     def test_forecast_key_cannot_be_rewritten(self):
+        self.now = datetime.fromisoformat("2026-11-20T10:01:00+00:00")
         with self.assertRaisesRegex(ProspectiveLedgerError, "immutable record"):
             self.ledger.issue_forecast(
                 target_draw_id="26131",
