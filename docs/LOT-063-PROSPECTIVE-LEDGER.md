@@ -13,6 +13,13 @@ version and score records.
 - Forecasts issued after cutoff, with training data not strictly before the
   target, or with fewer than 300 training rows are retained as ineligible with
   explicit reason codes.
+- Cutoff eligibility is checked against the append-only event timestamp generated
+  by the ledger's UTC clock, not merely caller-supplied timestamps. Expectations
+  first recorded at/after cutoff are rejected; forecasts actually recorded after
+  cutoff are retained as ineligible even if their claimed issue time is backdated;
+  missing-at-cutoff records cannot be finalized before the ledger clock reaches
+  cutoff. Clock injection is for deterministic tests only; production must use
+  the default trusted host clock.
 - Official outcome observations require a protected evidence-verifier callback
   and legal front/back subsets. Raw evidence object reference, requested/final
   HTTPS URLs, retrieval timestamp, evidence locator, parser version, authority
@@ -28,7 +35,8 @@ version and score records.
   arbitrary penalty score is assigned.
 - Duplicate forecast/outcome/score retries are idempotent; changed forecast
   content cannot rewrite the same logical key.
-- Hash-chained canonical events expose ledger edits and reordering.
+- Hash-chained canonical events expose ledger edits and reordering; the event
+  occurrence time is included in that chain and revalidated when the ledger is read.
 - Coverage reports separate ineligible forecasts, pending/invalid outcomes,
   score-pending forecasts, completed score revisions and failed score attempts.
 
@@ -43,9 +51,10 @@ version and score records.
 - Probability-evaluator failures and invalid probability outputs are
   retained as immutable `score_failed` attempts with stable failure codes;
   they never receive an artificial NLL.
-- Expected forecast slots must be pre-registered before cutoff; issuance
-  must match that expectation. The cutoff finalizer appends an immutable
-  missing-at-cutoff terminal record and prevents later backfill. Coverage
+- Expected forecast slots must be pre-registered before cutoff according to the
+  ledger event clock; issuance must match that expectation. The cutoff finalizer
+  appends an immutable missing-at-cutoff terminal record only at/after cutoff
+  and prevents later backfill, including attempts that falsify the caller time. Coverage
   reports expected, issued, missing, unresolved, outcome and score states by
   zone, population key and model family. Automated scheduler integration to
   register every slot and invoke the finalizer remains.
