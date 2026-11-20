@@ -223,6 +223,7 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
             for slot in different_request["manifest"]["slots"]
         ]
         self.assertEqual(first_streams, replay_streams)
+        self.assertEqual(first["created_at_utc"], replay["created_at_utc"])
         self.assertNotEqual(first_streams, different_streams)
         self.assertEqual(
             [ticket["ticket_id"] for slot in first["manifest"]["slots"] for ticket in slot["tickets"]],
