@@ -117,6 +117,7 @@ class ReadinessTests(unittest.TestCase):
         report = evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
         self.assertNotEqual(report["fault_states"]["F01"], "PASS")
         self.assertNotEqual(report["fault_states"]["F02"], "PASS")
+        self.assertIn("F02:blocked", report["blockers"])
         self.assertEqual(report["readiness"], "NOT_READY")
 
     def test_protected_holdout_access_blocks_every_readiness_state(self):
