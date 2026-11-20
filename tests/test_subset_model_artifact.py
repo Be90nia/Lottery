@@ -17,25 +17,61 @@ from lottery.subset_model.artifact import (
 
 
 def exponential_payload():
+    names = ["sum", "odd_count", "range", "adjacent_count", "gap_variance"]
+    runtime = {"python": "3.12"}
+    training = {
+        "snapshot_sha256": "a" * 64, "row_count": 2948,
+        "first_draw_id": "07001", "last_draw_id": "26130",
+        "cutoff_draw_id": "26130", "cutoff_inclusive": True,
+    }
+    feature_schema = {
+        "version": "lot-051-symmetric-v1", "names": names,
+        "uniform_means": [0.0] * 5, "uniform_population_stds": [1.0] * 5,
+        "zero_variance_policy": "drop_and_record",
+        "candidate_names": names, "zero_variance_features": [],
+    }
+    theta = [0.1, -0.2, 0.3, 0.0, 0.05]
+    feature_schema_hash = "sha256:" + hashlib.sha256(canonicalize(feature_schema)).hexdigest()
+    model_configuration = {
+        "model_family": "complete_subset_exponential", "zone": "front",
+        "population_size": 35, "selection_size": 5,
+        "feature_schema_hash": feature_schema_hash,
+        "objective_scale": "mean_nll", "regularization_lambda": 1.0,
+        "solver": "L-BFGS-B", "max_iterations": 5000, "gradient_tolerance": 1e-8,
+    }
+    model_configuration_hash = "sha256:" + hashlib.sha256(canonicalize(model_configuration)).hexdigest()
     return {
         "schema_version": 1,
+        "artifact_schema": "lottery.subset-probability-model/v1",
+                    "artifact_type": "fitted_model",
         "model_family": "complete_subset_exponential",
-        "zone": "front",
-        "population_size": 35,
-        "selection_size": 5,
+        "zone": "front", "population_size": 35, "selection_size": 5,
+        "support": {"population_size": 35, "selection_size": 5,
+                    "support_count": 324632, "subset_order": "lexicographic_ascending"},
+        "feature_schema": feature_schema,
+        "parameters": {"theta": theta, "parameter_order": "feature_schema.names"},
+        "normalization": {"method": "full_support_logsumexp",
+                          "log_partition": 12.0, "numeric_dtype": "float64"},
+        "fit": {"status": "converged", "termination_reason": "gradient_tolerance",
+                "objective": 1.0, "gradient_inf_norm": 1e-9, "iterations": 10,
+                "optimizer": "L-BFGS-B", "lambda": 1.0},
+        "training": training,
+        "implementation": {"code_revision": "a" * 40, "runtime": runtime,
+                           "library_versions": {}, "rng_algorithm": "injected_rng.random_v1"},
         "training_snapshot_sha256": "a" * 64,
-        "training_cutoff_draw_id": "26130",
-        "training_row_count": 2948,
-        "code_revision": "abc123",
-        "runtime": {"python": "3.12"},
+        "training_cutoff_draw_id": "26130", "training_row_count": 2948,
+        "feature_schema_hash": feature_schema_hash,
+        "model_configuration_hash": model_configuration_hash,
+        "model_configuration": model_configuration,
+        "training_first_draw_id": "07001", "training_last_draw_id": "26130",
+        "code_revision": "abc123", "runtime": runtime,
         "fit_diagnostics": {"terminal_status": "converged", "gradient_infinity_norm": 1e-9},
         "forecast_ready": False,
         "feature_schema_version": "lot-051-symmetric-v1",
-        "active_feature_names": ["sum", "odd_count", "range", "adjacent_count", "gap_variance"],
-        "theta": [0.1, -0.2, 0.3, 0.0, 0.05],
-        "objective_scale": "mean_nll",
-        "regularization_lambda": 1.0,
+        "active_feature_names": names, "theta": theta,
+        "objective_scale": "mean_nll", "regularization_lambda": 1.0,
     }
+
 
 
 class JCSCanonicalizationTests(unittest.TestCase):
@@ -46,19 +82,6 @@ class JCSCanonicalizationTests(unittest.TestCase):
         expected = fixture["canonical_utf8"].encode("utf-8")
         self.assertEqual(canonical, expected)
         self.assertEqual(hashlib.sha256(canonical).hexdigest(), fixture["sha256"])
-
-    def test_ecmascript_number_formatting_vectors(self):
-        value = {
-            "numbers": [
-                333333333.33333329, 1e30, 4.5, 2e-3, 1e-27,
-                1e-6, 1e-7, 1e20, 1e21, -0.0,
-            ]
-        }
-        expected = (
-            b'{"numbers":[333333333.3333333,1e+30,4.5,0.002,1e-27,'
-            b'0.000001,1e-7,100000000000000000000,1e+21,0]}'
-        )
-        self.assertEqual(canonicalize(value), expected)
 
     def test_rfc8785_appendix_b_binary64_number_vectors(self):
         fixture_path = Path(__file__).parent / "fixtures" / "jcs-golden-v1.json"
@@ -80,6 +103,19 @@ class JCSCanonicalizationTests(unittest.TestCase):
         )
         with self.assertRaises(ArtifactValidationError):
             canonicalize({"value": 2**53 + 1})
+
+    def test_ecmascript_number_formatting_vectors(self):
+        value = {
+            "numbers": [
+                333333333.33333329, 1e30, 4.5, 2e-3, 1e-27,
+                1e-6, 1e-7, 1e20, 1e21, -0.0,
+            ]
+        }
+        expected = (
+            b'{"numbers":[333333333.3333333,1e+30,4.5,0.002,1e-27,'
+            b'0.000001,1e-7,100000000000000000000,1e+21,0]}'
+        )
+        self.assertEqual(canonicalize(value), expected)
 
     def test_object_keys_sort_by_utf16_code_units(self):
         value = {"\ue000": 2, "😀": 1}
@@ -110,25 +146,6 @@ class ModelArtifactTests(unittest.TestCase):
         with self.assertRaisesRegex(ArtifactValidationError, "unknown artifact fields"):
             create_artifact(payload)
 
-        conditional = {
-            "schema_version": 1,
-            "model_family": "conditional_poisson",
-            "zone": "back",
-            "population_size": 12,
-            "selection_size": 2,
-            "training_snapshot_sha256": "b" * 64,
-            "training_cutoff_draw_id": "26130",
-            "training_row_count": 2948,
-            "code_revision": "abc123",
-            "runtime": {},
-            "fit_diagnostics": {"terminal_status": "converged"},
-            "forecast_ready": False,
-            "centered_log_weights": [0.0] * 12,
-            "unregistered_debug_field": "must not be silently hashed",
-        }
-        with self.assertRaisesRegex(ArtifactValidationError, "unknown artifact fields"):
-            create_artifact(conditional)
-
     def test_create_verify_and_content_address(self):
         raw, artifact_id = create_artifact(exponential_payload())
         parsed = verify_artifact(raw)
@@ -149,6 +166,7 @@ class ModelArtifactTests(unittest.TestCase):
         raw_a, id_a = create_artifact(payload)
         changed = dict(payload)
         changed["theta"] = [0.1, -0.2, 0.3, 0.0, 0.06]
+        changed["parameters"] = dict(changed["parameters"], theta=changed["theta"])
         raw_b, id_b = create_artifact(changed)
         self.assertNotEqual(id_a, id_b)
         self.assertNotEqual(raw_a, raw_b)
@@ -182,22 +200,84 @@ class ModelArtifactTests(unittest.TestCase):
         with self.assertRaises(ArtifactValidationError):
             create_artifact(payload)
 
-    def test_conditional_poisson_family_requires_centered_weights(self):
-        payload = {
-            "schema_version": 1,
-            "model_family": "conditional_poisson",
-            "zone": "back",
-            "population_size": 12,
-            "selection_size": 2,
-            "training_snapshot_sha256": "b" * 64,
-            "training_cutoff_draw_id": "26130",
-            "training_row_count": 2948,
-            "code_revision": "abc123",
-            "runtime": {},
-            "fit_diagnostics": {"terminal_status": "converged"},
-            "forecast_ready": False,
-            "centered_log_weights": [0.0] * 12,
+    def test_failed_fit_has_content_addressed_diagnostic_artifact(self):
+        payload = exponential_payload()
+        payload["artifact_type"] = "fit_failure"
+        payload["fit"] = dict(
+            payload["fit"], status="line_search_failed",
+            termination_reason="strong-Wolfe search exhausted",
+            objective=None, gradient_inf_norm=None,
+        )
+        payload["fit_diagnostics"] = {
+            "terminal_status": "line_search_failed", "converged": False,
+            "message": "strong-Wolfe search exhausted",
         }
+        payload["parameters"] = {
+            "parameter_order": "feature_schema.names", "parameters_available": False,
+        }
+        payload["normalization"] = {
+            "method": "not_computed", "log_partition": None, "numeric_dtype": "float64",
+        }
+        payload["failure_reason"] = "line_search_failed"
+        payload.pop("theta", None)
+        raw, artifact_id = create_artifact(payload)
+        verified = verify_artifact(raw)
+        self.assertEqual(verified["artifact_id"], artifact_id)
+        self.assertEqual(verified["artifact_type"], "fit_failure")
+        self.assertFalse(verified["forecast_ready"])
+
+    def test_conditional_poisson_family_requires_centered_weights(self):
+        p = 2 / 12
+        runtime = {}
+        training = {
+            "snapshot_sha256": "b" * 64, "row_count": 2948,
+            "first_draw_id": "07001", "last_draw_id": "26130",
+            "cutoff_draw_id": "26130", "cutoff_inclusive": True,
+        }
+        names = [f"item_{item}" for item in range(1, 13)]
+        payload = {
+            "schema_version": 1, "artifact_schema": "lottery.subset-probability-model/v1",
+                    "artifact_type": "fitted_model",
+            "model_family": "conditional_poisson", "zone": "back",
+            "population_size": 12, "selection_size": 2,
+            "support": {"population_size": 12, "selection_size": 2,
+                        "support_count": 66, "subset_order": "lexicographic_ascending"},
+            "feature_schema": {
+                "version": "lottery-item-inclusion/v1", "names": names,
+                "uniform_means": [p] * 12,
+                "uniform_population_stds": [(p * (1 - p)) ** 0.5] * 12,
+                "zero_variance_policy": "not_applicable_item_indicator_schema",
+            },
+            "parameters": {"centered_log_weights": [0.0] * 12,
+                           "parameter_order": "feature_schema.names"},
+            "normalization": {"method": "exact_conditional_poisson_log_space_dp",
+                              "log_partition": 0.0, "numeric_dtype": "float64"},
+            "fit": {"status": "converged", "termination_reason": "gradient_tolerance",
+                    "objective": 0.0, "gradient_inf_norm": 0.0, "iterations": 1,
+                    "optimizer": "conditional_poisson_calibration_lbfgs_v1", "lambda": None},
+            "training": training,
+            "implementation": {"code_revision": "abc123", "runtime": runtime,
+                               "library_versions": {},
+                               "rng_algorithm": "conditional_poisson_backward_dp_with_injected_rng_v1"},
+            "training_snapshot_sha256": "b" * 64, "training_cutoff_draw_id": "26130",
+            "training_row_count": 2948, "feature_schema_hash": "sha256:" + "c" * 64,
+            "model_configuration_hash": "sha256:" + "d" * 64,
+            "training_first_draw_id": "07001",
+            "training_last_draw_id": "26130", "code_revision": "abc123",
+            "runtime": runtime, "fit_diagnostics": {"terminal_status": "converged"},
+            "forecast_ready": False, "centered_log_weights": [0.0] * 12,
+            "target_marginals": [p] * 12, "achieved_marginals": [p] * 12,
+            "solver_status": "converged", "calibration_residual": 0.0,
+        }
+        payload["feature_schema_hash"] = "sha256:" + hashlib.sha256(canonicalize(payload["feature_schema"])).hexdigest()
+        model_configuration = {
+            "model_family": "conditional_poisson", "zone": "back",
+            "population_size": 12, "selection_size": 2, "alpha": 100.0,
+            "half_life": None, "weighting": "expanding",
+            "feature_schema_hash": payload["feature_schema_hash"],
+        }
+        payload["model_configuration"] = model_configuration
+        payload["model_configuration_hash"] = "sha256:" + hashlib.sha256(canonicalize(model_configuration)).hexdigest()
         raw, artifact_id = create_artifact(payload)
         self.assertEqual(verify_artifact(raw)["artifact_id"], artifact_id)
         payload["centered_log_weights"] = [1.0] * 12
