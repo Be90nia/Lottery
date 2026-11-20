@@ -37,13 +37,13 @@ BOOTSTRAP_SEED = 20261118
 
 
 def _confirmatory_gate(
-    inferential_pass: bool, *, solver_policy_approved: bool,
-    multiplicity_policy_approved: bool,
-    non_regression_policy_approved: bool,
-    non_regression_pass: bool,
+    inferential_pass: bool, *, experiment_registration_approved: bool,
+    solver_policy_approved: bool, multiplicity_policy_approved: bool,
+    non_regression_policy_approved: bool, non_regression_pass: bool,
 ) -> bool:
     return bool(
         inferential_pass
+        and experiment_registration_approved
         and solver_policy_approved
         and multiplicity_policy_approved
         and non_regression_policy_approved
@@ -548,8 +548,13 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         )
         for zone in ("front", "back")
     }
+    # This optimizer repair follows an observed failed-fit run. Issue #27
+    # registers it as a child exploratory diagnostic, so it cannot inherit the
+    # original LOT-055 confirmatory label even if all numerical gates pass.
+    experiment_registration_approved = False
     passed = _confirmatory_gate(
         primary_inferential_pass,
+        experiment_registration_approved=experiment_registration_approved,
         solver_policy_approved=solver_policy_approved,
         multiplicity_policy_approved=multiplicity_policy_approved,
         non_regression_policy_approved=non_regression_policy_approved,
@@ -594,6 +599,10 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
             "all_zones_pass": bool(all(non_regression_pass.values())),
             "multiplicity_note": "intersection-union non-regression gate; all four zone-by-comparator conditions must pass",
         },
+        "experiment_id": "LOT055-OPT-DIAG-20261120",
+        "experiment_class": "exploratory_diagnostic",
+        "confirmatory_eligible": False,
+        "confirmatory_ineligibility_reason": "post-outcome optimizer repair; see Issue #27 child registration",
         "confirmatory_candidate_pass": bool(passed),
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
@@ -602,7 +611,8 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
                          if any(zone["fit_status_counts"]["candidate"].get("line_search_failed", 0)
                                 for zone in (front, back))
                          else "candidate optimizer had no line_search_failed fits"),
-                        "Holm inference is implemented for the preregistered two-hypothesis candidate-vs-uniform family; expanding/EWMA remain non-regression comparators"],
+                        "Holm statistics are descriptive only for this post-outcome optimizer-repair child experiment",
+                        "not eligible for confirmatory claims under LOT-064/Issue #27"],
     }
     immutable_outputs = write_immutable_outputs(result, rows, snapshot_path, output_path)
     result["immutable_outputs"] = immutable_outputs
