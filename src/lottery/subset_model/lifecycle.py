@@ -137,6 +137,7 @@ def _new_slot(population_key: str, zone: str) -> dict[str, Any]:
         "retired_artifact_ids": [],
         "rejected_artifact_ids": [],
         "validation": {},
+        "shadow_validation": {},
         "approval": {},
         "suspended": False,
         "suspension_reason": None,
@@ -274,11 +275,12 @@ def _validate_approval(
     expected_champion_artifact_id: str | None,
     evaluation_manifest_sha256: str,
     evaluation_receipt_sha256: str,
+    shadow_receipt_sha256: str | None,
 ) -> None:
     required = {
         "schema_version", "approval_id", "action", "artifact_id", "population_key",
         "zone", "expected_champion_artifact_id", "evaluation_manifest_sha256",
-        "evaluation_receipt_sha256", "policy_version", "issued_at_utc", "signer_id", "signature",
+        "evaluation_receipt_sha256", "shadow_receipt_sha256", "policy_version", "issued_at_utc", "signer_id", "signature",
     }
     if not isinstance(approval, dict) or set(approval) != required:
         raise LifecycleError("approval receipt fields do not match the closed LOT-060 schema")
@@ -292,6 +294,7 @@ def _validate_approval(
         or approval["expected_champion_artifact_id"] != expected_champion_artifact_id
         or approval["evaluation_manifest_sha256"] != evaluation_manifest_sha256
         or approval["evaluation_receipt_sha256"] != evaluation_receipt_sha256
+        or approval["shadow_receipt_sha256"] != shadow_receipt_sha256
     ):
         raise LifecycleError("approval scope does not match the requested lifecycle transition")
     for field in ("approval_id", "issued_at_utc", "signer_id", "signature"):
@@ -299,6 +302,10 @@ def _validate_approval(
             raise LifecycleError(f"approval {field} must be a non-empty string")
     if not _is_sha(evaluation_receipt_sha256):
         raise LifecycleError("approval evaluation_receipt_sha256 must be a lowercase SHA-256")
+    if shadow_receipt_sha256 is not None and not _is_sha(shadow_receipt_sha256):
+        raise LifecycleError("approval shadow_receipt_sha256 must be null or a lowercase SHA-256")
+    if action == "restore" and shadow_receipt_sha256 is not None:
+        raise LifecycleError("restore approval must not claim a prospective shadow receipt")
     if approval["action"] not in ("promote", "restore"):
         raise LifecycleError("approval action must be promote or restore")
     try:
@@ -359,6 +366,7 @@ class ChampionLifecycle:
                     or not isinstance(slot.get("retired_artifact_ids"), list)
                     or not isinstance(slot.get("rejected_artifact_ids"), list)
                     or not isinstance(slot.get("validation"), dict)
+                    or not isinstance(slot.get("shadow_validation"), dict)
                     or not isinstance(slot.get("approval"), dict)
                     or (slot.get("suspension_reason") is not None
                         and not isinstance(slot["suspension_reason"], str))):
@@ -519,6 +527,19 @@ class ChampionLifecycle:
         _validate_evaluation_receipt(receipt)
         return receipt
 
+    def _load_shadow_receipt(self, receipt_hash: str) -> dict[str, Any]:
+        if not _is_sha(receipt_hash):
+            raise LifecycleError("shadow receipt hash is invalid")
+        path = self.evaluations / f"{receipt_hash}.json"
+        try:
+            raw = path.read_bytes()
+            receipt = parse_json_strict(raw)
+        except (OSError, ArtifactValidationError) as exc:
+            raise LifecycleError("immutable shadow receipt is missing or invalid") from exc
+        if _sha(raw) != receipt_hash or canonicalize(receipt) != raw:
+            raise LifecycleError("shadow receipt content hash or canonical bytes mismatch")
+        return receipt
+
     def snapshot(self) -> dict[str, Any]:
         with ledger_lock(self.registry_path):
             self._recover_locked()
@@ -538,6 +559,12 @@ class ChampionLifecycle:
                             or receipt.get("population_key") != slot["population_key"]
                             or receipt.get("zone") != slot["zone"]):
                         raise LifecycleError("evaluation receipt scope differs from registry slot")
+                for artifact_id, shadow_validation in slot.get("shadow_validation", {}).items():
+                    shadow_receipt = self._load_shadow_receipt(shadow_validation["receipt_sha256"])
+                    if (shadow_receipt.get("artifact_id") != artifact_id
+                            or shadow_receipt.get("population_key") != slot["population_key"]
+                            or shadow_receipt.get("zone") != slot["zone"]):
+                        raise LifecycleError("shadow receipt scope differs from registry slot")
                 for approval_hash in slot.get("approval", {}).values():
                     if not _is_sha(approval_hash):
                         raise LifecycleError("immutable approval receipt reference is malformed")
@@ -662,6 +689,7 @@ class ChampionLifecycle:
         expected_champion_artifact_id: str | None,
         evaluation_manifest_sha256: str,
         evaluation_receipt_sha256: str,
+        shadow_receipt_sha256: str | None,
     ) -> tuple[bytes, str]:
         _validate_approval(
             approval, action=action, artifact_id=artifact_id,
@@ -669,6 +697,7 @@ class ChampionLifecycle:
             expected_champion_artifact_id=expected_champion_artifact_id,
             evaluation_manifest_sha256=evaluation_manifest_sha256,
             evaluation_receipt_sha256=evaluation_receipt_sha256,
+            shadow_receipt_sha256=shadow_receipt_sha256,
         )
         if approval_verifier is None or approval_verifier(approval, {
             "action": action, "artifact_id": artifact_id,
@@ -676,6 +705,7 @@ class ChampionLifecycle:
             "expected_champion_artifact_id": expected_champion_artifact_id,
             "evaluation_manifest_sha256": evaluation_manifest_sha256,
             "evaluation_receipt_sha256": evaluation_receipt_sha256,
+            "shadow_receipt_sha256": shadow_receipt_sha256,
             "policy_version": POLICY_VERSION,
         }) is not True:
             raise LifecycleError("protected cryptographic approval verifier is absent or rejected the receipt")
