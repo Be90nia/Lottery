@@ -394,14 +394,22 @@ class ChampionLifecycleTests(unittest.TestCase):
         second_id, second_receipt, second_validation = self.register_and_validate(
             population, snapshot_hash="d" * 64
         )
+        prospective_shadow = shadow_receipt(second_id, population, "front", first_id)
+        shadowed = self.store.mark_shadow(
+            population_key=population, zone="front", artifact_id=second_id,
+            shadow_receipt=prospective_shadow,
+            expected_generation=second_validation["generation"], actor="test-suite",
+        )
+        shadow_hash = hashlib.sha256(canonicalize(prospective_shadow)).hexdigest()
         second_approval = approval_for(
             second_id, population, "front", second_receipt,
             expected_champion_artifact_id=first_id,
+            shadow_receipt_sha256=shadow_hash,
         )
         second_promoted = self.store.promote_candidate(
             population_key=population, zone="front", artifact_id=second_id,
             expected_champion_artifact_id=first_id,
-            expected_generation=second_validation["generation"],
+            expected_generation=shadowed["generation"],
             approval=second_approval, approval_verifier=self.verifier, actor="test-suite",
         )
         restore_approval = approval_for(
