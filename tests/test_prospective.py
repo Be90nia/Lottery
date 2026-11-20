@@ -337,6 +337,11 @@ class ProspectiveLedgerTests(unittest.TestCase):
             log_probability=score_result(-10.5),
         )
         self.assertEqual(score["negative_log_score"], 10.5)
+        self.assertTrue(score["normalization_verified"])
+        self.assertRegex(score["evaluation_receipt_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(score["scoring_policy_version"], "exact-set-nll/v1")
+        self.assertEqual(score["front_artifact_sha256"], self.forecast["front_artifact_sha256"])
+        self.assertEqual(score["back_artifact_sha256"], self.forecast["back_artifact_sha256"])
         self.assertAlmostEqual(score["uniform_negative_log_score"], 12.6904475)
         self.assertAlmostEqual(score["candidate_minus_uniform_nll"], 10.5 - score["uniform_negative_log_score"])
         retry = self.ledger.score_forecast(
