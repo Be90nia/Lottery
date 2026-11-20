@@ -15,6 +15,8 @@ from typing import Sequence
 from .exponential import _dot, _strong_wolfe_search
 
 
+CALIBRATION_SOLVER = "conditional_poisson_calibration_lbfgs_strong_wolfe_v2"
+
 _NEG_INF = float("-inf")
 
 
@@ -221,6 +223,8 @@ class ConditionalPoisson:
             raise ValueError("tolerance must be finite and positive")
         if type(max_iterations) is not int or max_iterations < 1:
             raise ValueError("max_iterations must be a positive integer")
+        if type(history_size) is not int or history_size < 1:
+            raise ValueError("history_size must be a positive integer")
 
         def evaluate(eta: tuple[float, ...]):
             model = cls(eta, k)
@@ -320,5 +324,5 @@ class ConditionalPoisson:
             gradient_infinity_norm=gradient_inf,
             iterations=iterations,
             message=message,
-            solver="conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+            solver=CALIBRATION_SOLVER,
         )
