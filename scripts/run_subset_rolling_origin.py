@@ -413,6 +413,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                             "uniform_population_stds": [math.sqrt((k / m) * (1.0 - k / m))] * m,
                             "zero_variance_policy": "not_applicable_item_indicator_schema",
                         }
+                        baseline_config["feature_schema_hash"] = _jcs_hash(baseline_schema)
                         baseline_payload = {
                             "schema_version": 1, "model_family": "conditional_poisson",
                             "zone": zone, "population_size": m, "selection_size": k,
