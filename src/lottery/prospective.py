@@ -448,8 +448,10 @@ class ProspectiveLedger:
                 or re.fullmatch(r"\d{5}", training_last_draw_id) is None
                 or training_first_draw_id > training_last_draw_id):
             raise ProspectiveLedgerError("training draw range must use ordered five-digit IDs")
-        if type(training_row_count) is not int or training_row_count < 1:
-            raise ProspectiveLedgerError("training_row_count must be a positive integer")
+        if type(training_row_count) is not int or training_row_count < 300:
+            raise ProspectiveLedgerError("missing forecast expectation requires at least 300 training rows")
+        if training_last_draw_id >= target_draw_id:
+            raise ProspectiveLedgerError("training_last_draw_id must be strictly before target_draw_id")
         training_date = date.fromisoformat(training_last_draw_date)
         if training_date >= cutoff.date():
             raise ProspectiveLedgerError("training date must be strictly before target cutoff")
