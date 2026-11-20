@@ -1,0 +1,235 @@
+import hashlib
+import tempfile
+import unittest
+from pathlib import Path
+
+from lottery.prospective import ProspectiveLedger, ProspectiveLedgerError
+
+
+def sha(label):
+    return hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+
+class ProspectiveLedgerTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.ledger = ProspectiveLedger(Path(self.temp.name) / "prospective.jsonl")
+        self.forecast = self.ledger.issue_forecast(
+            target_draw_id="26131",
+            target_cutoff_utc="2026-11-20T12:00:00+00:00",
+            issued_at_utc="2026-11-20T10:00:00+00:00",
+            artifact_sha256=sha("artifact-front"),
+            distribution_sha256=sha("distribution-front"),
+            zone="front",
+            population_key="pooled-equipment-blind",
+            training_snapshot_sha256=sha("training-snapshot"),
+            training_last_draw_id="26130",
+            training_last_draw_date="2026-11-19",
+            registry_generation=7,
+            forecast_policy_version="prospective-v1",
+            model_family="complete_subset_exponential",
+            code_commit="a" * 40,
+            runtime="CPython 3.12",
+            source_evidence_sha256=sha("source-evidence"),
+        )
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def record_official_outcome(self, *, front=None, source="official-source-v1", supersedes=None, observed="2026-11-20T14:00:00+00:00"):
+        return self.ledger.record_outcome(
+            draw_id="26131",
+            observed_at_utc=observed,
+            authority="official_validated",
+            source_evidence_sha256=sha(source),
+            parser_version="official-parser/v1",
+            front_numbers=front or [1, 2, 3, 4, 5],
+            back_numbers=[1, 2],
+            evidence_verifier=lambda candidate, expected: (
+                candidate["draw_id"] == expected["draw_id"]
+                and candidate["source_evidence_sha256"] == expected["source_evidence_sha256"]
+            ),
+            supersedes_outcome_id=supersedes,
+        )
+
+    def test_forecast_is_bound_to_artifact_target_zone_and_cutoff(self):
+        self.assertEqual(self.forecast["status"], "eligible")
+        self.assertEqual(self.forecast["target_draw_id"], "26131")
+        self.assertEqual(self.forecast["training_last_draw_id"], "26130")
+        self.assertEqual(self.forecast["zone"], "front")
+        self.assertEqual(self.ledger.snapshot()["forecasts"][self.forecast["forecast_id"]], self.forecast)
+
+    def test_late_forecast_and_training_leakage_are_recorded_ineligible(self):
+        late = self.ledger.issue_forecast(
+            target_draw_id="26132",
+            target_cutoff_utc="2026-11-21T12:00:00+00:00",
+            issued_at_utc="2026-11-21T13:00:00+00:00",
+            artifact_sha256=sha("artifact-late"),
+            distribution_sha256=sha("distribution-late"),
+            zone="back",
+            population_key="pooled-equipment-blind",
+            training_snapshot_sha256=sha("training-late"),
+            training_last_draw_id="26131",
+            training_last_draw_date="2026-11-20",
+            registry_generation=7,
+            forecast_policy_version="prospective-v1",
+            model_family="complete_subset_exponential",
+            code_commit="b" * 40,
+            runtime="CPython 3.12",
+        )
+        self.assertEqual(late["status"], "ineligible")
+        self.assertIn("forecast_after_cutoff", late["reason_codes"])
+        self.assertIn("training_draw_not_before_target", late["reason_codes"])
+        with self.assertRaisesRegex(ProspectiveLedgerError, "ineligible forecast"):
+            self.ledger.score_forecast(
+                forecast_id=late["forecast_id"], outcome_id="0" * 64,
+                scorer_version="score-v1", log_probability=lambda record, subset: -1.0,
+            )
+
+    def test_forecast_key_cannot_be_rewritten(self):
+        with self.assertRaisesRegex(ProspectiveLedgerError, "immutable record"):
+            self.ledger.issue_forecast(
+                target_draw_id="26131",
+                target_cutoff_utc="2026-11-20T12:00:00+00:00",
+                issued_at_utc="2026-11-20T10:01:00+00:00",
+                artifact_sha256=sha("artifact-front"),
+                distribution_sha256=sha("changed-distribution"),
+                zone="front",
+                population_key="pooled-equipment-blind",
+                training_snapshot_sha256=sha("training-snapshot"),
+                training_last_draw_id="26130",
+                training_last_draw_date="2026-11-19",
+                registry_generation=7,
+                forecast_policy_version="prospective-v1",
+                model_family="complete_subset_exponential",
+                code_commit="a" * 40,
+                runtime="CPython 3.12",
+                source_evidence_sha256=sha("source-evidence"),
+            )
+
+    def test_non_authoritative_outcome_is_preserved_but_not_scored(self):
+        outcome = self.ledger.record_outcome(
+            draw_id="26131",
+            observed_at_utc="2026-11-20T14:00:00+00:00",
+            authority="third_party",
+            source_evidence_sha256=sha("third-party"),
+            parser_version="third-party-parser/v1",
+            front_numbers=[1, 2, 3, 4, 5],
+            back_numbers=[1, 2],
+            reason_code="official_source_blocked",
+        )
+        with self.assertRaisesRegex(ProspectiveLedgerError, "only authoritative"):
+            self.ledger.score_forecast(
+                forecast_id=self.forecast["forecast_id"],
+                outcome_id=outcome["outcome_id"],
+                scorer_version="score-v1",
+                log_probability=lambda record, subset: -1.0,
+            )
+
+    def test_exact_set_score_is_one_forecast_zone_record_and_idempotent(self):
+        outcome = self.record_official_outcome()
+        score = self.ledger.score_forecast(
+            forecast_id=self.forecast["forecast_id"],
+            outcome_id=outcome["outcome_id"],
+            scorer_version="exact-set-v1",
+            log_probability=lambda record, subset: -10.5,
+        )
+        self.assertEqual(score["negative_log_score"], 10.5)
+        self.assertAlmostEqual(score["uniform_negative_log_score"], 12.690449)
+        self.assertAlmostEqual(score["candidate_minus_uniform_nll"], 10.5 - score["uniform_negative_log_score"])
+        retry = self.ledger.score_forecast(
+            forecast_id=self.forecast["forecast_id"],
+            outcome_id=outcome["outcome_id"],
+            scorer_version="exact-set-v1",
+            log_probability=lambda record, subset: -10.5,
+        )
+        self.assertEqual(score, retry)
+        self.assertEqual(self.ledger.coverage_report()["score_revisions"], 1)
+
+    def test_positive_or_nonfinite_log_probability_is_rejected(self):
+        outcome = self.record_official_outcome()
+        for value in (0.01, float("nan"), float("inf")):
+            with self.assertRaisesRegex(ProspectiveLedgerError, "finite and non-positive"):
+                self.ledger.score_forecast(
+                    forecast_id=self.forecast["forecast_id"],
+                    outcome_id=outcome["outcome_id"],
+                    scorer_version=f"bad-{value}",
+                    log_probability=lambda record, subset, value=value: value,
+                )
+
+    def test_outcome_correction_appends_new_version_and_new_score(self):
+        first = self.record_official_outcome()
+        first_score = self.ledger.score_forecast(
+            forecast_id=self.forecast["forecast_id"],
+            outcome_id=first["outcome_id"],
+            scorer_version="exact-set-v1",
+            log_probability=lambda record, subset: -10.5,
+        )
+        retry = self.record_official_outcome()
+        self.assertEqual(first, retry)
+        corrected = self.record_official_outcome(
+            front=[6, 7, 8, 9, 10],
+            source="official-correction-v2",
+            supersedes=first["outcome_id"],
+            observed="2026-11-21T09:00:00+00:00",
+        )
+        with self.assertRaisesRegex(ProspectiveLedgerError, "superseded outcome"):
+            self.ledger.score_forecast(
+                forecast_id=self.forecast["forecast_id"],
+                outcome_id=first["outcome_id"],
+                scorer_version="exact-set-v2",
+                log_probability=lambda record, subset: -9.0,
+            )
+        second_score = self.ledger.score_forecast(
+            forecast_id=self.forecast["forecast_id"],
+            outcome_id=corrected["outcome_id"],
+            scorer_version="exact-set-v1",
+            log_probability=lambda record, subset: -11.0,
+        )
+        snapshot = self.ledger.snapshot()
+        self.assertIn(first["outcome_id"], snapshot["outcomes"])
+        self.assertIn(corrected["outcome_id"], snapshot["outcomes"])
+        self.assertIn(first["outcome_id"], snapshot["superseded_outcome_ids"])
+        self.assertIn(first_score["score_id"], snapshot["scores"])
+        self.assertIn(second_score["score_id"], snapshot["scores"])
+        self.assertEqual(self.ledger.coverage_report()["score_revisions"], 2)
+
+    def test_duplicate_outcome_retry_is_idempotent(self):
+        first = self.record_official_outcome()
+        second = self.record_official_outcome()
+        self.assertEqual(first, second)
+        self.assertEqual(len(self.ledger.snapshot()["outcomes"]), 1)
+
+    def test_invalid_subset_and_missing_official_verifier_fail_closed(self):
+        with self.assertRaisesRegex(ProspectiveLedgerError, "front outcome"):
+            self.ledger.record_outcome(
+                draw_id="26131",
+                observed_at_utc="2026-11-20T14:00:00+00:00",
+                authority="official_validated",
+                source_evidence_sha256=sha("bad-result"),
+                parser_version="official-parser/v1",
+                front_numbers=[1, 1, 2, 3, 4],
+                back_numbers=[1, 2],
+                evidence_verifier=lambda candidate, expected: True,
+            )
+        with self.assertRaisesRegex(ProspectiveLedgerError, "protected evidence verifier"):
+            self.ledger.record_outcome(
+                draw_id="26131",
+                observed_at_utc="2026-11-20T14:00:00+00:00",
+                authority="official_validated",
+                source_evidence_sha256=sha("no-verifier"),
+                parser_version="official-parser/v1",
+                front_numbers=[1, 2, 3, 4, 5],
+                back_numbers=[1, 2],
+            )
+
+    def test_ledger_hash_chain_detects_tampering(self):
+        self.record_official_outcome()
+        raw = self.ledger.path.read_bytes()
+        self.ledger.path.write_bytes(raw.replace(b"official_validated", b"third_party_validated", 1))
+        with self.assertRaisesRegex(ProspectiveLedgerError, "hash chain failed"):
+            self.ledger.snapshot()
+
+
+if __name__ == "__main__":
+    unittest.main()
