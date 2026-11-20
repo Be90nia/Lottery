@@ -240,6 +240,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
         "artifact_code_revisions": artifact_code_revisions,
         "model_spec_revision": identity["model_spec_revision"],
         "preregistration_revision": identity["preregistration_revision"],
+        "experiment_registration_revision": identity["experiment_registration_revision"],
         "runtime": {
             "python_version": sys.version,
             "python_implementation": platform.python_implementation(),
