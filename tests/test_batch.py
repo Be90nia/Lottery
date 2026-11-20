@@ -136,7 +136,7 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
 
     def test_mixed_model_families_within_a_zone_are_rejected(self):
         lifecycle = FakeLifecycle(mixed_family=True)
-        with self.assertRaisesRegex(BatchPublicationError, "compatible model family"):
+        with self.assertRaisesRegex(BatchPublicationError, "compatible model/schema contract"):
             self.publish(lifecycle=lifecycle)
         self.assertFalse(self.store.operations.exists())
         self.assertFalse(self.store.pointers.exists())
