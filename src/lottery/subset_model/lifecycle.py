@@ -234,8 +234,8 @@ def _validate_shadow_receipt(
     first_id = receipt["first_target_draw_id"]
     last_id = receipt["last_target_draw_id"]
     if (
-        not isinstance(first_id, str) or not re.fullmatch(r"\\d{5}", first_id)
-        or not isinstance(last_id, str) or not re.fullmatch(r"\\d{5}", last_id)
+        not isinstance(first_id, str) or not re.fullmatch(r"\d{5}", first_id)
+        or not isinstance(last_id, str) or not re.fullmatch(r"\d{5}", last_id)
         or first_id > last_id
         or first_id <= artifact["training_cutoff_draw_id"]
     ):
