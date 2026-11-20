@@ -606,6 +606,14 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
     }
     immutable_outputs = write_immutable_outputs(result, rows, snapshot_path, output_path)
     result["immutable_outputs"] = immutable_outputs
+    # The canonical model payloads live in model-artifacts.jsonl and the
+    # checkpoint ledgers. Keep only their content IDs in the human report.
+    for zone in ("front", "back"):
+        for target_record in result[zone]["target_records"]:
+            target_record["model_artifact_ids"] = {
+                name: (entry["artifact_id"] if entry is not None else None)
+                for name, entry in target_record.pop("model_artifacts").items()
+            }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
                            encoding="utf-8")
