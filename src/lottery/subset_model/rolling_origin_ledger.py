@@ -23,7 +23,8 @@ def _hash_object(value: dict) -> str:
 
 def _model_identity(zone: str, name: str, m: int, k: int,
                     active_features: list[str], candidate_features: list[str],
-                    zero_variance_features: list[str]) -> tuple[str, str, dict]:
+                    zero_variance_features: list[str], uniform_means: list[float],
+                    uniform_stds: list[float]) -> tuple[str, str, dict]:
     if name == "uniform":
         family = "uniform_analytic"
         config = {"model_family": family, "zone": zone, "population_size": m,
@@ -35,17 +36,23 @@ def _model_identity(zone: str, name: str, m: int, k: int,
                   "population_size": m, "selection_size": k, "alpha": 100.0,
                   "half_life": 100.0 if name == "ewma" else None,
                   "weighting": "expanding" if name == "expanding" else "2^(-lag/100)"}
-        schema = {"schema": "conditional-poisson-v1", "population_size": m,
-                  "selection_size": k, "parameterization": "zero-sum-centered-log-weights"}
+        schema = {
+            "version": "lottery-item-inclusion/v1",
+            "names": [f"item_{item}" for item in range(1, m + 1)],
+            "uniform_means": [k / m] * m,
+            "uniform_population_stds": [((k / m) * (1.0 - k / m)) ** 0.5] * m,
+            "zero_variance_policy": "not_applicable_item_indicator_schema",
+        }
     else:
         family = "complete_subset_exponential"
         schema = {
-            "feature_schema_version": "lot-051-symmetric-v1",
-            "candidate_feature_names": candidate_features,
-            "active_feature_names": active_features,
-            "zero_variance_features": zero_variance_features,
+            "version": "lot-051-symmetric-v1",
+            "names": active_features,
+            "uniform_means": uniform_means,
+            "uniform_population_stds": uniform_stds,
             "zero_variance_policy": "drop_and_record",
-            "population_size": m, "selection_size": k,
+            "candidate_names": candidate_features,
+            "zero_variance_features": zero_variance_features,
         }
         config = {
             "model_family": "complete_subset_exponential", "zone": zone,
@@ -82,6 +89,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             "features": result[zone]["active_feature_names"],
             "candidate_features": result[zone]["candidate_feature_names"],
             "zero_variance_features": result[zone]["zero_variance_features"],
+            "uniform_means": result[zone]["uniform_feature_means"],
+            "uniform_stds": result[zone]["uniform_feature_standard_deviations"],
         }
         for zone in ("front", "back")
     }
@@ -104,7 +113,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
         for name in MODEL_ORDER:
             family, config_hash, schema = _model_identity(
                 zone, name, spec["m"], spec["k"], spec["features"],
-                spec["candidate_features"], spec["zero_variance_features"])
+                spec["candidate_features"], spec["zero_variance_features"],
+                spec["uniform_means"], spec["uniform_stds"])
             model_config_hashes[(zone, name)] = config_hash
             feature_schema_hashes[(zone, name)] = _hash_object(schema)
             families[(zone, name)] = family
