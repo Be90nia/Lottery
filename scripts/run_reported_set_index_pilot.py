@@ -39,7 +39,7 @@ def main() -> int:
             "physical_model_eligibility": report["physical_model_eligibility"],
             "predictive_efficacy_claim": report["predictive_efficacy_claim"],
         }, ensure_ascii=False, sort_keys=True))
-        return 0
+        return 0 if report["reported_index_pilot_status"] == "research_only_complete" else 1
     except (OSError, ValueError, ReportedIndexPilotError) as exc:
         print(f"REPORTED_INDEX_PILOT_FAILED: {exc}", file=sys.stderr)
         return 1
