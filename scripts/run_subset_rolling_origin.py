@@ -171,6 +171,83 @@ def _jcs_hash(value: dict) -> str:
     return "sha256:" + hashlib.sha256(canonicalize(value)).hexdigest()
 
 
+def _finite_or_none(value):
+    return value if type(value) in (int, float) and math.isfinite(value) else None
+
+
+def _create_fit_failure_artifact(*, model_family: str, zone: str, population_size: int,
+                                 selection_size: int, snapshot_digest: str,
+                                 training_rows: list[dict], code_revision: str,
+                                 feature_schema: dict, model_configuration: dict,
+                                 status: str, reason: str, objective,
+                                 gradient_inf_norm, iterations: int, optimizer: str,
+                                 regularization_lambda, rng_algorithm: str) -> dict:
+    runtime = {
+        "python": platform.python_version(),
+        "implementation": platform.python_implementation(),
+    }
+    feature_schema_hash = _jcs_hash(feature_schema)
+    config = dict(model_configuration)
+    config["feature_schema_hash"] = feature_schema_hash
+    payload = {
+        "schema_version": 1,
+        "artifact_schema": "lottery.subset-probability-model/v1",
+        "artifact_type": "fit_failure",
+        "model_family": model_family, "zone": zone,
+        "population_size": population_size, "selection_size": selection_size,
+        "support": {
+            "population_size": population_size, "selection_size": selection_size,
+            "support_count": math.comb(population_size, selection_size),
+            "subset_order": "lexicographic_ascending",
+        },
+        "feature_schema": feature_schema,
+        "feature_schema_hash": feature_schema_hash,
+        "model_configuration": config,
+        "model_configuration_hash": _jcs_hash(config),
+        "parameters": {
+            "parameter_order": "feature_schema.names",
+            "parameters_available": False,
+        },
+        "normalization": {
+            "method": "not_computed", "log_partition": None, "numeric_dtype": "float64",
+        },
+        "fit": {
+            "status": status, "termination_reason": reason or status,
+            "objective": _finite_or_none(objective),
+            "gradient_inf_norm": _finite_or_none(gradient_inf_norm),
+            "iterations": int(iterations or 0), "optimizer": optimizer,
+            "lambda": regularization_lambda,
+        },
+        "training": {
+            "snapshot_sha256": snapshot_digest, "row_count": len(training_rows),
+            "first_draw_id": training_rows[0]["draw_id"],
+            "last_draw_id": training_rows[-1]["draw_id"],
+            "cutoff_draw_id": training_rows[-1]["draw_id"],
+            "cutoff_inclusive": True,
+        },
+        "implementation": {
+            "code_revision": code_revision, "runtime": runtime,
+            "library_versions": {}, "rng_algorithm": rng_algorithm,
+        },
+        "training_snapshot_sha256": snapshot_digest,
+        "training_first_draw_id": training_rows[0]["draw_id"],
+        "training_last_draw_id": training_rows[-1]["draw_id"],
+        "training_cutoff_draw_id": training_rows[-1]["draw_id"],
+        "training_row_count": len(training_rows),
+        "code_revision": code_revision, "runtime": runtime,
+        "fit_diagnostics": {
+            "terminal_status": status, "converged": False,
+            "message": reason, "iterations": int(iterations or 0),
+            "gradient_infinity_norm": _finite_or_none(gradient_inf_norm),
+            "objective": _finite_or_none(objective),
+        },
+        "failure_reason": reason or status,
+        "forecast_ready": False,
+    }
+    raw, artifact_id = create_artifact(payload)
+    return {"artifact_id": artifact_id, "payload": verify_artifact(raw)}
+
+
 def _validate_checkpoint_record(record: dict, *, row: dict, zone: str,
                                 training_count: int, uniform_nll: float) -> None:
     expected_record_keys = {
