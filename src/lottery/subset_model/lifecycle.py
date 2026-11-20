@@ -27,6 +27,7 @@ from ..ledger_lock import ledger_lock
 
 REGISTRY_SCHEMA = "lottery.champion-registry/v1"
 EVALUATION_SCHEMA = "lottery.lifecycle-evaluation/v1"
+SHADOW_SCHEMA = "lottery.lifecycle-shadow/v1"
 APPROVAL_SCHEMA = "lottery.lifecycle-approval/v1"
 POLICY_VERSION = "LOT-060-v1"
 ZERO_HASH = "0" * 64
@@ -196,6 +197,70 @@ def _validate_evaluation_receipt(receipt: dict[str, Any]) -> bool:
         and receipt["back_improved"]
         and receipt["multiplicity_pass"]
         and receipt["uniform_non_regression_pass"]
+    )
+
+
+def _validate_shadow_receipt(
+    receipt: dict[str, Any],
+    *,
+    artifact: dict[str, Any],
+    artifact_id: str,
+    population_key: str,
+    zone: str,
+    champion_artifact_id: str,
+) -> bool:
+    required = {
+        "schema_version", "shadow_manifest_sha256", "artifact_id", "population_key",
+        "zone", "champion_artifact_id", "target_list_sha256", "source_evidence_sha256",
+        "first_target_draw_id", "last_target_draw_id", "target_count", "full_coverage",
+        "targets_after_training_cutoff", "holdout_accessed", "champion_non_regression_pass",
+        "uniform_non_regression_pass", "calibration_pass", "probability_integrity_pass",
+        "stability_pass", "decision", "reason_code",
+    }
+    if not isinstance(receipt, dict) or set(receipt) != required:
+        raise LifecycleError("shadow receipt fields do not match the closed LOT-060 schema")
+    if receipt["schema_version"] != SHADOW_SCHEMA:
+        raise LifecycleError("unsupported shadow receipt schema")
+    for field in ("shadow_manifest_sha256", "target_list_sha256", "source_evidence_sha256"):
+        if not _is_sha(receipt[field]):
+            raise LifecycleError(f"shadow {field} must be a lowercase SHA-256")
+    if (
+        receipt["artifact_id"] != artifact_id
+        or receipt["population_key"] != population_key
+        or receipt["zone"] != zone
+        or receipt["champion_artifact_id"] != champion_artifact_id
+    ):
+        raise LifecycleError("shadow receipt scope does not match challenger and current Champion")
+    first_id = receipt["first_target_draw_id"]
+    last_id = receipt["last_target_draw_id"]
+    if (
+        not isinstance(first_id, str) or not re.fullmatch(r"\\d{5}", first_id)
+        or not isinstance(last_id, str) or not re.fullmatch(r"\\d{5}", last_id)
+        or first_id > last_id
+        or first_id <= artifact["training_cutoff_draw_id"]
+    ):
+        raise LifecycleError("shadow target window must be strictly after the candidate training cutoff")
+    if type(receipt["target_count"]) is not int or receipt["target_count"] < 1:
+        raise LifecycleError("shadow target_count must be a positive integer")
+    for field in (
+        "full_coverage", "targets_after_training_cutoff", "holdout_accessed",
+        "champion_non_regression_pass", "uniform_non_regression_pass",
+        "calibration_pass", "probability_integrity_pass", "stability_pass",
+    ):
+        if type(receipt[field]) is not bool:
+            raise LifecycleError(f"shadow {field} must be boolean")
+    if receipt["decision"] not in ("PASS", "FAIL") or not isinstance(receipt["reason_code"], str):
+        raise LifecycleError("shadow decision or reason_code is invalid")
+    return (
+        receipt["decision"] == "PASS"
+        and receipt["full_coverage"]
+        and receipt["targets_after_training_cutoff"]
+        and not receipt["holdout_accessed"]
+        and receipt["champion_non_regression_pass"]
+        and receipt["uniform_non_regression_pass"]
+        and receipt["calibration_pass"]
+        and receipt["probability_integrity_pass"]
+        and receipt["stability_pass"]
     )
 
 
