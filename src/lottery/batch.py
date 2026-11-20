@@ -15,6 +15,7 @@ from .subset_model.lifecycle import ChampionLifecycle, LifecycleError
 
 
 BATCH_SCHEMA = "lottery.prediction-batch/v1"
+MAX_TICKETS_PER_SLOT = 100
 
 
 class BatchPublicationError(RuntimeError):
@@ -109,6 +110,10 @@ class ThreeSlotBatchPublisher:
     ) -> dict[str, Any]:
         if type(tickets_per_slot) is not int or tickets_per_slot < 1:
             raise BatchPublicationError("tickets_per_slot must be a positive integer")
+        if tickets_per_slot > MAX_TICKETS_PER_SLOT:
+            raise BatchPublicationError(
+                f"tickets_per_slot exceeds the frozen offline limit of {MAX_TICKETS_PER_SLOT}"
+            )
         if not isinstance(idempotency_key, str) or not idempotency_key or len(idempotency_key) > 512:
             raise BatchPublicationError("idempotency_key must be a non-empty string")
         if type(master_seed) is not bytes or len(master_seed) < 32:
