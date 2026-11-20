@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://be90nia.github.io/Lottery/schemas/readiness-report-v1.schema.json",
+  "title": "Lottery release readiness report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "release_id", "source_commit", "release_manifest_sha256", "gate_results_sha256", "fault_results_sha256", "readiness", "production_ready", "production_blocker", "gate_states", "fault_states", "verified_evidence_count", "verified_evidence", "blockers", "lot042_accessed"],
+  "properties": {
+    "schema": {"const": "lottery.readiness-report/v1"},
+    "release_id": {"type": "string"},
+    "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "release_manifest_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "gate_results_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "fault_results_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "readiness": {"enum": ["NOT_READY", "READY_FOR_OFFLINE_VALIDATION", "READY_FOR_SHADOW"]},
+    "production_ready": {"const": false},
+    "production_blocker": {"type": "string"},
+    "gate_states": {"type": "object"},
+    "fault_states": {"type": "object"},
+    "verified_evidence_count": {"type": "integer", "minimum": 0},
+    "verified_evidence": {"type": "array"},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "lot042_accessed": {"type": "boolean"}
+  }
+}
