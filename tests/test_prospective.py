@@ -18,6 +18,17 @@ def score_result(value):
     }
 
 
+def outcome_metadata(source, retrieved="2026-11-20T13:30:00+00:00"):
+    url = "https://example.test/official/draw/26131"
+    return {
+        "source_object_ref": f"evidence/{source}.bin",
+        "requested_url": url,
+        "final_url": url,
+        "retrieved_at_utc": retrieved,
+        "evidence_locator": "draw_id=26131;page=1",
+    }
+
+
 class ProspectiveLedgerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -62,6 +73,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             observed_at_utc=observed,
             authority="official_validated",
             source_evidence_sha256=sha(source),
+            **outcome_metadata(source),
             parser_version="official-parser/v1",
             front_numbers=front or [1, 2, 3, 4, 5],
             back_numbers=[1, 2],
@@ -157,6 +169,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             observed_at_utc="2026-11-20T14:00:00+00:00",
             authority="third_party",
             source_evidence_sha256=sha("third-party"),
+            **outcome_metadata("third-party"),
             parser_version="third-party-parser/v1",
             front_numbers=[1, 2, 3, 4, 5],
             back_numbers=[1, 2],
@@ -302,6 +315,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
                 observed_at_utc="2026-11-20T14:00:00+00:00",
                 authority="official_validated",
                 source_evidence_sha256=sha("bad-result"),
+                **outcome_metadata("bad-result"),
                 parser_version="official-parser/v1",
                 front_numbers=[1, 1, 2, 3, 4],
                 back_numbers=[1, 2],
@@ -313,6 +327,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
                 observed_at_utc="2026-11-20T14:00:00+00:00",
                 authority="official_validated",
                 source_evidence_sha256=sha("no-verifier"),
+                **outcome_metadata("no-verifier"),
                 parser_version="official-parser/v1",
                 front_numbers=[1, 2, 3, 4, 5],
                 back_numbers=[1, 2],
@@ -325,6 +340,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             observed_at_utc="2026-11-20T14:00:00+00:00",
             authority="third_party",
             source_evidence_sha256=sha("third-party-coverage"),
+            **outcome_metadata("third-party-coverage"),
             parser_version="third-party-parser/v1",
             front_numbers=[1, 2, 3, 4, 5],
             back_numbers=[1, 2],
