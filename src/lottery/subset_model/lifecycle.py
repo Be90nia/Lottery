@@ -6,6 +6,7 @@ three-slot resolution are unavailable.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -557,6 +558,20 @@ class ChampionLifecycle:
         if _sha(raw) != receipt_hash or canonicalize(receipt) != raw:
             raise LifecycleError("shadow receipt content hash or canonical bytes mismatch")
         return receipt
+
+    @contextmanager
+    def generation_guard(self, expected_generation: int):
+        """Hold the registry CAS lock while publishing a dependent pointer."""
+        if type(expected_generation) is not int or expected_generation < 0:
+            raise LifecycleError("expected registry generation must be a non-negative integer")
+        with ledger_lock(self.registry_path):
+            self._recover_locked()
+            registry = self._read_registry()
+            if registry["generation"] != expected_generation:
+                raise StaleRegistryError(
+                    "Champion registry generation changed before dependent publication"
+                )
+            yield registry
 
     def snapshot(self) -> dict[str, Any]:
         with ledger_lock(self.registry_path):
