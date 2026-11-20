@@ -55,6 +55,8 @@ def validate_schedule(schedule: Any) -> list[dict[str, Any]]:
         raise ScheduleError(f"schedule schema must be {SCHEDULE_SCHEMA}")
     if schedule.get("schedule_id") != _schedule_digest(schedule):
         raise ScheduleError("schedule_id does not match canonical schedule content")
+    if schedule.get("lot042_accessed") is not False:
+        raise ScheduleError("schedule must explicitly attest that LOT-042 was not accessed")
     _aware(schedule.get("generated_at_utc"), "generated_at_utc")
     records = schedule.get("expected_forecasts")
     if not isinstance(records, list) or not records:
