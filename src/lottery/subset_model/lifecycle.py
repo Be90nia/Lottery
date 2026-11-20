@@ -1508,6 +1508,10 @@ class ChampionLifecycle:
                     "artifact_id": artifact_id,
                     "artifact_sha256": artifact_id[7:],
                     "model_family": artifact["model_family"],
+                    "artifact_schema": artifact["artifact_schema"],
+                    "feature_schema_hash": artifact["feature_schema_hash"],
+                    "population_size": artifact["population_size"],
+                    "selection_size": artifact["selection_size"],
                     "training_cutoff_draw_id": artifact["training_cutoff_draw_id"],
                     "approval_sha256": approval_hash,
                 })
