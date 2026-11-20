@@ -308,6 +308,8 @@ class ThreeSlotBatchPublisher:
         def validate_batch(candidate: bytes) -> bool:
             try:
                 parsed = parse_json_strict(candidate)
+                if not isinstance(parsed, dict):
+                    return False
                 if (canonicalize(parsed) != candidate
                         or parsed.get("schema") != BATCH_SCHEMA
                         or parsed.get("batch_id") != request_id
@@ -342,6 +344,8 @@ class ThreeSlotBatchPublisher:
                     return False
                 seen_front: set[str] = set()
                 seen_back: set[str] = set()
+                seen_streams: set[str] = set()
+                seen_ticket_ids: set[str] = set()
                 provenance_fields = (
                     "model_family", "artifact_schema", "feature_schema_hash",
                     "population_size", "selection_size", "training_cutoff_draw_id",
@@ -375,8 +379,10 @@ class ThreeSlotBatchPublisher:
                         if (not isinstance(stream, dict)
                                 or stream.get("algorithm") != parsed.get("rng_algorithm")
                                 or stream.get("seed_material_ref") != seed_material_ref
-                                or not _is_sha(stream.get("stream_id"))):
+                                or not _is_sha(stream.get("stream_id"))
+                                or stream["stream_id"] in seen_streams):
                             return False
+                        seen_streams.add(stream["stream_id"])
                     tickets = slot.get("tickets")
                     if not isinstance(tickets, list) or len(tickets) != tickets_per_slot:
                         return False
@@ -384,8 +390,11 @@ class ThreeSlotBatchPublisher:
                         if not isinstance(ticket, dict) or set(ticket) != {"ticket_id", "front", "back"}:
                             return False
                         legal = _validate_ticket({"front": ticket["front"], "back": ticket["back"]})
-                        if ticket["ticket_id"] != _ticket_id(request_id, population_key, index, legal):
+                        if (not _is_sha(ticket["ticket_id"])
+                                or ticket["ticket_id"] in seen_ticket_ids
+                                or ticket["ticket_id"] != _ticket_id(request_id, population_key, index, legal)):
                             return False
+                        seen_ticket_ids.add(ticket["ticket_id"])
                     total_tickets += len(tickets)
                 return total_tickets == 3 * tickets_per_slot
             except (ArtifactValidationError, BatchPublicationError, KeyError, TypeError, ValueError):
