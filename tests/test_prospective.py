@@ -177,6 +177,38 @@ class ProspectiveLedgerTests(unittest.TestCase):
                 scorer_version="score-v1", log_probability=score_result(-1.0),
             )
 
+    def test_forecast_cannot_be_issued_without_prior_expectation(self):
+        with self.assertRaisesRegex(ProspectiveLedgerError, "pre-registered before issuance"):
+            self.ledger.issue_forecast(
+                target_draw_id="26133",
+                target_draw_at_utc="2026-11-22T13:00:00+00:00",
+                target_cutoff_utc="2026-11-22T12:00:00+00:00",
+                target_cutoff_timezone_source="official_schedule/v1",
+                issued_at_utc="2026-11-22T10:00:00+00:00",
+                artifact_sha256=sha("artifact-26133-front"),
+                distribution_sha256=sha("distribution-26133-front"),
+                front_artifact_sha256=sha("artifact-26133-front"),
+                back_artifact_sha256=sha("artifact-26133-back"),
+                front_distribution_sha256=sha("distribution-26133-front"),
+                back_distribution_sha256=sha("distribution-26133-back"),
+                active_registry_snapshot_id=sha("registry-26133"),
+                lifecycle_state="champion",
+                model_spec_sha256=sha("model-spec-26133"),
+                zone="front",
+                population_key="pooled-equipment-blind",
+                training_snapshot_sha256=sha("training-26133"),
+                training_first_draw_id="09054",
+                training_row_count=2948,
+                training_last_draw_id="26132",
+                training_last_draw_date="2026-11-21",
+                registry_generation=7,
+                forecast_policy_version="prospective-v1",
+                scoring_policy_version="exact-set-nll/v1",
+                model_family="complete_subset_exponential",
+                code_commit="d" * 40,
+                runtime="CPython 3.12",
+            )
+
     def test_expected_forecast_schedule_exposes_unresolved_denominator(self):
         self.register_expectation(
             target_draw_id="26132",
