@@ -507,7 +507,7 @@ class ChampionLifecycleTests(unittest.TestCase):
         self.assertEqual(event["registry_generation"], 0)
         self.assertEqual(event["attempted_registry_generation"], 1)
         self.assertEqual(list(recovered.journals.glob("*.json")), [])
-        self.assertTrue((recovered.artifacts / f"{artifact_id[7:]}.json").exists())
+        self.assertTrue((recovered.objects / f"{artifact_id[7:]}.json").exists())
 
     def test_corrupt_write_ahead_journal_is_not_silently_deleted(self):
         root = Path(self.temp.name) / "corrupt-journal"
