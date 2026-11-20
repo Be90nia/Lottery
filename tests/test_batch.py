@@ -189,6 +189,12 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
         with self.assertRaisesRegex(BatchPublicationError, "expected exactly"):
             self.publish(sampler=lambda population, front, back, count, front_seed, back_seed: [])
 
+    def test_batch_size_is_bounded_before_registry_resolution(self):
+        with self.assertRaisesRegex(BatchPublicationError, "frozen offline limit of 100"):
+            self.publish(n=101)
+        self.assertEqual(self.lifecycle.calls, 0)
+        self.assertFalse(self.store.operations.exists())
+
     def test_stale_pointer_cas_does_not_replace_prior_batch(self):
         first = self.publish(key="batch-first")
         with self.assertRaisesRegex(BatchPublicationError, "pointer generation"):
