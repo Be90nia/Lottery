@@ -209,6 +209,27 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.assertEqual(failure["status"], "score_failed")
         self.assertEqual(self.ledger.coverage_report()["score_failed_attempts"], 1)
 
+    def test_score_requires_bound_artifact_and_normalization_verification(self):
+        outcome = self.record_official_outcome()
+        with self.assertRaisesRegex(ProspectiveLedgerError, "full-support normalization"):
+            self.ledger.score_forecast(
+                forecast_id=self.forecast["forecast_id"],
+                outcome_id=outcome["outcome_id"],
+                scorer_version="unverified-normalization-v1",
+                log_probability=lambda record, subset: {
+                    "artifact_sha256": sha("wrong-artifact"),
+                    "normalization_verified": False,
+                    "log_probability": -10.5,
+                },
+            )
+        snapshot = self.ledger.snapshot()
+        self.assertEqual(len(snapshot["scores"]), 0)
+        self.assertEqual(len(snapshot["score_failures"]), 1)
+        self.assertEqual(
+            next(iter(snapshot["score_failures"].values()))["failure_code"],
+            "artifact_normalization_or_identity_unverified",
+        )
+
     def test_positive_or_nonfinite_log_probability_is_rejected(self):
         outcome = self.record_official_outcome()
         for value in (0.01, 0.0, float("nan"), float("inf"), False):
