@@ -99,8 +99,16 @@ class ThreeSlotBatchPublisher:
             raise BatchPublicationError("three population slots must not reuse front artifacts")
         if len({slot["artifact_id"] for slot in resolved["slots"] if slot["zone"] == "back"}) != 3:
             raise BatchPublicationError("three population slots must not reuse back artifacts")
+        for zone in ("front", "back"):
+            families = {
+                slot["model_family"] for slot in resolved["slots"] if slot["zone"] == zone
+            }
+            if len(families) != 1:
+                raise BatchPublicationError(
+                    f"all three {zone} population artifacts must use one compatible model family"
+                )
 
-        slots_by_population: dict[str, dict[str, str]] = {}
+        slots_by_population: dict[str, dict[str, str]] = {};
         for slot in resolved["slots"]:
             slots_by_population.setdefault(slot["population_key"], {})[slot["zone"]] = slot["artifact_id"]
         ordered_populations = sorted(slots_by_population)
