@@ -171,8 +171,8 @@ def _jcs_hash(value: dict) -> str:
     return "sha256:" + hashlib.sha256(canonicalize(value)).hexdigest()
 
 
-def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
-                                uniform_nll: float) -> None:
+def _validate_checkpoint_record(record: dict, *, row: dict, zone: str,
+                                training_count: int, uniform_nll: float) -> None:
     expected_record_keys = {
         "record_type", "target_draw_id", "target_draw_date", "training_count",
         "training_first_draw_id", "training_last_draw_id", "training_cutoff_draw_id",
@@ -201,12 +201,11 @@ def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
             or record.get("target_draw_date") != row["draw_date"]
             or record.get("training_count") != training_count
             or record.get("training_first_draw_id") != "07001"
-            or record.get("training_last_draw_id") != record.get("training_cutoff_draw_id")
-            or record.get("training_cutoff_draw_id") != row["draw_id"]):
+            or record.get("training_last_draw_id") != record.get("training_cutoff_draw_id")):
         raise ValueError("checkpoint target order/training range mismatch")
     if record.get("training_dates_strictly_before_target") is not True:
         raise ValueError("checkpoint strict-before-target assertion is missing")
-    if record.get("observed_subset") != row["front_numbers" if len(row["front_numbers"]) == 5 else "back_numbers"]:
+    if record.get("observed_subset") != row[f"{zone}_numbers"]:
         raise ValueError("checkpoint observed subset does not match target")
     if not isinstance(record.get("training_cutoff_draw_id"), str) or not record["training_cutoff_draw_id"]:
         raise ValueError("checkpoint training cutoff is missing")
@@ -274,11 +273,13 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
             record = json.loads(line)
             idx = MIN_TRAIN + offset
             _validate_checkpoint_record(
-                record, row=rows[idx], training_count=idx,
+                record, row=rows[idx], zone=zone, training_count=idx,
                 uniform_nll=uniform_nll,
             )
-            if record.get("training_cutoff_draw_id") != rows[idx - 1]["draw_id"]:
-                raise ValueError(f"checkpoint cutoff mismatch at target index {idx}")
+            if (record.get("training_cutoff_draw_id") != rows[idx - 1]["draw_id"]
+                    or record.get("training_cutoff_date") != rows[idx - 1]["draw_date"]
+                    or any(item["draw_date"] >= rows[idx]["draw_date"] for item in rows[:idx])):
+                raise ValueError(f"checkpoint cutoff/date leakage mismatch at target index {idx}")
             records.append(record)
     else:
         with checkpoint_path.open("x", encoding="utf-8") as handle:
@@ -443,7 +444,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
             checkpoint.flush()
             os.fsync(checkpoint.fileno())
             _validate_checkpoint_record(
-                record, row=rows[idx], training_count=idx,
+                record, row=rows[idx], zone=zone, training_count=idx,
                 uniform_nll=uniform_nll,
             )
             records.append(record)
