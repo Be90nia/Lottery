@@ -113,6 +113,29 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             ConditionalPoisson.calibrate((0.2, 0.2, 0.2), 2)
 
+    def test_calibration_rejects_invalid_history_size(self):
+        target = ConditionalPoisson((0.3, -0.2, 0.7, -0.4, 0.1), 2).inclusion_marginals()
+        for invalid in (0, -1, 1.5, True):
+            with self.subTest(history_size=invalid):
+                with self.assertRaisesRegex(ValueError, "history_size"):
+                    ConditionalPoisson.calibrate(target, 2, history_size=invalid)
+
+    def test_full_front_population_calibration_uses_strong_wolfe_solver(self):
+        # A near-uniform 35-item target makes the objective changes small enough
+        # to exercise the float64 line-search path while the initial gradient
+        # remains above the frozen 1e-8 stopping tolerance.
+        weights = tuple(
+            1e-7 * (index - 17) + 2e-8 * ((index % 4) - 1.5)
+            for index in range(35)
+        )
+        source = ConditionalPoisson(weights, 5)
+        target = source.inclusion_marginals()
+        result = ConditionalPoisson.calibrate(target, 5, max_iterations=200)
+        self.assertTrue(result.converged, msg=result)
+        self.assertEqual(result.solver, "conditional_poisson_calibration_lbfgs_strong_wolfe_v2")
+        self.assertLessEqual(result.maximum_absolute_residual, 1e-8)
+        self.assertLessEqual(result.gradient_infinity_norm, 1e-8)
+
     def test_backward_sampler_returns_distinct_legal_items_and_replays(self):
         model = ConditionalPoisson((0.3, -0.2, 0.7, -0.4, 0.1, 0.8), 3)
         left_rng = random.Random(20261118)
