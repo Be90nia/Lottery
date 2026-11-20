@@ -17,6 +17,8 @@ ALLOWED_PERMISSION = re.compile(r"^(\s*)(actions|contents):\s*read\s*(?:#.*)?$")
 # all workflows retain contents:read as the maximum repository permission.
 WORKFLOW_PERMISSION_ALLOWLIST = {
     "ball-set-evidence.yml": {"actions: read", "contents: read"},
+    # This workflow downloads one pinned, read-only evidence artifact by run ID.
+    "reported-index-pilot.yml": {"actions: read", "contents: read"},
 }
 
 
