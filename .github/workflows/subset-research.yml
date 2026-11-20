@@ -9,6 +9,8 @@ on:
     paths:
       - .github/workflows/subset-research.yml
       - src/lottery/subset_model/exponential.py
+      - src/lottery/subset_model/artifact.py
+      - src/lottery/subset_model/rolling_origin_ledger.py
       - scripts/run_subset_rolling_origin.py
   workflow_dispatch:
     inputs:
@@ -125,7 +127,7 @@ jobs:
               if not lines:
                   raise SystemExit(f"empty checkpoint: {path}")
               header = json.loads(lines[0])
-              if header.get("schema") != "lot-055-checkpoint-v2":
+              if header.get("schema") != "lot-055-checkpoint-v3":
                   raise SystemExit(f"unsupported checkpoint schema: {path}")
               header["code_commit"] = current
               lines[0] = json.dumps(header, sort_keys=True)
@@ -147,6 +149,9 @@ jobs:
           name: exact-subset-rolling-origin
           path: |
             subset-model-rolling-origin.json
+            run_manifest.json
+            target-score-ledger.jsonl
+            model-artifacts.jsonl
             subset-model-checkpoints/
           if-no-files-found: warn
           retention-days: 90
