@@ -177,6 +177,26 @@ class ProspectiveLedgerTests(unittest.TestCase):
                 scorer_version="score-v1", log_probability=score_result(-1.0),
             )
 
+    def test_expected_forecast_schedule_exposes_unresolved_denominator(self):
+        self.register_expectation(
+            target_draw_id="26132",
+            target_draw_at_utc="2026-11-21T13:00:00+00:00",
+            target_cutoff_utc="2026-11-21T12:00:00+00:00",
+            expected_at_utc="2026-11-21T10:00:00+00:00",
+            front_artifact_sha256=sha("front-expected-26132"),
+            back_artifact_sha256=sha("back-expected-26132"),
+            active_registry_snapshot_id=sha("registry-26132"),
+            model_spec_sha256=sha("model-spec-26132"),
+            training_snapshot_sha256=sha("training-26132"),
+            training_last_draw_id="26131",
+            training_last_draw_date="2026-11-20",
+            code_commit="c" * 40,
+        )
+        report = self.ledger.coverage_report()
+        self.assertEqual(report["expected_forecast_records"], 2)
+        self.assertEqual(report["forecast_records"], 1)
+        self.assertEqual(report["unresolved_expected_forecasts"], 1)
+
     def test_missing_forecast_at_cutoff_is_immutable_terminal_record(self):
         kwargs = {
             "target_draw_id": "26132",
@@ -212,6 +232,9 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.assertEqual(first["reason_codes"], ["forecast_missing_at_cutoff"])
         self.assertEqual(self.ledger.record_missing_forecast(**kwargs), first)
         report = self.ledger.coverage_report()
+        self.assertEqual(report["expected_forecast_records"], 1)
+        self.assertEqual(report["forecast_records"], 1)
+        self.assertEqual(report["unresolved_expected_forecasts"], 0)
         self.assertEqual(report["forecast_missing_at_cutoff"], 1)
         self.assertEqual(report["ineligible"], 1)
         changed = dict(kwargs, checked_at_utc="2026-11-21T12:02:00+00:00")
