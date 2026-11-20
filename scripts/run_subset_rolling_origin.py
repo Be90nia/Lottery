@@ -308,12 +308,13 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
             candidate = -model.log_probability(target, fit.theta) if fit.converged else None
             active_features = list(model.table.stats.feature_names)
             feature_schema = {
-                "feature_schema_version": model.table.stats.feature_schema_version,
-                "candidate_feature_names": list(model.table.stats.candidate_feature_names),
-                "active_feature_names": active_features,
-                "zero_variance_features": list(model.table.stats.zero_variance_features),
+                "version": model.table.stats.feature_schema_version,
+                "names": active_features,
+                "uniform_means": list(model.table.stats.means),
+                "uniform_population_stds": list(model.table.stats.standard_deviations),
                 "zero_variance_policy": "drop_and_record",
-                "population_size": m, "selection_size": k,
+                "candidate_names": list(model.table.stats.candidate_feature_names),
+                "zero_variance_features": list(model.table.stats.zero_variance_features),
             }
             candidate_config = {
                 "model_family": "complete_subset_exponential", "zone": zone,
@@ -348,13 +349,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                     "support": {"population_size": m, "selection_size": k,
                                 "support_count": math.comb(m, k),
                                 "subset_order": "lexicographic_ascending"},
-                    "feature_schema": {
-                        "version": model.table.stats.feature_schema_version,
-                        "names": active_features,
-                        "uniform_means": list(model.table.stats.means),
-                        "uniform_population_stds": list(model.table.stats.standard_deviations),
-                        "zero_variance_policy": "drop_and_record",
-                    },
+                    "feature_schema": feature_schema,
                     "parameters": {"theta": list(fit.theta),
                                    "parameter_order": "feature_schema.names"},
                     "fit": {
@@ -411,9 +406,11 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                             "weighting": "expanding" if baseline == "expanding" else "2^(-lag/100)",
                         }
                         baseline_schema = {
-                            "schema": "conditional-poisson-v1", "population_size": m,
-                            "selection_size": k,
-                            "parameterization": "zero-sum-centered-log-weights",
+                            "version": "lottery-item-inclusion/v1",
+                            "names": [f"item_{item}" for item in range(1, m + 1)],
+                            "uniform_means": [k / m] * m,
+                            "uniform_population_stds": [math.sqrt((k / m) * (1.0 - k / m))] * m,
+                            "zero_variance_policy": "not_applicable_item_indicator_schema",
                         }
                         baseline_payload = {
                             "schema_version": 1, "model_family": "conditional_poisson",
@@ -439,13 +436,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                             "support": {"population_size": m, "selection_size": k,
                                         "support_count": math.comb(m, k),
                                         "subset_order": "lexicographic_ascending"},
-                            "feature_schema": {
-                                "version": "lottery-item-inclusion/v1",
-                                "names": [f"item_{item}" for item in range(1, m + 1)],
-                                "uniform_means": [k / m] * m,
-                                "uniform_population_stds": [math.sqrt((k / m) * (1.0 - k / m))] * m,
-                                "zero_variance_policy": "not_applicable_item_indicator_schema",
-                            },
+                            "feature_schema": baseline_schema,
                             "parameters": {
                                 "centered_log_weights": list(calibration.centered_log_weights),
                                 "parameter_order": "feature_schema.names",
@@ -554,6 +545,8 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
         "active_feature_names": list(model.table.stats.feature_names),
         "candidate_feature_names": list(model.table.stats.candidate_feature_names),
         "zero_variance_features": list(model.table.stats.zero_variance_features),
+        "uniform_feature_means": list(model.table.stats.means),
+        "uniform_feature_standard_deviations": list(model.table.stats.standard_deviations),
         "target_count": expected, "scored_target_counts": scored,
         "fit_status_counts": status_counts, "complete_coverage": complete,
         "mean_exact_set_nll": {name: sums[name] / scored[name] if scored[name] else None for name in sums},
