@@ -129,6 +129,7 @@ class ModelArtifactTests(unittest.TestCase):
         raw_a, id_a = create_artifact(payload)
         changed = dict(payload)
         changed["theta"] = [0.1, -0.2, 0.3, 0.0, 0.06]
+        changed["parameters"] = dict(changed["parameters"], theta=changed["theta"])
         raw_b, id_b = create_artifact(changed)
         self.assertNotEqual(id_a, id_b)
         self.assertNotEqual(raw_a, raw_b)
