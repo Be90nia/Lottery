@@ -217,6 +217,8 @@ def _validate_checkpoint_record(record: dict, *, row: dict, zone: str,
             if record["fit_statuses"][name] == "converged":
                 raise ValueError(f"converged {name} fit is missing its immutable artifact")
             continue
+        if record["fit_statuses"][name] != "converged":
+            raise ValueError(f"failed {name} fit cannot carry a model artifact")
         if not isinstance(entry, dict) or set(entry) != {"artifact_id", "payload"}:
             raise ValueError(f"checkpoint {name} artifact entry has invalid shape")
         verified = verify_artifact(canonicalize(entry["payload"]))
