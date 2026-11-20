@@ -71,7 +71,7 @@ def _fixture(fail_candidate=False):
         artifacts = {"candidate": {
             "artifact_id": candidate_id, "payload": json.loads(candidate_bytes)
         }}
-        statuses = {"candidate": "converged"}
+        statuses = {"candidate": "converged", "expanding": "converged", "ewma": "converged"}
         scores = {
             "uniform": math.log(math.comb(m, k)),
             "expanding": math.log(math.comb(m, k)) - 0.1,
