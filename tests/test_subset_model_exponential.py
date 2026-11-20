@@ -82,6 +82,11 @@ class ExponentialFamilyTests(unittest.TestCase):
         self.assertLessEqual(abs(derivative_trial), -0.9 * derivative_zero)
         self.assertTrue(all(math.isfinite(value) for value in trial))
 
+    def test_optimizer_dot_uses_compensated_float64_accumulation(self):
+        from lottery.subset_model.exponential import _dot
+
+        self.assertEqual(_dot((1e16, 1.0, -1e16), (1.0, 1.0, 1.0)), 1.0)
+
     def test_strong_wolfe_search_rejects_non_descent_direction(self):
         from lottery.subset_model.exponential import _strong_wolfe_search
 
