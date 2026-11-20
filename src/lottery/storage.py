@@ -316,7 +316,7 @@ class FileSystemObjectStore:
                         "generation": generation,
                         "object_sha256": commit["content_sha256"],
                         "operation_id": operation_id,
-                        "previous_object_sha256": None,
+                        "previous_object_sha256": current.get("previous_object_sha256"),
                     }
                     _atomic_immutable(publication_path, canonicalize(recovered_receipt))
                     return current
@@ -331,6 +331,7 @@ class FileSystemObjectStore:
                 "generation": generation + 1,
                 "object_sha256": commit["content_sha256"],
                 "commit_receipt_sha256": _sha(self._commit_path(operation_id).read_bytes()),
+                "previous_object_sha256": current.get("object_sha256") if current else None,
                 "last_operation_id": operation_id,
             }
             _atomic_replace(pointer_path, canonicalize(new_pointer))
