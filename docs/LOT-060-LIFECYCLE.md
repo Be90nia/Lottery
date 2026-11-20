@@ -24,6 +24,13 @@ artifacts. It is intentionally separate from the legacy LOT-042 forecast ledger.
   hash, not merely a mutable manifest name.
 - Rejection and suspension preserve all artifacts and history. A suspended
   slot retains its Champion pointer for audit but cannot resolve for serving.
+- A replacement cannot bypass shadow evaluation. The challenger must be scored
+  on a complete prospective target window strictly after its training cutoff,
+  paired against the active Champion and uniform baseline, with calibration,
+  probability-integrity and stability gates. The receipt binds the exact
+  challenger, incumbent Champion, target list, source evidence and shadow
+  manifest. Failed shadow receipts are retained and do not change the role
+  pointer; promotion approval binds the passing shadow-receipt hash.
 - Verified set-conditioned population keys use the canonical form
   `<equipment_regime_id>|reported_set_index=<1|2|3>`. The signed evaluation
   receipt binds the population evidence digest and the exact filtered training
