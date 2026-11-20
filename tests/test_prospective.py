@@ -148,8 +148,8 @@ class ProspectiveLedgerTests(unittest.TestCase):
 
     def test_positive_or_nonfinite_log_probability_is_rejected(self):
         outcome = self.record_official_outcome()
-        for value in (0.01, float("nan"), float("inf")):
-            with self.assertRaisesRegex(ProspectiveLedgerError, "finite and non-positive"):
+        for value in (0.01, 0.0, float("nan"), float("inf"), False):
+            with self.assertRaisesRegex(ProspectiveLedgerError, "finite and strictly negative|probability evaluation failed"):
                 self.ledger.score_forecast(
                     forecast_id=self.forecast["forecast_id"],
                     outcome_id=outcome["outcome_id"],
