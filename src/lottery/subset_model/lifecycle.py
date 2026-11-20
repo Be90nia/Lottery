@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any, Callable
 from uuid import uuid4
@@ -106,6 +107,19 @@ def _slot_key(population_key: str, zone: str) -> str:
     return f"{population_key}|{zone}"
 
 
+def _parse_regime_population_key(population_key: str) -> tuple[str, int]:
+    match = re.fullmatch(
+        r"([a-z0-9][a-z0-9._-]{0,63})\\|reported_set_index=([123])",
+        population_key,
+    )
+    if not match:
+        raise LifecycleError(
+            "verified set-conditioned population keys must be "
+            "'<equipment_regime_id>|reported_set_index=<1|2|3>'"
+        )
+    return match.group(1), int(match.group(2))
+
+
 def _new_slot(population_key: str, zone: str) -> dict[str, Any]:
     return {
         "population_key": population_key,
@@ -141,6 +155,7 @@ def _validate_evaluation_receipt(receipt: dict[str, Any]) -> bool:
     ):
         raise LifecycleError("population_eligibility is not a registered status")
     if receipt["population_eligibility"] == "verified_regime":
+        _parse_regime_population_key(receipt["population_key"])
         if not _is_sha(receipt["population_evidence_sha256"]):
             raise LifecycleError("verified regime requires a population evidence SHA-256")
     elif receipt["population_evidence_sha256"] is not None:
@@ -782,6 +797,10 @@ class ChampionLifecycle:
             or len(set(population_keys)) != 3
         ):
             raise LifecycleError("three-slot resolution requires exactly three distinct population keys")
+        parsed_keys = [_parse_regime_population_key(key) for key in population_keys]
+        if (len({regime_id for regime_id, _ in parsed_keys}) != 1
+                or {index for _, index in parsed_keys} != {1, 2, 3}):
+            raise LifecycleError("three-slot resolution requires reported indices 1/2/3 in one verified equipment regime")
         if approval_verifier is None:
             raise LifecycleError("three-slot resolution requires the protected approval verifier")
         registry = self.snapshot()
