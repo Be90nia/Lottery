@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import json
 import math
 import tempfile
@@ -47,6 +48,15 @@ def _fixture(fail_candidate=False):
         _, candidate_config_hash, _ = _model_identity(
             zone, "exponential_family", m, k, active, candidate_features,
             zero_variance, means, stds)
+        feature_schema_hash = _hash_object(feature_schema)
+        candidate_config = {
+            "model_family": "complete_subset_exponential", "zone": zone,
+            "population_size": m, "selection_size": k,
+            "feature_schema_hash": feature_schema_hash,
+            "objective_scale": "mean_nll", "regularization_lambda": 1.0,
+            "solver": "deterministic_unbounded_lbfgsb_strong_wolfe_v1",
+            "max_iterations": 5000, "gradient_tolerance": 1e-8,
+        }
         runtime = {"python": "3.12"}
         training = {
             "snapshot_sha256": snapshot_hash, "row_count": 300,
@@ -65,6 +75,7 @@ def _fixture(fail_candidate=False):
             "zone": zone, "population_size": m, "selection_size": k,
             "support": support, "feature_schema": feature_schema,
             "parameters": {"theta": theta, "parameter_order": "feature_schema.names"},
+            "model_configuration": candidate_config,
             "normalization": {"method": "full_support_logsumexp",
                               "log_partition": 0.0, "numeric_dtype": "float64"},
             "fit": {"status": "converged", "termination_reason": "gradient_tolerance",
@@ -86,7 +97,7 @@ def _fixture(fail_candidate=False):
             "feature_schema_version": "lot-051-symmetric-v1",
             "candidate_feature_names": candidate_features,
             "active_feature_names": active, "zero_variance_features": zero_variance,
-            "feature_schema_hash": _hash_object(feature_schema),
+            "feature_schema_hash": feature_schema_hash,
             "model_configuration_hash": candidate_config_hash,
             "theta": theta, "objective_scale": "mean_nll", "regularization_lambda": 1.0,
         }
@@ -113,6 +124,13 @@ def _fixture(fail_candidate=False):
             _, config_hash, schema = _model_identity(
                 zone, baseline, m, k, active, candidate_features,
                 zero_variance, means, stds)
+            baseline_config = {
+                "model_family": "conditional_poisson", "baseline": baseline,
+                "zone": zone, "population_size": m, "selection_size": k,
+                "alpha": 100.0, "half_life": 100.0 if baseline == "ewma" else None,
+                "weighting": "expanding" if baseline == "expanding" else "2^(-lag/100)",
+                "feature_schema_hash": _hash_object(schema),
+            }
             baseline_payload = {
                 "schema_version": 1, "artifact_schema": "lottery.subset-probability-model/v1",
                 "model_family": "conditional_poisson",
@@ -120,6 +138,7 @@ def _fixture(fail_candidate=False):
                 "support": support, "feature_schema": schema,
                 "parameters": {"centered_log_weights": [0.0] * m,
                                "parameter_order": "feature_schema.names"},
+                "model_configuration": baseline_config,
                 "normalization": {"method": "exact_conditional_poisson_log_space_dp",
                                   "log_partition": 0.0, "numeric_dtype": "float64"},
                 "fit": {"status": "converged", "termination_reason": "gradient_tolerance",
