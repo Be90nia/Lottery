@@ -420,6 +420,8 @@ class ProspectiveLedger:
                 previous = snapshot["outcomes"].get(supersedes_outcome_id)
                 if previous is None or previous["draw_id"] != draw_id:
                     raise ProspectiveLedgerError("superseded outcome must belong to the same draw")
+                if observed < _timestamp(previous["observed_at_utc"], "previous observed_at_utc"):
+                    raise ProspectiveLedgerError("outcome correction timestamp cannot move backwards")
             self._append_locked(f"outcome:{record['outcome_id']}", "outcome_observed", record)
             return record
 
