@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://be90nia.github.io/Lottery/schemas/release-manifest-v1.schema.json",
+  "title": "Lottery release manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "release_id", "release_ref", "source_commit", "workflow_policy_sha256", "dependency_lock_sha256", "snapshot_sha256", "lot042_accessed"],
+  "properties": {
+    "schema": {"const": "lottery.release-manifest/v1"},
+    "release_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "release_ref": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "workflow_policy_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "dependency_lock_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "snapshot_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "lot042_accessed": {"type": "boolean"}
+  }
+}
