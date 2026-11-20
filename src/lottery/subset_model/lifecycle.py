@@ -99,6 +99,11 @@ def _write_once(path: Path, raw: bytes) -> None:
             os.close(directory_fd)
 
 
+def _require_generation(value: Any) -> None:
+    if type(value) is not int or value < 0:
+        raise LifecycleError("expected_generation must be a non-negative integer")
+
+
 def _slot_key(population_key: str, zone: str) -> str:
     if not isinstance(population_key, str) or not population_key or population_key.strip() != population_key:
         raise LifecycleError("population_key must be a non-empty canonical string")
@@ -486,6 +491,7 @@ class ChampionLifecycle:
         actor: str,
         workflow_run_id: str | None = None,
     ) -> dict[str, Any]:
+        _require_generation(expected_generation)
         key = _slot_key(population_key, zone)
         try:
             raw, artifact_id = create_artifact(artifact_payload)
@@ -533,6 +539,7 @@ class ChampionLifecycle:
         actor: str,
         workflow_run_id: str | None = None,
     ) -> dict[str, Any]:
+        _require_generation(expected_generation)
         key = _slot_key(population_key, zone)
         eligible = _validate_evaluation_receipt(receipt)
         if (
@@ -616,6 +623,7 @@ class ChampionLifecycle:
         self, *, population_key: str, zone: str, artifact_id: str,
         expected_generation: int, actor: str, workflow_run_id: str | None = None,
     ) -> dict[str, Any]:
+        _require_generation(expected_generation)
         key = _slot_key(population_key, zone)
         with ledger_lock(self.registry_path):
             self._recover_locked()
@@ -654,6 +662,7 @@ class ChampionLifecycle:
         workflow_run_id: str | None = None,
     ) -> dict[str, Any]:
         """Atomically publish all front/back Champions for reported indices 1, 2 and 3."""
+        _require_generation(expected_generation)
         if not isinstance(transitions, list) or len(transitions) != 6:
             raise LifecycleError("atomic three-slot promotion requires exactly six zone transitions")
         if approval_verifier is None:
@@ -830,6 +839,7 @@ class ChampionLifecycle:
         actor: str,
         workflow_run_id: str | None = None,
     ) -> dict[str, Any]:
+        _require_generation(expected_generation)
         key = _slot_key(population_key, zone)
         slot_snapshot = self.snapshot()["slots"].get(key)
         if slot_snapshot is None:
@@ -891,6 +901,7 @@ class ChampionLifecycle:
         expected_generation: int, actor: str, reason_code: str,
         workflow_run_id: str | None = None,
     ) -> dict[str, Any]:
+        _require_generation(expected_generation)
         key = _slot_key(population_key, zone)
         if not reason_code:
             raise LifecycleError("rejection requires a reason_code")
@@ -923,6 +934,7 @@ class ChampionLifecycle:
         self, *, population_key: str, zone: str, expected_generation: int,
         actor: str, reason_code: str, workflow_run_id: str | None = None,
     ) -> dict[str, Any]:
+        _require_generation(expected_generation)
         key = _slot_key(population_key, zone)
         if not reason_code:
             raise LifecycleError("suspension requires a reason_code")
@@ -954,6 +966,7 @@ class ChampionLifecycle:
         approval: dict[str, Any], approval_verifier: ApprovalVerifier | None,
         actor: str, workflow_run_id: str | None = None,
     ) -> dict[str, Any]:
+        _require_generation(expected_generation)
         key = _slot_key(population_key, zone)
         registry_snapshot = self.snapshot()
         slot_snapshot = registry_snapshot["slots"].get(key)
@@ -1027,6 +1040,7 @@ class ChampionLifecycle:
         workflow_run_id: str | None = None,
     ) -> dict[str, Any]:
         """Atomically restore six compatible retired artifacts as one Champion generation."""
+        _require_generation(expected_generation)
         if not isinstance(transitions, list) or len(transitions) != 6:
             raise LifecycleError("atomic three-slot restoration requires exactly six zone transitions")
         if approval_verifier is None:
