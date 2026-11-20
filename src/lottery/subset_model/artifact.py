@@ -172,6 +172,21 @@ def validate_model_artifact(payload: dict) -> None:
         )
 
     family = payload["model_family"]
+    family_fields = {
+        "complete_subset_exponential": {
+            "feature_schema_version", "active_feature_names", "theta",
+            "objective_scale", "regularization_lambda",
+        },
+        "conditional_poisson": {"centered_log_weights"},
+    }
+    if family not in family_fields:
+        raise ArtifactValidationError("unknown model_family")
+    unknown = set(payload).difference(required | family_fields[family])
+    if unknown:
+        raise ArtifactValidationError(
+            f"unknown artifact fields for {family}: {sorted(unknown)}"
+        )
+
     if family == "complete_subset_exponential":
         theta = payload.get("theta")
         feature_names = payload.get("active_feature_names")
@@ -187,8 +202,7 @@ def validate_model_artifact(payload: dict) -> None:
             raise ArtifactValidationError("conditional-Poisson weights must match population_size")
         if abs(sum(float(value) for value in weights)) > 1e-8:
             raise ArtifactValidationError("conditional-Poisson log weights must use the zero-sum gauge")
-    else:
-        raise ArtifactValidationError("unknown model_family")
+
 
 
 def create_artifact(payload: dict) -> tuple[bytes, str]:
