@@ -1158,6 +1158,7 @@ class ChampionLifecycle:
             expected_champion_artifact_id=expected_champion_artifact_id,
             evaluation_manifest_sha256=validation["evaluation_manifest_sha256"],
             evaluation_receipt_sha256=validation["receipt_sha256"],
+            shadow_receipt_sha256=None,
         )
         with ledger_lock(self.registry_path):
             self._recover_locked()
@@ -1279,6 +1280,7 @@ class ChampionLifecycle:
                 expected_champion_artifact_id=expected_champion,
                 evaluation_manifest_sha256=receipt["evaluation_manifest_sha256"],
                 evaluation_receipt_sha256=validation["receipt_sha256"],
+                shadow_receipt_sha256=None,
             )
             normalized[key] = {
                 "population_key": population_key,
@@ -1431,13 +1433,27 @@ class ChampionLifecycle:
                     zone=zone, expected_champion_artifact_id=approval.get("expected_champion_artifact_id"),
                     evaluation_manifest_sha256=validation["evaluation_manifest_sha256"],
                     evaluation_receipt_sha256=validation["receipt_sha256"],
+                    shadow_receipt_sha256=approval.get("shadow_receipt_sha256"),
                 )
+                shadow_hash = approval.get("shadow_receipt_sha256")
+                if shadow_hash is not None:
+                    shadow_validation = slot.get("shadow_validation", {}).get(artifact_id)
+                    if not shadow_validation or shadow_validation.get("receipt_sha256") != shadow_hash or shadow_validation.get("eligible") is not True:
+                        raise LifecycleError("Champion shadow receipt reference is missing or ineligible")
+                    shadow_receipt = self._load_shadow_receipt(shadow_hash)
+                    if not _validate_shadow_receipt(
+                        shadow_receipt, artifact=artifact, artifact_id=artifact_id,
+                        population_key=population_key, zone=zone,
+                        champion_artifact_id=approval.get("expected_champion_artifact_id"),
+                    ):
+                        raise LifecycleError("Champion shadow receipt failed verification at resolution")
                 if approval_verifier(approval, {
                     "action": approval["action"], "artifact_id": artifact_id,
                     "population_key": population_key, "zone": zone,
                     "expected_champion_artifact_id": approval["expected_champion_artifact_id"],
                     "evaluation_manifest_sha256": validation["evaluation_manifest_sha256"],
                     "evaluation_receipt_sha256": validation["receipt_sha256"],
+                    "shadow_receipt_sha256": shadow_hash,
                     "policy_version": POLICY_VERSION,
                 }) is not True:
                     raise LifecycleError("Champion approval signature failed verification at resolution")
