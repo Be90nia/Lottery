@@ -84,14 +84,14 @@ def _fixture(fail_candidate=False):
                     "optimizer": "L-BFGS-B", "lambda": 1.0},
             "training": training,
             "implementation": {
-                "code_revision": "abc123", "runtime": runtime, "library_versions": {},
+                "code_revision": "a" * 40, "runtime": runtime, "library_versions": {},
                 "rng_algorithm": "injected_rng.random_v1",
             },
             "training_snapshot_sha256": snapshot_hash,
             "training_first_draw_id": rows[0]["draw_id"],
             "training_last_draw_id": rows[299]["draw_id"],
             "training_cutoff_draw_id": rows[299]["draw_id"],
-            "training_row_count": 300, "code_revision": "abc123", "runtime": runtime,
+            "training_row_count": 300, "code_revision": "a" * 40, "runtime": runtime,
             "fit_diagnostics": {"terminal_status": "converged", "converged": True,
                                 "gradient_infinity_norm": 0.0},
             "forecast_ready": False,
@@ -148,14 +148,14 @@ def _fixture(fail_candidate=False):
                         "optimizer": "conditional_poisson_calibration_lbfgs_v1", "lambda": None},
                 "training": training,
                 "implementation": {
-                    "code_revision": "abc123", "runtime": runtime, "library_versions": {},
+                    "code_revision": "a" * 40, "runtime": runtime, "library_versions": {},
                     "rng_algorithm": "conditional_poisson_backward_dp_with_injected_rng_v1",
                 },
                 "training_snapshot_sha256": snapshot_hash,
                 "training_first_draw_id": rows[0]["draw_id"],
                 "training_last_draw_id": rows[299]["draw_id"],
                 "training_cutoff_draw_id": rows[299]["draw_id"],
-                "training_row_count": 300, "code_revision": "abc123", "runtime": runtime,
+                "training_row_count": 300, "code_revision": "a" * 40, "runtime": runtime,
                 "fit_diagnostics": {"terminal_status": "converged", "converged": True},
                 "forecast_ready": False,
                 "centered_log_weights": [0.0] * m,
@@ -207,7 +207,7 @@ def _fixture(fail_candidate=False):
         }
     result = {
         "snapshot_sha256": snapshot_hash,
-        "code_commit": "abc123",
+        "code_commit": "a" * 40,
         "snapshot_source_commit": "def456",
         "snapshot_trust_status": "manifest_complete_not_officially_authenticated",
         "bootstrap": {

@@ -21,7 +21,6 @@ on:
         default: true
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: exact-subset-research-${{ github.event.pull_request.number || github.ref }}
@@ -30,6 +29,9 @@ concurrency:
 jobs:
   full-rolling-origin:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     timeout-minutes: 360
     env:
       PYTHONPATH: src

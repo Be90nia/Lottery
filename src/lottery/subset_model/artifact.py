@@ -18,9 +18,17 @@ class ArtifactValidationError(ValueError):
 
 def _number_to_jcs(value: int | float) -> str:
     if type(value) is int:
-        if abs(value) > 9007199254740991:
-            raise ArtifactValidationError("integer exceeds the interoperable IEEE-754 safe range")
-        return str(value)
+        try:
+            binary64_value = float(value)
+        except OverflowError as exc:
+            raise ArtifactValidationError(
+                "integer cannot be represented as finite IEEE-754 binary64"
+            ) from exc
+        if not math.isfinite(binary64_value) or int(binary64_value) != value:
+            raise ArtifactValidationError(
+                "integer cannot be represented exactly as IEEE-754 binary64"
+            )
+        value = binary64_value
     if type(value) is not float or not math.isfinite(value):
         raise ArtifactValidationError("JSON numbers must be finite int/float values")
     if value == 0.0:
@@ -73,6 +81,10 @@ def _quote_string(value: str) -> str:
     except UnicodeEncodeError as exc:
         raise ArtifactValidationError("strings must not contain unpaired surrogates") from exc
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _is_finite_number(value: Any) -> bool:
+    return type(value) in (int, float) and math.isfinite(value)
 
 
 def _canonical(value: Any) -> str:
@@ -139,12 +151,12 @@ def validate_model_artifact(payload: dict) -> None:
         "parameters", "model_configuration", "normalization", "fit", "training", "implementation",
         "training_snapshot_sha256", "training_cutoff_draw_id",
         "training_row_count", "code_revision", "runtime", "fit_diagnostics",
-        "forecast_ready",
+        "forecast_ready", "feature_schema_hash", "model_configuration_hash",
     }
     missing = required.difference(payload)
     if missing:
         raise ArtifactValidationError(f"missing required artifact fields: {sorted(missing)}")
-    if payload["schema_version"] != 1:
+    if type(payload["schema_version"]) is not int or payload["schema_version"] != 1:
         raise ArtifactValidationError("unsupported model artifact schema_version")
     if payload["artifact_schema"] != "lottery.subset-probability-model/v1":
         raise ArtifactValidationError("unsupported artifact envelope schema")
@@ -154,11 +166,16 @@ def validate_model_artifact(payload: dict) -> None:
         expected = (12, 2)
     else:
         raise ArtifactValidationError("zone must be 'front' or 'back'")
+    family = payload["model_family"]
+    if family not in ("complete_subset_exponential", "conditional_poisson"):
+        raise ArtifactValidationError("unknown model_family")
     if (payload["population_size"], payload["selection_size"]) != expected:
         raise ArtifactValidationError("zone support dimensions do not match the lottery rules")
 
     support = payload["support"]
-    if not isinstance(support, dict) or (
+    if not isinstance(support, dict) or set(support) != {
+        "population_size", "selection_size", "support_count", "subset_order"
+    } or (
         support.get("population_size") != expected[0]
         or support.get("selection_size") != expected[1]
         or support.get("support_count") != math.comb(*expected)
@@ -168,27 +185,32 @@ def validate_model_artifact(payload: dict) -> None:
 
     if type(payload["training_row_count"]) is not int or payload["training_row_count"] < 1:
         raise ArtifactValidationError("training_row_count must be a positive integer")
-    if not isinstance(payload["training_snapshot_sha256"], str) or len(payload["training_snapshot_sha256"]) != 64:
-        raise ArtifactValidationError("training_snapshot_sha256 must be a 64-character hex digest")
-    try:
-        int(payload["training_snapshot_sha256"], 16)
-    except ValueError as exc:
-        raise ArtifactValidationError("training_snapshot_sha256 must be hexadecimal") from exc
+    if (not isinstance(payload["training_snapshot_sha256"], str)
+            or len(payload["training_snapshot_sha256"]) != 64
+            or any(char not in "0123456789abcdef" for char in payload["training_snapshot_sha256"])):
+        raise ArtifactValidationError("training_snapshot_sha256 must be 64 lowercase hexadecimal characters")
     if not isinstance(payload["training_cutoff_draw_id"], str) or not payload["training_cutoff_draw_id"]:
         raise ArtifactValidationError("training_cutoff_draw_id must be a non-empty string")
-    if not isinstance(payload["code_revision"], str) or not payload["code_revision"]:
-        raise ArtifactValidationError("code_revision must be a non-empty string")
+    if (not isinstance(payload["code_revision"], str) or len(payload["code_revision"]) != 40
+            or any(char not in "0123456789abcdef" for char in payload["code_revision"])):
+        raise ArtifactValidationError("code_revision must be a full lowercase 40-character Git SHA")
     for hash_field in ("feature_schema_hash", "model_configuration_hash"):
         value = payload.get(hash_field)
         if (not isinstance(value, str) or not value.startswith("sha256:")
-                or len(value) != 71):
-            raise ArtifactValidationError(f"{hash_field} must be a sha256 content identifier")
-        try:
-            int(value[7:], 16)
-        except ValueError as exc:
-            raise ArtifactValidationError(f"{hash_field} must contain hexadecimal SHA-256") from exc
+                or len(value) != 71
+                or any(char not in "0123456789abcdef" for char in value[7:])):
+            raise ArtifactValidationError(f"{hash_field} must be a lowercase sha256 content identifier")
     if not isinstance(payload["runtime"], dict) or not isinstance(payload["fit_diagnostics"], dict):
         raise ArtifactValidationError("runtime and fit_diagnostics must be objects")
+    for diagnostic_name in (
+        "gradient_infinity_norm", "unregularized_mean_nll", "penalized_objective",
+        "objective", "calibration_residual",
+    ):
+        diagnostic_value = payload["fit_diagnostics"].get(diagnostic_name)
+        if diagnostic_value is not None and not _is_finite_number(diagnostic_value):
+            raise ArtifactValidationError(
+                f"fit_diagnostics.{diagnostic_name} must be finite numeric or null"
+            )
     if type(payload["forecast_ready"]) is not bool:
         raise ArtifactValidationError("forecast_ready must be boolean")
     if payload["forecast_ready"]:
@@ -197,18 +219,29 @@ def validate_model_artifact(payload: dict) -> None:
         )
 
     training = payload["training"]
-    if not isinstance(training, dict) or (
+    if not isinstance(training, dict) or set(training) != {
+        "snapshot_sha256", "row_count", "first_draw_id", "last_draw_id",
+        "cutoff_draw_id", "cutoff_inclusive",
+    } or (
         training.get("snapshot_sha256") != payload["training_snapshot_sha256"]
         or training.get("row_count") != payload["training_row_count"]
         or training.get("cutoff_draw_id") != payload["training_cutoff_draw_id"]
         or training.get("cutoff_inclusive") is not True
         or not isinstance(training.get("first_draw_id"), str)
         or not isinstance(training.get("last_draw_id"), str)
+        or len(training["first_draw_id"]) != 5 or not training["first_draw_id"].isdigit()
+        or len(training["last_draw_id"]) != 5 or not training["last_draw_id"].isdigit()
+        or training["first_draw_id"] > training["last_draw_id"]
+        or training["last_draw_id"] != training["cutoff_draw_id"]
+        or payload.get("training_first_draw_id", training["first_draw_id"]) != training["first_draw_id"]
+        or payload.get("training_last_draw_id", training["last_draw_id"]) != training["last_draw_id"]
     ):
         raise ArtifactValidationError("training provenance envelope is inconsistent")
 
     implementation = payload["implementation"]
-    if not isinstance(implementation, dict) or (
+    if not isinstance(implementation, dict) or set(implementation) != {
+        "code_revision", "runtime", "library_versions", "rng_algorithm",
+    } or (
         implementation.get("code_revision") != payload["code_revision"]
         or implementation.get("runtime") != payload["runtime"]
         or not isinstance(implementation.get("library_versions"), dict)
@@ -218,8 +251,13 @@ def validate_model_artifact(payload: dict) -> None:
         raise ArtifactValidationError("implementation/runtime/RNG provenance is incomplete")
 
     feature_schema = payload["feature_schema"]
-    if not isinstance(feature_schema, dict):
-        raise ArtifactValidationError("feature_schema must be an object")
+    feature_schema_fields = {
+        "version", "names", "uniform_means", "uniform_population_stds", "zero_variance_policy"
+    }
+    if family == "complete_subset_exponential":
+        feature_schema_fields |= {"candidate_names", "zero_variance_features"}
+    if not isinstance(feature_schema, dict) or set(feature_schema).difference(feature_schema_fields):
+        raise ArtifactValidationError("feature_schema must use only registered schema fields")
     names = feature_schema.get("names")
     means = feature_schema.get("uniform_means")
     standard_deviations = feature_schema.get("uniform_population_stds")
@@ -240,8 +278,19 @@ def validate_model_artifact(payload: dict) -> None:
     if payload["feature_schema_hash"] != expected_feature_hash:
         raise ArtifactValidationError("feature_schema_hash does not bind the canonical feature schema")
     model_configuration = payload["model_configuration"]
-    if not isinstance(model_configuration, dict):
-        raise ArtifactValidationError("model_configuration must be an object")
+    model_configuration_fields = {
+        "model_family", "zone", "population_size", "selection_size", "feature_schema_hash"
+    }
+    if family == "complete_subset_exponential":
+        model_configuration_fields |= {
+            "objective_scale", "regularization_lambda", "solver",
+            "max_iterations", "gradient_tolerance",
+        }
+    else:
+        model_configuration_fields |= {"baseline", "alpha", "half_life", "weighting"}
+    if (not isinstance(model_configuration, dict)
+            or set(model_configuration).difference(model_configuration_fields)):
+        raise ArtifactValidationError("model_configuration must use only registered family fields")
     expected_config_hash = "sha256:" + hashlib.sha256(canonicalize(model_configuration)).hexdigest()
     if payload["model_configuration_hash"] != expected_config_hash:
         raise ArtifactValidationError("model_configuration_hash does not bind the canonical configuration")
@@ -251,12 +300,65 @@ def validate_model_artifact(payload: dict) -> None:
             or model_configuration.get("selection_size") != expected[1]
             or model_configuration.get("feature_schema_hash") != payload["feature_schema_hash"]):
         raise ArtifactValidationError("model_configuration does not match artifact identity/schema")
+    if family == "complete_subset_exponential":
+        if (model_configuration.get("objective_scale") != "mean_nll"
+                or not _is_finite_number(model_configuration.get("regularization_lambda"))
+                or model_configuration["regularization_lambda"] != 1.0
+                or not isinstance(model_configuration.get("solver"), str)
+                or not model_configuration["solver"]
+                or type(model_configuration.get("max_iterations")) is not int
+                or model_configuration["max_iterations"] < 1
+                or not _is_finite_number(model_configuration.get("gradient_tolerance"))
+                or model_configuration["gradient_tolerance"] <= 0):
+            raise ArtifactValidationError("exponential model configuration is invalid")
+    else:
+        baseline_fields = {"baseline", "alpha", "half_life", "weighting"}
+        present_baseline_fields = baseline_fields.intersection(model_configuration)
+        if present_baseline_fields and present_baseline_fields != baseline_fields:
+            raise ArtifactValidationError("conditional-Poisson baseline metadata must be complete")
+        if present_baseline_fields and (
+                not isinstance(model_configuration["baseline"], str)
+                or not model_configuration["baseline"]
+                or not _is_finite_number(model_configuration["alpha"])
+                or model_configuration["alpha"] <= 0
+                or (model_configuration["half_life"] is not None
+                    and (not _is_finite_number(model_configuration["half_life"])
+                         or model_configuration["half_life"] <= 0))
+                or not isinstance(model_configuration["weighting"], str)
+                or not model_configuration["weighting"]):
+            raise ArtifactValidationError("conditional-Poisson baseline configuration is invalid")
+        for field_name in ("baseline", "alpha", "half_life"):
+            if field_name in payload and payload[field_name] != model_configuration.get(field_name):
+                raise ArtifactValidationError(
+                    f"conditional-Poisson top-level {field_name} differs from model_configuration"
+                )
 
     artifact_type = payload["artifact_type"]
     if artifact_type not in ("fitted_model", "fit_failure"):
         raise ArtifactValidationError("artifact_type must be fitted_model or fit_failure")
+    allowed_fields = required | {"training_first_draw_id", "training_last_draw_id"}
+    if family == "complete_subset_exponential":
+        allowed_fields |= {
+            "feature_schema_version", "candidate_feature_names", "active_feature_names",
+            "zero_variance_features", "theta", "objective_scale", "regularization_lambda",
+        }
+    else:
+        allowed_fields |= {
+            "baseline", "alpha", "half_life",
+            "centered_log_weights", "target_marginals", "achieved_marginals",
+            "solver_status", "calibration_residual",
+        }
+    if artifact_type == "fit_failure":
+        allowed_fields.add("failure_reason")
+    unknown_fields = set(payload).difference(allowed_fields)
+    if unknown_fields:
+        raise ArtifactValidationError(
+            f"unknown artifact fields for {family}/{artifact_type}: {sorted(unknown_fields)}"
+        )
     normalization = payload["normalization"]
-    if not isinstance(normalization, dict) or normalization.get("numeric_dtype") != "float64":
+    if (not isinstance(normalization, dict)
+            or set(normalization) != {"method", "log_partition", "numeric_dtype"}
+            or normalization.get("numeric_dtype") != "float64"):
         raise ArtifactValidationError("normalization descriptor is invalid")
     if artifact_type == "fit_failure":
         if normalization.get("method") != "not_computed" or normalization.get("log_partition") is not None:
@@ -267,7 +369,10 @@ def validate_model_artifact(payload: dict) -> None:
         raise ArtifactValidationError("normalization descriptor is invalid")
 
     fit = payload["fit"]
-    if not isinstance(fit, dict) or (
+    if not isinstance(fit, dict) or set(fit) != {
+        "status", "termination_reason", "objective", "gradient_inf_norm",
+        "iterations", "optimizer", "lambda",
+    } or (
         not isinstance(fit.get("status"), str) or not fit["status"]
         or not isinstance(fit.get("termination_reason"), str) or not fit["termination_reason"]
         or type(fit.get("iterations")) is not int or fit["iterations"] < 0
@@ -282,7 +387,13 @@ def validate_model_artifact(payload: dict) -> None:
         raise ArtifactValidationError("fit gradient_inf_norm cannot be negative")
 
     parameters = payload["parameters"]
-    if not isinstance(parameters, dict) or parameters.get("parameter_order") != "feature_schema.names":
+    expected_parameter_fields = (
+        {"parameter_order", "parameters_available"} if artifact_type == "fit_failure"
+        else {"parameter_order", "theta"} if family == "complete_subset_exponential"
+        else {"parameter_order", "centered_log_weights"}
+    )
+    if (not isinstance(parameters, dict) or set(parameters) != expected_parameter_fields
+            or parameters.get("parameter_order") != "feature_schema.names"):
         raise ArtifactValidationError("parameter order must bind to feature_schema.names")
     if artifact_type == "fit_failure":
         if payload["model_family"] not in ("complete_subset_exponential", "conditional_poisson"):
@@ -304,18 +415,20 @@ def validate_model_artifact(payload: dict) -> None:
     if fit.get("objective") is None or fit.get("gradient_inf_norm") is None or fit["gradient_inf_norm"] > 1e-8:
         raise ArtifactValidationError("converged artifact exceeds the registered fit diagnostics")
 
-    family = payload["model_family"]
     if family == "complete_subset_exponential":
         theta = payload.get("theta")
         feature_names = payload.get("active_feature_names")
         parameter_theta = parameters.get("theta")
         if (not isinstance(theta, list) or not isinstance(feature_names, list)
                 or len(theta) != len(feature_names) or feature_names != names
-                or parameter_theta != theta or len(means) != len(theta)):
-            raise ArtifactValidationError("exponential artifact theta/schema/moments dimensions mismatch")
+                or parameter_theta != theta or len(means) != len(theta)
+                or any(not _is_finite_number(value) for value in theta)):
+            raise ArtifactValidationError("exponential artifact theta/schema/moments dimensions or numeric values are invalid")
         if payload.get("objective_scale") != "mean_nll":
             raise ArtifactValidationError("exponential artifact objective_scale must be mean_nll")
-        if payload.get("regularization_lambda") != 1.0 or fit.get("lambda") != 1.0:
+        if (not _is_finite_number(payload.get("regularization_lambda"))
+                or payload["regularization_lambda"] != 1.0
+                or not _is_finite_number(fit.get("lambda")) or fit["lambda"] != 1.0):
             raise ArtifactValidationError("exponential artifact lambda must match the frozen value 1.0")
         if fit.get("status") != payload["fit_diagnostics"].get("terminal_status"):
             raise ArtifactValidationError("fit status envelope does not match fit diagnostics")
@@ -323,9 +436,10 @@ def validate_model_artifact(payload: dict) -> None:
         weights = payload.get("centered_log_weights")
         parameter_weights = parameters.get("centered_log_weights")
         if (not isinstance(weights, list) or len(weights) != expected[0]
-                or parameter_weights != weights or len(names) != expected[0]):
-            raise ArtifactValidationError("conditional-Poisson weights/schema must match population_size")
-        if abs(sum(float(value) for value in weights)) > 1e-8:
+                or parameter_weights != weights or len(names) != expected[0]
+                or any(not _is_finite_number(value) for value in weights)):
+            raise ArtifactValidationError("conditional-Poisson weights/schema must be finite numeric values matching population_size")
+        if abs(sum(weights)) > 1e-8:
             raise ArtifactValidationError("conditional-Poisson log weights must use the zero-sum gauge")
         for field in ("target_marginals", "achieved_marginals"):
             values = payload.get(field)
@@ -353,6 +467,77 @@ def validate_model_artifact(payload: dict) -> None:
             raise ArtifactValidationError("conditional-Poisson artifact cannot carry exponential L2 lambda")
     else:
         raise ArtifactValidationError("unknown model_family")
+
+
+DERIVED_CACHE_SCHEMA = "lottery.derived-cache/v1"
+
+
+def validate_derived_cache(payload: dict) -> None:
+    """Validate a non-executable derived cache bound to one immutable model artifact."""
+    required = {
+        "schema_version", "artifact_schema", "cache_type", "parent_artifact_id",
+        "cache_payload", "code_revision", "runtime",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise ArtifactValidationError("derived cache fields do not match the registered schema")
+    if type(payload["schema_version"]) is not int or payload["schema_version"] != 1:
+        raise ArtifactValidationError("unsupported derived cache schema_version")
+    if payload["artifact_schema"] != DERIVED_CACHE_SCHEMA:
+        raise ArtifactValidationError("unsupported derived cache schema")
+    if not isinstance(payload["cache_type"], str) or not payload["cache_type"]:
+        raise ArtifactValidationError("derived cache cache_type must be non-empty")
+    parent_id = payload["parent_artifact_id"]
+    if (not isinstance(parent_id, str) or len(parent_id) != 71
+            or not parent_id.startswith("sha256:")
+            or any(char not in "0123456789abcdef" for char in parent_id[7:])):
+        raise ArtifactValidationError("derived cache parent_artifact_id must be a lowercase sha256 ID")
+    revision = payload["code_revision"]
+    if (not isinstance(revision, str) or len(revision) != 40
+            or any(char not in "0123456789abcdef" for char in revision)):
+        raise ArtifactValidationError("derived cache code_revision must be a full lowercase Git SHA")
+    if not isinstance(payload["runtime"], dict):
+        raise ArtifactValidationError("derived cache runtime must be an object")
+    canonicalize(payload["cache_payload"])
+
+
+def create_derived_cache(payload: dict) -> tuple[bytes, str]:
+    """Create canonical content-addressed cache bytes with a mandatory parent reference."""
+    if not isinstance(payload, dict):
+        raise ArtifactValidationError("derived cache payload must be an object")
+    body = dict(payload)
+    body.pop("artifact_id", None)
+    validate_derived_cache(body)
+    digest = hashlib.sha256(canonicalize(body)).hexdigest()
+    artifact_id = "sha256:" + digest
+    complete = dict(body)
+    complete["artifact_id"] = artifact_id
+    return canonicalize(complete), artifact_id
+
+
+def verify_derived_cache(
+    raw: bytes | str, *, expected_parent_artifact_id: str | None = None
+) -> dict:
+    """Verify cache digest, canonical bytes, and optionally its expected parent."""
+    payload = parse_json_strict(raw)
+    artifact_id = payload.get("artifact_id")
+    if (not isinstance(artifact_id, str) or len(artifact_id) != 71
+            or not artifact_id.startswith("sha256:")
+            or any(char not in "0123456789abcdef" for char in artifact_id[7:])):
+        raise ArtifactValidationError("derived cache artifact_id is missing or malformed")
+    body = dict(payload)
+    body.pop("artifact_id")
+    validate_derived_cache(body)
+    if (expected_parent_artifact_id is not None
+            and body["parent_artifact_id"] != expected_parent_artifact_id):
+        raise ArtifactValidationError("derived cache parent artifact ID mismatch")
+    expected = "sha256:" + hashlib.sha256(canonicalize(body)).hexdigest()
+    if artifact_id != expected:
+        raise ArtifactValidationError("derived cache content hash does not match artifact_id")
+    canonical_full = canonicalize(payload)
+    raw_bytes = raw.encode("utf-8") if isinstance(raw, str) else raw
+    if canonical_full != raw_bytes:
+        raise ArtifactValidationError("derived cache bytes are not canonical RFC 8785 JSON")
+    return payload
 
 
 def create_artifact(payload: dict) -> tuple[bytes, str]:
