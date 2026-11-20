@@ -496,14 +496,22 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                     "model_family": "conditional_poisson", "baseline": baseline,
                     "zone": zone, "population_size": m, "selection_size": k,
                     "alpha": 100.0,
+                    "optimizer": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+                    "gradient_tolerance": 1e-8,
+                    "max_iterations": 5000,
+                    "history_size": 10,
                     "half_life": 100.0 if baseline == "ewma" else None,
                     "weighting": "expanding" if baseline == "expanding" else "2^(-lag/100)",
                     "feature_schema_hash": _jcs_hash(baseline_schema),
                 }
                 try:
-                    marginals = _probabilities(training, field, m, k, model=baseline,
-                                               alpha=100.0, half_life=100.0)
-                    calibration = ConditionalPoisson.calibrate(marginals, k)
+                    marginals = _probabilities(
+                        training, field, m, k, model=baseline, alpha=100.0,
+                        half_life=100.0 if baseline == "ewma" else None,
+                    )
+                    calibration = ConditionalPoisson.calibrate(
+                        marginals, k, tolerance=1e-8, max_iterations=5000, history_size=10
+                    )
                     statuses[baseline] = calibration.terminal_status
                     scores[baseline] = None
                     if calibration.converged:
@@ -527,7 +535,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                                 "converged": calibration.converged,
                                 "message": calibration.message,
                                 "iterations": calibration.iterations,
-                                "gradient_infinity_norm": calibration.gradient_inf_norm,
+                                "gradient_infinity_norm": calibration.gradient_infinity_norm,
                                 "calibration_residual": calibration.maximum_absolute_residual,
                                 "objective": calibration.objective,
                             },
@@ -545,9 +553,9 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                                 "status": calibration.terminal_status,
                                 "termination_reason": calibration.message,
                                 "objective": calibration.objective,
-                                "gradient_inf_norm": calibration.gradient_inf_norm,
+                                "gradient_inf_norm": calibration.gradient_infinity_norm,
                                 "iterations": calibration.iterations,
-                                "optimizer": "conditional_poisson_calibration_lbfgs_v1",
+                                "optimizer": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
                                 "lambda": None,
                             },
                             "training": {
@@ -590,9 +598,9 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                             feature_schema=baseline_schema, model_configuration=baseline_config,
                             status=calibration.terminal_status, reason=calibration.message,
                             objective=calibration.objective,
-                            gradient_inf_norm=calibration.gradient_inf_norm,
+                            gradient_inf_norm=calibration.gradient_infinity_norm,
                             iterations=calibration.iterations,
-                            optimizer="conditional_poisson_calibration_lbfgs_v1",
+                            optimizer="conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
                             regularization_lambda=None,
                             rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
                         )
@@ -606,7 +614,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                         feature_schema=baseline_schema, model_configuration=baseline_config,
                         status=statuses[baseline], reason=str(exc),
                         objective=None, gradient_inf_norm=None, iterations=0,
-                        optimizer="conditional_poisson_calibration_lbfgs_v1",
+                        optimizer="conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
                         regularization_lambda=None,
                         rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
                     )
@@ -763,6 +771,10 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "model_comparison": ["uniform", "expanding", "ewma", "exponential_family"],
         "objective_scale": "mean_nll", "regularization_lambda": 1.0,
         "solver": "deterministic_unbounded_lbfgsb_strong_wolfe_v1",
+        "baseline_solver": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+        "baseline_solver_tolerance": 1e-8,
+        "baseline_solver_max_iterations": 5000,
+        "baseline_solver_history_size": 10,
         "solver_policy_note": "Unbounded L-BFGS-B specialization: this model has no box constraints, so the active-set step reduces to L-BFGS; deterministic strong-Wolfe line search is used.",
         "bootstrap": {
             "replicates": BOOTSTRAP_REPLICATES,

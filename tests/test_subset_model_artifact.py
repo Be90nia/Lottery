@@ -1,4 +1,5 @@
 import hashlib
+import math
 import json
 import struct
 import sys
@@ -76,6 +77,99 @@ def exponential_payload():
 
 
 
+
+def conditional_poisson_payload():
+    population, selection = 35, 5
+    names = [f"item_{item}" for item in range(1, population + 1)]
+    mean = selection / population
+    std = (mean * (1.0 - mean)) ** 0.5
+    feature_schema = {
+        "version": "lottery-item-inclusion/v1",
+        "names": names,
+        "uniform_means": [mean] * population,
+        "uniform_population_stds": [std] * population,
+        "zero_variance_policy": "not_applicable_item_indicator_schema",
+    }
+    feature_schema_hash = "sha256:" + hashlib.sha256(canonicalize(feature_schema)).hexdigest()
+    model_configuration = {
+        "model_family": "conditional_poisson",
+        "zone": "front",
+        "population_size": population,
+        "selection_size": selection,
+        "feature_schema_hash": feature_schema_hash,
+        "baseline": "expanding",
+        "alpha": 100.0,
+        "half_life": None,
+        "weighting": "expanding",
+        "optimizer": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+        "gradient_tolerance": 1e-8,
+        "max_iterations": 5000,
+        "history_size": 10,
+    }
+    config_hash = "sha256:" + hashlib.sha256(canonicalize(model_configuration)).hexdigest()
+    log_partition = math.log(math.comb(population, selection))
+    runtime = {"python": "3.12", "implementation": "CPython"}
+    training = {
+        "snapshot_sha256": "a" * 64, "row_count": 2948,
+        "first_draw_id": "07001", "last_draw_id": "26130",
+        "cutoff_draw_id": "26130", "cutoff_inclusive": True,
+    }
+    marginals = [mean] * population
+    weights = [0.0] * population
+    return {
+        "schema_version": 1,
+        "artifact_schema": "lottery.subset-probability-model/v1",
+        "artifact_type": "fitted_model",
+        "model_family": "conditional_poisson",
+        "zone": "front",
+        "population_size": population,
+        "selection_size": selection,
+        "training_snapshot_sha256": "a" * 64,
+        "training_first_draw_id": "07001",
+        "training_last_draw_id": "26130",
+        "training_cutoff_draw_id": "26130",
+        "training_row_count": 2948,
+        "code_revision": "a" * 40,
+        "runtime": runtime,
+        "fit_diagnostics": {
+            "terminal_status": "converged", "converged": True,
+            "message": "marginal residual reached tolerance", "iterations": 0,
+            "gradient_infinity_norm": 0.0, "calibration_residual": 0.0,
+            "objective": log_partition,
+        },
+        "forecast_ready": False,
+        "support": {
+            "population_size": population, "selection_size": selection,
+            "support_count": math.comb(population, selection),
+            "subset_order": "lexicographic_ascending",
+        },
+        "feature_schema": feature_schema,
+        "parameters": {"centered_log_weights": weights, "parameter_order": "feature_schema.names"},
+        "model_configuration": model_configuration,
+        "fit": {
+            "status": "converged", "termination_reason": "marginal residual reached tolerance",
+            "objective": log_partition, "gradient_inf_norm": 0.0, "iterations": 0,
+            "optimizer": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2", "lambda": None,
+        },
+        "training": training,
+        "implementation": {
+            "code_revision": "a" * 40, "runtime": runtime,
+            "library_versions": {},
+            "rng_algorithm": "conditional_poisson_backward_dp_with_injected_rng_v1",
+        },
+        "baseline": "expanding", "alpha": 100.0, "half_life": None,
+        "target_marginals": marginals, "achieved_marginals": marginals,
+        "centered_log_weights": weights, "solver_status": "converged",
+        "calibration_residual": 0.0,
+        "feature_schema_hash": feature_schema_hash,
+        "model_configuration_hash": config_hash,
+        "normalization": {
+            "method": "exact_conditional_poisson_log_space_dp",
+            "log_partition": log_partition, "numeric_dtype": "float64",
+        },
+    }
+
+
 class JCSCanonicalizationTests(unittest.TestCase):
     def test_shared_cross_language_golden_fixture(self):
         fixture_path = Path(__file__).parent / "fixtures" / "jcs-golden-v1.json"
@@ -146,6 +240,25 @@ class ModelArtifactTests(unittest.TestCase):
         payload = exponential_payload()
         payload["unregistered_debug_field"] = "must not be silently hashed"
         with self.assertRaisesRegex(ArtifactValidationError, "unknown artifact fields"):
+            create_artifact(payload)
+
+    def test_conditional_poisson_artifact_binds_registered_strong_wolfe_configuration(self):
+        raw, artifact_id = create_artifact(conditional_poisson_payload())
+        parsed = verify_artifact(raw)
+        self.assertEqual(parsed["artifact_id"], artifact_id)
+        self.assertEqual(
+            parsed["model_configuration"]["optimizer"],
+            "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+        )
+        self.assertEqual(parsed["model_configuration"]["gradient_tolerance"], 1e-8)
+
+    def test_conditional_poisson_artifact_rejects_unregistered_solver(self):
+        payload = conditional_poisson_payload()
+        payload["model_configuration"]["optimizer"] = "unregistered_optimizer"
+        payload["model_configuration_hash"] = "sha256:" + hashlib.sha256(
+            canonicalize(payload["model_configuration"])
+        ).hexdigest()
+        with self.assertRaisesRegex(ArtifactValidationError, "solver configuration is not registered"):
             create_artifact(payload)
 
     def test_create_verify_and_content_address(self):

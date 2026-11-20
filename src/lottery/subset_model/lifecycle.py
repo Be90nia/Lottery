@@ -410,22 +410,34 @@ class ChampionLifecycle:
             return []
         events: list[dict[str, Any]] = []
         previous = ZERO_HASH
+        seen_event_ids: set[str] = set()
         for line_number, line in enumerate(self.events_path.read_bytes().splitlines(), 1):
             try:
                 event = parse_json_strict(line)
             except ArtifactValidationError as exc:
                 raise LifecycleError(f"lifecycle event line {line_number} is invalid: {exc}") from exc
+            event_id = event.get("event_id")
             event_hash = event.get("event_hash")
             body = {key: value for key, value in event.items() if key != "event_hash"}
-            if event.get("prev_event_hash") != previous or event_hash != _sha(canonicalize(body)):
-                raise LifecycleError(f"lifecycle event hash chain failed at line {line_number}")
+            if (not isinstance(event_id, str) or not event_id or event_id in seen_event_ids
+                    or event.get("prev_event_hash") != previous
+                    or event_hash != _sha(canonicalize(body))):
+                raise LifecycleError(f"lifecycle event hash chain or identity failed at line {line_number}")
+            seen_event_ids.add(event_id)
             previous = event_hash
             events.append(event)
         return events
 
     def _append_event_locked(self, body: dict[str, Any]) -> None:
         events = self._read_events()
-        if any(event.get("event_id") == body["event_id"] for event in events):
+        existing = next((event for event in events if event.get("event_id") == body.get("event_id")), None)
+        if existing is not None:
+            existing_body = {
+                key: value for key, value in existing.items()
+                if key not in ("event_hash", "prev_event_hash")
+            }
+            if canonicalize(existing_body) != canonicalize(body):
+                raise LifecycleError("lifecycle event_id collision has different event content")
             return
         previous = events[-1]["event_hash"] if events else ZERO_HASH
         event_body = {**body, "prev_event_hash": previous}
@@ -438,32 +450,81 @@ class ChampionLifecycle:
 
     def _recover_locked(self) -> None:
         registry = self._read_registry()
-        events = self._read_events()
-        known_ids = {event.get("event_id") for event in events}
+        # Validate the append-only event chain even when no recovery journal exists.
+        self._read_events()
         for journal_path in sorted(self.journals.glob("*.json")):
             try:
-                journal = parse_json_strict(journal_path.read_bytes())
+                raw = journal_path.read_bytes()
+                journal = parse_json_strict(raw)
             except (OSError, ArtifactValidationError) as exc:
                 raise LifecycleError(f"cannot recover lifecycle journal {journal_path.name}: {exc}") from exc
-            operation_id = journal.get("operation_id")
-            if not isinstance(operation_id, str) or operation_id in known_ids:
-                journal_path.unlink(missing_ok=True)
-                continue
+            required_old = {"operation_id", "old_generation", "new_registry", "event"}
+            required_new = required_old | {"old_last_operation_id"}
+            if (not isinstance(journal, dict)
+                    or set(journal) not in (required_old, required_new)
+                    or canonicalize(journal) != raw):
+                raise LifecycleError(f"lifecycle journal {journal_path.name} has an invalid canonical schema")
+            operation_id = journal["operation_id"]
+            old_generation = journal["old_generation"]
+            new_registry = journal["new_registry"]
             event_body = journal["event"]
-            if registry.get("last_operation_id") == operation_id:
-                self._append_event_locked(event_body)
-            elif registry["generation"] == journal["old_generation"]:
+            old_last_operation_id = journal.get("old_last_operation_id")
+            if (not isinstance(operation_id, str) or re.fullmatch(r"[0-9a-f]{32}", operation_id) is None
+                    or type(old_generation) is not int or old_generation < 0
+                    or (old_last_operation_id is not None
+                        and (not isinstance(old_last_operation_id, str) or not old_last_operation_id))
+                    or not isinstance(new_registry, dict) or not isinstance(event_body, dict)
+                    or new_registry.get("generation") != old_generation + 1
+                    or new_registry.get("last_operation_id") != operation_id
+                    or event_body.get("event_id") != operation_id
+                    or event_body.get("registry_generation") != old_generation + 1):
+                raise LifecycleError(f"lifecycle journal {journal_path.name} has inconsistent operation identity")
+            events = self._read_events()
+            existing = next((event for event in events if event.get("event_id") == operation_id), None)
+            if existing is not None:
+                existing_body = {
+                    key: value for key, value in existing.items()
+                    if key not in ("event_hash", "prev_event_hash")
+                }
                 aborted = {
                     **event_body,
                     "event_type": "operation_aborted",
+                    "attempted_registry_generation": old_generation + 1,
+                    "registry_generation": old_generation,
+                    "reason_code": "interrupted_before_registry_commit",
+                }
+                committed_match = (
+                    canonicalize(existing_body) == canonicalize(event_body)
+                    and registry == new_registry
+                    and registry.get("last_operation_id") == operation_id
+                )
+                aborted_match = (
+                    canonicalize(existing_body) == canonicalize(aborted)
+                    and registry["generation"] == old_generation
+                    and (old_last_operation_id is None
+                         or registry.get("last_operation_id") == old_last_operation_id)
+                )
+                if not committed_match and not aborted_match:
+                    raise LifecycleError("existing lifecycle event conflicts with its journal or registry")
+            elif registry.get("last_operation_id") == operation_id:
+                if registry != new_registry:
+                    raise LifecycleError("committed lifecycle journal does not match the current registry")
+                self._append_event_locked(event_body)
+            elif (registry["generation"] == old_generation
+                  and (old_last_operation_id is None
+                       or registry.get("last_operation_id") == old_last_operation_id)):
+                aborted = {
+                    **event_body,
+                    "event_type": "operation_aborted",
+                    "attempted_registry_generation": old_generation + 1,
+                    "registry_generation": old_generation,
                     "reason_code": "interrupted_before_registry_commit",
                 }
                 self._append_event_locked(aborted)
             else:
                 raise LifecycleError("unresolved lifecycle journal conflicts with registry generation")
             journal_path.unlink(missing_ok=True)
-            events = self._read_events()
-            known_ids = {event.get("event_id") for event in events}
+            registry = self._read_registry()
 
     def _commit_locked(
         self,
@@ -508,6 +569,7 @@ class ChampionLifecycle:
         journal = {
             "operation_id": operation_id,
             "old_generation": registry["generation"],
+            "old_last_operation_id": registry.get("last_operation_id"),
             "new_registry": new_registry,
             "event": event,
         }

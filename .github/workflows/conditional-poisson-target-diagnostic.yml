@@ -1,0 +1,60 @@
+name: Conditional-Poisson Targeted Diagnostic
+
+on:
+  push:
+    branches:
+      - feat/lot-063-prospective-score-ledger
+    paths:
+      - .github/workflows/conditional-poisson-target-diagnostic.yml
+      - src/lottery/subset_model/conditional_poisson.py
+      - scripts/diagnose_conditional_poisson_targets.py
+      - scripts/run_subset_rolling_origin.py
+      - src/lottery/backtest.py
+      - data/processed/draws-20261118.jsonl
+  workflow_dispatch:
+    inputs:
+      front_target_ids:
+        description: Comma-separated front-zone target draw IDs
+        required: true
+        default: "10060,21089,22067"
+        type: string
+      back_target_ids:
+        description: Comma-separated back-zone target draw IDs
+        required: true
+        default: "25135"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conditional-poisson-target-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  targeted-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install project
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Diagnose frozen failing targets
+        run: |
+          python scripts/diagnose_conditional_poisson_targets.py \
+            --snapshot data/processed/draws-20261118.jsonl \
+            --front-target-ids "${{ inputs.front_target_ids || '10060,21089,22067' }}" \
+            --back-target-ids "${{ inputs.back_target_ids || '25135' }}" \
+            --output conditional-poisson-target-diagnostic.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: conditional-poisson-target-diagnostic
+          path: conditional-poisson-target-diagnostic.json
+          if-no-files-found: error
+          retention-days: 30

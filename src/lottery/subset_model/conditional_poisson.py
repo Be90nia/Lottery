@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import combinations
-from math import exp, fsum, isfinite, log
+from math import exp, fsum, isfinite, log, sqrt, ulp
 from typing import Sequence
 
 
@@ -89,6 +89,85 @@ def _backward_dp(log_weights: tuple[float, ...], k: int) -> list[list[float]]:
     return suffix
 
 
+def _dot(left: Sequence[float], right: Sequence[float]) -> float:
+    if len(left) != len(right):
+        raise ValueError("vector dimensions do not match")
+    return fsum(a * b for a, b in zip(left, right))
+
+
+def _strong_wolfe_search(
+    evaluate,
+    point: tuple[float, ...],
+    direction: tuple[float, ...],
+    initial_objective: float,
+    initial_gradient: tuple[float, ...],
+    *,
+    c1: float = 1e-4,
+    c2: float = 0.9,
+    max_iterations: int = 60,
+):
+    """Deterministic strong-Wolfe search with a bounded float64 roundoff envelope."""
+    derivative_zero = _dot(initial_gradient, direction)
+    if not isfinite(derivative_zero) or derivative_zero >= 0.0:
+        return None
+    objective_roundoff = 8.0 * ulp(max(1.0, abs(initial_objective)))
+
+    def at(step: float):
+        trial = tuple(point[index] + step * direction[index] for index in range(len(point)))
+        try:
+            objective, gradient, achieved = evaluate(trial)
+        except (ArithmeticError, ValueError, OverflowError):
+            return None
+        if (not isfinite(objective)
+                or any(not isfinite(value) for value in gradient)
+                or any(not isfinite(value) for value in achieved)):
+            return None
+        return trial, objective, tuple(gradient), tuple(achieved)
+
+    def zoom(low: float, high: float, low_value):
+        low_objective = initial_objective if low == 0.0 else low_value[1]
+        for _ in range(max_iterations):
+            step = 0.5 * (low + high)
+            if step == low or step == high:
+                break
+            candidate = at(step)
+            if (candidate is None
+                    or candidate[1] > initial_objective + c1 * step * derivative_zero + objective_roundoff
+                    or candidate[1] > low_objective + objective_roundoff):
+                high = step
+                continue
+            derivative = _dot(candidate[2], direction)
+            if abs(derivative) <= -c2 * derivative_zero:
+                return candidate
+            if derivative * (high - low) >= 0.0:
+                high = low
+            low = step
+            low_value = candidate
+            low_objective = candidate[1]
+        return None
+
+    previous_step = 0.0
+    previous_value = (point, initial_objective, initial_gradient, ())
+    step = 1.0
+    for iteration in range(max_iterations):
+        candidate = at(step)
+        if candidate is None:
+            return zoom(previous_step, step, previous_value)
+        objective = candidate[1]
+        if (objective > initial_objective + c1 * step * derivative_zero + objective_roundoff
+                or (iteration > 0 and objective > previous_value[1] + objective_roundoff)):
+            return zoom(previous_step, step, previous_value)
+        derivative = _dot(candidate[2], direction)
+        if abs(derivative) <= -c2 * derivative_zero:
+            return candidate
+        if derivative >= 0.0:
+            return zoom(step, previous_step, candidate)
+        previous_step = step
+        previous_value = candidate
+        step *= 2.0
+    return None
+
+
 @dataclass(frozen=True)
 class CalibrationResult:
     terminal_status: str
@@ -129,7 +208,7 @@ class ConditionalPoisson:
             raise ValueError(f"subset indices must be in 1..{self.m}")
         if any(a >= b for a, b in zip(values, values[1:])):
             raise ValueError("subset must be strictly increasing and unique")
-        score = sum(self.log_weights[index - 1] for index in values)
+        score = fsum(self.log_weights[index - 1] for index in values)
         result = score - self._centered_log_normalizer
         if not isfinite(result) or result > 1e-12:
             raise ArithmeticError("invalid conditional-Poisson log probability")
@@ -203,7 +282,7 @@ class ConditionalPoisson:
         max_iterations: int = 5000,
         history_size: int = 10,
     ) -> CalibrationResult:
-        """Fit centered log-weights to interior fixed-size inclusion marginals."""
+        """Fit centered log-weights with deterministic strong-Wolfe L-BFGS."""
         target = tuple(float(value) for value in target_marginals)
         m = len(target)
         if type(k) is not int or not 1 <= k <= m:
@@ -212,26 +291,23 @@ class ConditionalPoisson:
             raise ValueError("target marginals must be finite")
         if any(not 0.0 < value < 1.0 for value in target):
             raise ValueError("target marginals must be strictly interior (0, 1)")
-        if abs(sum(target) - k) > 1e-10:
+        if abs(fsum(target) - k) > 1e-10:
             raise ValueError("target marginals must sum to k; no silent renormalization")
         if not isfinite(tolerance) or tolerance <= 0:
             raise ValueError("tolerance must be finite and positive")
         if type(max_iterations) is not int or max_iterations < 1:
             raise ValueError("max_iterations must be a positive integer")
+        if type(history_size) is not int or history_size < 1:
+            raise ValueError("history_size must be a positive integer")
 
         def evaluate(eta: tuple[float, ...]):
             model = cls(eta, k)
             achieved = model.inclusion_marginals()
-            objective = model.log_normalizer - sum(a * b for a, b in zip(eta, target))
+            objective = model.log_normalizer - fsum(a * b for a, b in zip(eta, target))
             gradient = tuple(a - b for a, b in zip(achieved, target))
-            # Project the gauge direction; the objective is invariant to a
-            # common additive constant when both marginal sums equal k.
-            mean_gradient = sum(gradient) / m
-            gradient = tuple(value - mean_gradient for value in gradient)
-            return objective, gradient, achieved
-
-        def dot(a, b):
-            return sum(x * y for x, y in zip(a, b))
+            mean_gradient = fsum(gradient) / m
+            projected_gradient = tuple(value - mean_gradient for value in gradient)
+            return objective, projected_gradient, achieved
 
         eta = tuple(0.0 for _ in range(m))
         objective, gradient, achieved = evaluate(eta)
@@ -255,58 +331,67 @@ class ConditionalPoisson:
             q = list(gradient)
             alphas = []
             for s_vec, y_vec, rho in zip(reversed(s_hist), reversed(y_hist), reversed(rho_hist)):
-                alpha = rho * dot(s_vec, q)
+                alpha = rho * _dot(s_vec, q)
                 alphas.append(alpha)
                 q = [q[i] - alpha * y_vec[i] for i in range(m)]
-            scale = (dot(s_hist[-1], y_hist[-1]) / dot(y_hist[-1], y_hist[-1])) if s_hist else 1.0
+            if s_hist:
+                denominator = _dot(y_hist[-1], y_hist[-1])
+                scale = _dot(s_hist[-1], y_hist[-1]) / denominator if denominator > 0.0 else 1.0
+            else:
+                scale = 1.0
             direction_seed = [scale * value for value in q]
-            for (s_vec, y_vec, rho), alpha in zip(zip(s_hist, y_hist, rho_hist), reversed(alphas)):
-                beta = rho * dot(y_vec, direction_seed)
+            for (s_vec, y_vec, rho), alpha in zip(
+                zip(s_hist, y_hist, rho_hist), reversed(alphas)
+            ):
+                beta = rho * _dot(y_vec, direction_seed)
                 direction_seed = [
                     direction_seed[i] + s_vec[i] * (alpha - beta) for i in range(m)
                 ]
             direction = tuple(-value for value in direction_seed)
-            # Project direction into the zero-sum gauge.
-            mean_direction = sum(direction) / m
+            mean_direction = fsum(direction) / m
             direction = tuple(value - mean_direction for value in direction)
-            directional_derivative = dot(gradient, direction)
-            if directional_derivative >= 0:
+            directional_derivative = _dot(gradient, direction)
+            if not isfinite(directional_derivative) or directional_derivative >= 0.0:
                 direction = tuple(-value for value in gradient)
-                directional_derivative = -dot(gradient, gradient)
-                s_hist.clear(); y_hist.clear(); rho_hist.clear()
+                directional_derivative = -_dot(gradient, gradient)
+                s_hist.clear()
+                y_hist.clear()
+                rho_hist.clear()
 
-            step = 1.0
-            accepted = None
-            for _ in range(60):
-                trial_raw = tuple(eta[i] + step * direction[i] for i in range(m))
-                center = sum(trial_raw) / m
-                trial = tuple(value - center for value in trial_raw)
-                trial_objective, trial_gradient, trial_achieved = evaluate(trial)
-                if trial_objective <= objective + 1e-4 * step * directional_derivative:
-                    accepted = (trial, trial_objective, trial_gradient, trial_achieved)
-                    break
-                step *= 0.5
+            accepted = _strong_wolfe_search(
+                evaluate, eta, direction, objective, gradient
+            )
             if accepted is None:
-                status, message, iterations = "line_search_failed", "Armijo search failed", iteration
+                status = "line_search_failed"
+                message = "strong-Wolfe line search could not find an acceptable step"
+                iterations = iteration
                 break
+
             new_eta, new_objective, new_gradient, new_achieved = accepted
             s_vec = tuple(new_eta[i] - eta[i] for i in range(m))
             y_vec = tuple(new_gradient[i] - gradient[i] for i in range(m))
-            curvature = dot(s_vec, y_vec)
-            if curvature > 1e-14:
-                s_hist.append(s_vec); y_hist.append(y_vec); rho_hist.append(1.0 / curvature)
+            curvature = _dot(s_vec, y_vec)
+            s_norm = sqrt(_dot(s_vec, s_vec))
+            y_norm = sqrt(_dot(y_vec, y_vec))
+            if curvature > 1e-12 * s_norm * y_norm:
+                s_hist.append(s_vec)
+                y_hist.append(y_vec)
+                rho_hist.append(1.0 / curvature)
                 if len(s_hist) > history_size:
-                    s_hist.pop(0); y_hist.pop(0); rho_hist.pop(0)
-            eta, objective, gradient, achieved = new_eta, new_objective, new_gradient, new_achieved
+                    s_hist.pop(0)
+                    y_hist.pop(0)
+                    rho_hist.pop(0)
+            eta, objective, gradient, achieved = (
+                new_eta, new_objective, new_gradient, new_achieved
+            )
             iterations = iteration + 1
 
-        # Recompute from the final canonical centered weights.
-        center = sum(eta) / m
+        center = fsum(eta) / m
         eta = tuple(value - center for value in eta)
         final_model = cls(eta, k)
         final_achieved = final_model.inclusion_marginals()
         residual = max(abs(a - b) for a, b in zip(final_achieved, target))
-        final_objective = final_model.log_normalizer - sum(a * b for a, b in zip(eta, target))
+        final_objective = final_model.log_normalizer - fsum(a * b for a, b in zip(eta, target))
         final_gradient = tuple(a - b for a, b in zip(final_achieved, target))
         gradient_inf = max(abs(value) for value in final_gradient)
         converged = status == "converged" and residual <= tolerance and gradient_inf <= tolerance
