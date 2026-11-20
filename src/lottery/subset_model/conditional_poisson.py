@@ -209,7 +209,7 @@ class ConditionalPoisson:
             raise ValueError(f"subset indices must be in 1..{self.m}")
         if any(a >= b for a, b in zip(values, values[1:])):
             raise ValueError("subset must be strictly increasing and unique")
-        score = sum(self.log_weights[index - 1] for index in values)
+        score = fsum(self.log_weights[index - 1] for index in values)
         result = score - self._centered_log_normalizer
         if not isfinite(result) or result > 1e-12:
             raise ArithmeticError("invalid conditional-Poisson log probability")
