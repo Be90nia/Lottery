@@ -162,6 +162,9 @@ def validate_model_artifact(payload: dict) -> None:
         expected = (12, 2)
     else:
         raise ArtifactValidationError("zone must be 'front' or 'back'")
+    family = payload["model_family"]
+    if family not in ("complete_subset_exponential", "conditional_poisson"):
+        raise ArtifactValidationError("unknown model_family")
     if (payload["population_size"], payload["selection_size"]) != expected:
         raise ArtifactValidationError("zone support dimensions do not match the lottery rules")
 
@@ -282,9 +285,6 @@ def validate_model_artifact(payload: dict) -> None:
     artifact_type = payload["artifact_type"]
     if artifact_type not in ("fitted_model", "fit_failure"):
         raise ArtifactValidationError("artifact_type must be fitted_model or fit_failure")
-    family = payload["model_family"]
-    if family not in ("complete_subset_exponential", "conditional_poisson"):
-        raise ArtifactValidationError("unknown model_family")
     allowed_fields = required | {"training_first_draw_id", "training_last_draw_id"}
     if family == "complete_subset_exponential":
         allowed_fields |= {
