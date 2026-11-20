@@ -162,16 +162,22 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                 converged = name == "uniform" or solver_status == "converged"
                 failure_reason = None
                 status = "scored" if score is not None else "fit_failed"
-                if artifact_entry is not None:
+                if name != "uniform" and artifact_entry is None:
+                    status, failure_reason = "artifact_invalid", "fit_attempt_missing_diagnostic_artifact"
+                elif artifact_entry is not None:
                     payload = artifact_entry.get("payload")
                     if not isinstance(payload, dict):
                         status, failure_reason = "artifact_invalid", "artifact_payload_missing"
                     else:
                         verified = verify_artifact(canonicalize(payload))
                         artifact_id = verified["artifact_id"]
+                        expected_artifact_type = "fitted_model" if score is not None else "fit_failure"
+                        expected_family = "complete_subset_exponential" if name == "exponential_family" else "conditional_poisson"
                         if artifact_id != artifact_entry.get("artifact_id"):
                             status, failure_reason = "artifact_invalid", "artifact_id_mismatch"
-                        elif (verified.get("zone") != zone
+                        elif (verified.get("artifact_type") != expected_artifact_type
+                              or verified.get("zone") != zone
+                              or verified.get("model_family") != expected_family
                               or verified.get("population_size") != m
                               or verified.get("selection_size") != k
                               or verified.get("training_snapshot_sha256") != snapshot_digest
@@ -185,8 +191,6 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                             if artifact_id not in artifact_ids:
                                 artifact_lines.append(artifact_bytes)
                                 artifact_ids.add(artifact_id)
-                elif name != "uniform" and score is not None:
-                    status, failure_reason = "artifact_invalid", "scored_fit_has_no_artifact"
                 if score is None and failure_reason is None:
                     failure_reason = str(solver_status)
                 log_probability = None if score is None else -float(score)
@@ -203,6 +207,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                     "model_family": family,
                     "model_name": name,
                     "artifact_id": artifact_id,
+                    "diagnostic_ref": artifact_id if status != "scored" else None,
                     "snapshot_sha256": snapshot_digest,
                     "training_first_draw_id": record["training_first_draw_id"],
                     "training_last_draw_id": record["training_last_draw_id"],
