@@ -145,6 +145,11 @@ class FileSystemObjectStoreTests(unittest.TestCase):
                 )
         pointer = self.store.read_pointer("active-inventory")
         self.assertEqual(pointer["generation"], 1)
+        before_recovery = self.store.reconcile()
+        self.assertEqual(
+            before_recovery["missing_publication_receipts"],
+            [f"active-inventory:{staged['operation_id']}"],
+        )
         recovered = self.store.publish_pointer(
             name="active-inventory",
             operation_id=staged["operation_id"],
@@ -153,6 +158,22 @@ class FileSystemObjectStoreTests(unittest.TestCase):
         self.assertEqual(recovered, pointer)
         self.assertTrue(
             (self.store.publications / f"active-inventory.{staged['operation_id']}.json").exists()
+        )
+        self.assertEqual(self.store.reconcile()["missing_publication_receipts"], [])
+
+    def test_reconciliation_detects_corrupt_publication_receipt(self):
+        staged, _ = self.stage_validate_commit(key="corrupt-publication-receipt")
+        self.store.publish_pointer(
+            name="active-model",
+            operation_id=staged["operation_id"],
+            expected_generation=0,
+        )
+        receipt_path = self.store.publications / f"active-model.{staged['operation_id']}.json"
+        receipt_path.write_bytes(b"{}")
+        report = self.store.reconcile()
+        self.assertEqual(
+            report["corrupt_publication_receipts"],
+            [f"active-model:{staged['operation_id']}"],
         )
 
     def test_reconciliation_distinguishes_orphan_objects_and_corrupt_receipts(self):
