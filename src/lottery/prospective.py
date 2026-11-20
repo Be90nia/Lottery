@@ -141,7 +141,7 @@ class ProspectiveLedger:
 
     def _snapshot_unlocked(self) -> dict[str, Any]:
         forecasts: dict[str, dict[str, Any]] = {}
-        forecast_keys: dict[tuple[str, str, str, str, str, str], str] = {}
+        forecast_keys: dict[tuple[str, str, str, str, str, str, str, int], str] = {}
         outcomes: dict[str, dict[str, Any]] = {}
         latest_outcome: dict[str, str] = {}
         superseded: set[str] = set()
@@ -167,6 +167,7 @@ class ProspectiveLedger:
                     record["front_artifact_sha256"], record["back_artifact_sha256"],
                     record["target_draw_id"], record["zone"],
                     record["population_key"], record["forecast_policy_version"],
+                    record["active_registry_snapshot_id"], record["registry_generation"],
                 )
                 if forecast_id in forecasts or key in forecast_keys:
                     raise ProspectiveLedgerError("duplicate artifact × target × zone forecast")
@@ -374,6 +375,7 @@ class ProspectiveLedger:
         key = (
             front_artifact_sha256, back_artifact_sha256, target_draw_id,
             zone, population_key, forecast_policy_version,
+            active_registry_snapshot_id, registry_generation,
         )
         with ledger_lock(self.path):
             snapshot = self._snapshot_unlocked()
@@ -506,6 +508,7 @@ class ProspectiveLedger:
         key = (
             front_artifact_sha256, back_artifact_sha256, target_draw_id,
             zone, population_key, forecast_policy_version,
+            active_registry_snapshot_id, registry_generation,
         )
         with self._lock():
             snapshot = self._snapshot_unlocked()
