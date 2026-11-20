@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from bisect import bisect_left
 from dataclasses import dataclass
-from math import exp, fsum, isfinite, log
+from math import exp, fsum, isfinite, log, ulp
 from typing import Sequence
 
 from .features import extract_features
@@ -51,6 +51,10 @@ def _strong_wolfe_search(
     derivative_zero = _dot(initial_gradient, direction)
     if not isfinite(derivative_zero) or derivative_zero >= 0.0:
         return None
+    # Near stationarity, the theoretical Armijo decrease can be smaller than
+    # one float64 ULP of the objective. Permit only a bounded rounding envelope;
+    # the strong-Wolfe curvature condition must still hold.
+    objective_roundoff = 8.0 * ulp(max(1.0, abs(initial_objective)))
 
     def at(step: float):
         trial = tuple(point[index] + step * direction[index] for index in range(len(point)))
@@ -71,8 +75,8 @@ def _strong_wolfe_search(
                 break
             candidate = at(step)
             if (candidate is None
-                    or candidate[1] > initial_objective + c1 * step * derivative_zero
-                    or candidate[1] >= low_objective):
+                    or candidate[1] > initial_objective + c1 * step * derivative_zero + objective_roundoff
+                    or candidate[1] > low_objective + objective_roundoff):
                 high = step
                 continue
             derivative = _dot(candidate[2], direction)
@@ -93,8 +97,8 @@ def _strong_wolfe_search(
         if candidate is None:
             return zoom(previous_step, step, previous_value)
         objective = candidate[1]
-        if (objective > initial_objective + c1 * step * derivative_zero
-                or (iteration > 0 and objective >= previous_value[1])):
+        if (objective > initial_objective + c1 * step * derivative_zero + objective_roundoff
+                or (iteration > 0 and objective > previous_value[1] + objective_roundoff)):
             return zoom(previous_step, step, previous_value)
         derivative = _dot(candidate[2], direction)
         if abs(derivative) <= -c2 * derivative_zero:
