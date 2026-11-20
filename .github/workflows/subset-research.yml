@@ -8,6 +8,8 @@ on:
       - feat/lot-055-preregistered-holm-inference
     paths:
       - .github/workflows/subset-research.yml
+      - src/lottery/subset_model/exponential.py
+      - scripts/run_subset_rolling_origin.py
   workflow_dispatch:
     inputs:
       resume_checkpoints:
