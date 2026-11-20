@@ -233,7 +233,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             target_draw_id="26132",
             target_draw_at_utc="2026-11-21T13:00:00+00:00",
             target_cutoff_utc="2026-11-21T12:00:00+00:00",
-            expected_at_utc="2026-11-21T10:00:00+00:00",
+            expected_at_utc=self.now.isoformat(),
             front_artifact_sha256=sha("front-expected-26132"),
             back_artifact_sha256=sha("back-expected-26132"),
             active_registry_snapshot_id=sha("registry-26132"),
