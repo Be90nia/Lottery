@@ -505,8 +505,10 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                     "feature_schema_hash": _jcs_hash(baseline_schema),
                 }
                 try:
-                    marginals = _probabilities(training, field, m, k, model=baseline,
-                                               alpha=100.0, half_life=100.0)
+                    marginals = _probabilities(
+                        training, field, m, k, model=baseline, alpha=100.0,
+                        half_life=100.0 if baseline == "ewma" else None,
+                    )
                     calibration = ConditionalPoisson.calibrate(
                         marginals, k, tolerance=1e-8, max_iterations=5000, history_size=10
                     )
@@ -533,7 +535,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                                 "converged": calibration.converged,
                                 "message": calibration.message,
                                 "iterations": calibration.iterations,
-                                "gradient_infinity_norm": calibration.gradient_inf_norm,
+                                "gradient_infinity_norm": calibration.gradient_infinity_norm,
                                 "calibration_residual": calibration.maximum_absolute_residual,
                                 "objective": calibration.objective,
                             },
@@ -551,7 +553,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                                 "status": calibration.terminal_status,
                                 "termination_reason": calibration.message,
                                 "objective": calibration.objective,
-                                "gradient_inf_norm": calibration.gradient_inf_norm,
+                                "gradient_inf_norm": calibration.gradient_infinity_norm,
                                 "iterations": calibration.iterations,
                                 "optimizer": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
                                 "lambda": None,
@@ -596,7 +598,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                             feature_schema=baseline_schema, model_configuration=baseline_config,
                             status=calibration.terminal_status, reason=calibration.message,
                             objective=calibration.objective,
-                            gradient_inf_norm=calibration.gradient_inf_norm,
+                            gradient_inf_norm=calibration.gradient_infinity_norm,
                             iterations=calibration.iterations,
                             optimizer="conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
                             regularization_lambda=None,
