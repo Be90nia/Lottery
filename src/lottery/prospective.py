@@ -417,11 +417,14 @@ class ProspectiveLedger:
             if actual is None:
                 raise ProspectiveLedgerError("validated outcome is missing the forecast zone subset")
             try:
-                logp = float(log_probability(forecast, actual))
+                raw_logp = log_probability(forecast, actual)
+                if isinstance(raw_logp, bool):
+                    raise TypeError("boolean is not a probability score")
+                logp = float(raw_logp)
             except Exception as exc:
                 raise ProspectiveLedgerError("artifact probability evaluation failed") from exc
-            if not math.isfinite(logp) or logp > 0.0:
-                raise ProspectiveLedgerError("exact-set log probability must be finite and non-positive")
+            if not math.isfinite(logp) or logp >= 0.0:
+                raise ProspectiveLedgerError("exact-set log probability must be finite and strictly negative")
             population, selection = (35, 5) if forecast["zone"] == "front" else (12, 2)
             nll = -logp
             uniform_nll = log(comb(population, selection))
