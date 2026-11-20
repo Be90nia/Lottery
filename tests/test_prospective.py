@@ -16,6 +16,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
         self.ledger = ProspectiveLedger(Path(self.temp.name) / "prospective.jsonl")
         self.forecast = self.ledger.issue_forecast(
             target_draw_id="26131",
+            target_draw_at_utc="2026-11-20T13:00:00+00:00",
             target_cutoff_utc="2026-11-20T12:00:00+00:00",
             issued_at_utc="2026-11-20T10:00:00+00:00",
             artifact_sha256=sha("artifact-front"),
@@ -62,6 +63,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
     def test_late_forecast_and_training_leakage_are_recorded_ineligible(self):
         late = self.ledger.issue_forecast(
             target_draw_id="26132",
+            target_draw_at_utc="2026-11-21T13:00:00+00:00",
             target_cutoff_utc="2026-11-21T12:00:00+00:00",
             issued_at_utc="2026-11-21T13:00:00+00:00",
             artifact_sha256=sha("artifact-late"),
@@ -90,6 +92,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(ProspectiveLedgerError, "immutable record"):
             self.ledger.issue_forecast(
                 target_draw_id="26131",
+                target_draw_at_utc="2026-11-20T13:00:00+00:00",
                 target_cutoff_utc="2026-11-20T12:00:00+00:00",
                 issued_at_utc="2026-11-20T10:01:00+00:00",
                 artifact_sha256=sha("artifact-front"),
