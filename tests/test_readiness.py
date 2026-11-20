@@ -58,7 +58,9 @@ def make_gates(evidence_paths, *, pass_through=4):
                     "test_id": f"{gate_id}-fault-1",
                     "expected_state": "fail_closed",
                     "observed_state": "fail_closed",
+                    "recovery_action": "the harness verified no publication occurred",
                     "passed": True,
+                    "evidence": [evidence_paths[index]],
                 }],
             })
         else:
