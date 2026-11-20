@@ -6,6 +6,7 @@ three-slot Champion generation and never publishes partial slot output.
 from __future__ import annotations
 
 import hashlib
+import hmac
 from typing import Any, Callable
 
 from .storage import FileSystemObjectStore, StorageError
@@ -22,6 +23,22 @@ class BatchPublicationError(RuntimeError):
 
 def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _derive_slot_seed(
+    master_seed: bytes, *, population_key: str, zone: str, artifact_id: str
+) -> bytes:
+    context = canonicalize({
+        "schema": "lottery.batch-rng-context/v1",
+        "population_key": population_key,
+        "zone": zone,
+        "artifact_id": artifact_id,
+    })
+    return hmac.new(
+        master_seed,
+        b"lottery.three-slot-rng.v1\\0" + context,
+        hashlib.sha256,
+    ).digest()
 
 
 def _is_sha(value: Any) -> bool:
@@ -57,6 +74,8 @@ class ThreeSlotBatchPublisher:
         approval_verifier: Callable[[dict[str, Any], dict[str, Any]], bool] | None,
         tickets_per_slot: int,
         idempotency_key: str,
+        master_seed: bytes,
+        seed_material_ref: str,
         seed_commitment_sha256: str,
         rng_algorithm: str,
         sampler_version: str,
@@ -64,15 +83,19 @@ class ThreeSlotBatchPublisher:
         producer_runtime: str,
         pointer_name: str,
         expected_pointer_generation: int,
-        sampler: Callable[[str, str, str, int], list[dict[str, Any]]],
+        sampler: Callable[[str, str, str, int, bytes, bytes], list[dict[str, Any]]],
         actor: str,
     ) -> dict[str, Any]:
         if type(tickets_per_slot) is not int or tickets_per_slot < 1:
             raise BatchPublicationError("tickets_per_slot must be a positive integer")
         if not isinstance(idempotency_key, str) or not idempotency_key:
             raise BatchPublicationError("idempotency_key must be a non-empty string")
-        if not _is_sha(seed_commitment_sha256):
-            raise BatchPublicationError("seed commitment must be a lowercase SHA-256")
+        if type(master_seed) is not bytes or len(master_seed) < 32:
+            raise BatchPublicationError("master_seed must be at least 32 secret bytes")
+        if not _is_sha(seed_commitment_sha256) or _sha(master_seed) != seed_commitment_sha256:
+            raise BatchPublicationError("seed commitment must match the supplied master seed")
+        if not isinstance(seed_material_ref, str) or not seed_material_ref:
+            raise BatchPublicationError("seed_material_ref must be a non-empty protected secret reference")
         for field, value in (
             ("rng_algorithm", rng_algorithm), ("sampler_version", sampler_version),
             ("producer_commit", producer_commit), ("producer_runtime", producer_runtime),
@@ -124,8 +147,17 @@ class ThreeSlotBatchPublisher:
             if set(artifacts) != {"front", "back"}:
                 raise BatchPublicationError("each population slot requires both front and back artifacts")
             try:
+                front_seed = _derive_slot_seed(
+                    master_seed, population_key=population_key, zone="front",
+                    artifact_id=artifacts["front"],
+                )
+                back_seed = _derive_slot_seed(
+                    master_seed, population_key=population_key, zone="back",
+                    artifact_id=artifacts["back"],
+                )
                 tickets = sampler(
-                    population_key, artifacts["front"], artifacts["back"], tickets_per_slot
+                    population_key, artifacts["front"], artifacts["back"],
+                    tickets_per_slot, front_seed, back_seed,
                 )
             except Exception as exc:
                 raise BatchPublicationError(f"sampler failed for population {population_key}") from exc
@@ -142,6 +174,18 @@ class ThreeSlotBatchPublisher:
                 "front_artifact_id": artifacts["front"],
                 "back_artifact_id": artifacts["back"],
                 "tickets": legal_tickets,
+                "rng_streams": {
+                    "front": {
+                        "algorithm": rng_algorithm,
+                        "stream_id": _sha(front_seed),
+                        "seed_material_ref": seed_material_ref,
+                    },
+                    "back": {
+                        "algorithm": rng_algorithm,
+                        "stream_id": _sha(back_seed),
+                        "seed_material_ref": seed_material_ref,
+                    },
+                },
                 "duplicate_ticket_count": len(ticket_keys) - len(set(ticket_keys)),
             })
 
@@ -173,6 +217,8 @@ class ThreeSlotBatchPublisher:
             "slot_count": 3,
             "total_ticket_count": total,
             "seed_commitment_sha256": seed_commitment_sha256,
+            "seed_material_ref": seed_material_ref,
+            "seed_derivation": "HMAC-SHA256(lottery.three-slot-rng.v1, population_key, zone, artifact_id)",
             "rng_algorithm": rng_algorithm,
             "sampler_version": sampler_version,
             "producer_commit": producer_commit,
