@@ -4,11 +4,12 @@ import sys
 import tempfile
 from dataclasses import asdict
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page, ingest_snapshot_directory
+from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page, _snapshot, fetch_history, ingest_snapshot_directory
 from lottery.validate import validate_records
 
 
@@ -99,9 +100,14 @@ class ParsePageTests(unittest.TestCase):
             (raw_dir / f"page-00001-{digest[:12]}.manifest.json").write_text(
                 json.dumps({
                     "source": "Sporttery public historical draw API",
-                    "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85",
+                    "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1",
+                    "final_url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1",
+                    "redirect_chain": [],
+                    "page_no": 1,
+                    "run_id": "fixture-run",
                     "retrieved_at": "2026-11-18T00:00:00+00:00",
                     "http_status": 200,
+                    "bytes": len(raw),
                     "sha256": digest,
                     "raw_file": name,
                 }),
@@ -110,11 +116,89 @@ class ParsePageTests(unittest.TestCase):
             output = root / "processed" / "draws.jsonl"
             report = ingest_snapshot_directory(raw_dir, output, require_manifests=True)
             self.assertTrue(report["provenance_complete"])
+            self.assertFalse(report["source_completeness_verified"])
+            self.assertEqual(report["source_completeness_status"], "unverified")
             self.assertEqual(report["validation"]["records"], 1)
             self.assertEqual(report["trust_status"], "manifest_complete_not_officially_authenticated")
             row = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
             self.assertEqual(row["source_unsort_drawresult"], "03 01 05 02 04 02 01")
-            self.assertTrue(output.with_suffix(".jsonl.manifest.json").exists())
+            output_manifest_path = output.with_suffix(".jsonl.manifest.json")
+            self.assertTrue(output_manifest_path.exists())
+            output_manifest = json.loads(output_manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                output_manifest["output_sha256"],
+                hashlib.sha256(output.read_bytes()).hexdigest(),
+            )
+            with self.assertRaisesRegex(IngestionError, "output or output manifest already exists"):
+                ingest_snapshot_directory(raw_dir, output, require_manifests=True)
+
+            sidecar_path = raw_dir / f"page-00001-{digest[:12]}.manifest.json"
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            sidecar["redirect_chain"] = ["https://example.invalid/redirect-target"]
+            sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+            with self.assertRaisesRegex(IngestionError, "lacks complete official-source provenance"):
+                ingest_snapshot_directory(
+                    raw_dir, root / "redirected.jsonl", require_manifests=True
+                )
+
+            sidecar["redirect_chain"] = []
+            sidecar["url"] = sidecar["url"].replace(
+                "https://webapi.sporttery.cn/",
+                "https://webapi.sporttery.cn:444/",
+            )
+            sidecar["final_url"] = sidecar["url"]
+            sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
+            with self.assertRaisesRegex(IngestionError, "lacks complete official-source provenance"):
+                ingest_snapshot_directory(
+                    raw_dir, root / "nonstandard-port.jsonl", require_manifests=True
+                )
+
+    def test_strict_offline_import_rejects_noncontiguous_page_inventory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_dir = root / "raw"
+            raw_dir.mkdir()
+            for page_no, draw_id, draw_date in (
+                (1, "26131", "2026-11-16"),
+                (3, "26129", "2026-11-12"),
+            ):
+                payload = json.dumps({
+                    "success": True,
+                    "value": {"list": [{
+                        "lotteryDrawNum": draw_id,
+                        "lotteryDrawTime": draw_date,
+                        "lotteryDrawResult": "01 02 03 04 05 01 02",
+                    }]},
+                }).encode("utf-8")
+                digest = hashlib.sha256(payload).hexdigest()
+                name = f"page-{page_no:05d}-{digest[:12]}.json"
+                (raw_dir / name).write_bytes(payload)
+                (raw_dir / f"page-{page_no:05d}-{digest[:12]}.manifest.json").write_text(
+                    json.dumps({
+                        "source": "Sporttery public historical draw API",
+                        "url": (
+                            "https://webapi.sporttery.cn/gateway/lottery/"
+                            f"getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo={page_no}"
+                        ),
+                        "final_url": (
+                            "https://webapi.sporttery.cn/gateway/lottery/"
+                            f"getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo={page_no}"
+                        ),
+                        "redirect_chain": [],
+                        "page_no": page_no,
+                        "run_id": "same-fetch-run",
+                        "retrieved_at": "2026-11-18T00:00:00+00:00",
+                        "http_status": 200,
+                        "bytes": len(payload),
+                        "sha256": digest,
+                        "raw_file": name,
+                    }),
+                    encoding="utf-8",
+                )
+            with self.assertRaisesRegex(IngestionError, "page inventory is not contiguous"):
+                ingest_snapshot_directory(
+                    raw_dir, root / "strict.jsonl", require_manifests=True
+                )
 
     def test_offline_snapshot_import_rejects_tampered_manifest_hash(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -193,6 +277,131 @@ class ParsePageTests(unittest.TestCase):
         _add_draw(rows, first)
         with self.assertRaises(IngestionError):
             _add_draw(rows, conflict)
+
+
+
+class FetchPaginationSafetyTests(unittest.TestCase):
+    def payload(self, rows):
+        return json.dumps({"success": True, "value": {"list": rows}}).encode("utf-8")
+
+    def row(self, draw_id="26131"):
+        return {
+            "lotteryDrawNum": draw_id,
+            "lotteryDrawTime": "2026-11-16",
+            "lotteryDrawResult": "01 02 03 04 05 01 02",
+        }
+
+    def test_full_page_at_max_pages_fails_closed_without_publishing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "processed" / "draws.jsonl"
+            raw_dir = root / "raw"
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=1&isVerify=1&pageNo=1")):
+                with self.assertRaisesRegex(IngestionError, "potentially truncated"):
+                    fetch_history(output, raw_dir, page_size=1, max_pages=1, delay_seconds=0)
+            self.assertFalse(output.exists())
+            self.assertEqual(len([path for path in raw_dir.rglob("*.json") if not path.name.endswith(".manifest.json")]), 1)
+
+    def test_empty_first_page_fails_closed_without_publishing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "processed" / "draws.jsonl"
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([]), 200, "application/json", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1")):
+                with self.assertRaisesRegex(IngestionError, "no draws"):
+                    fetch_history(output, root / "raw", page_size=100, delay_seconds=0)
+            self.assertFalse(output.exists())
+
+    def test_short_terminal_page_is_explicitly_unverified_for_completeness(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "processed" / "draws.jsonl"
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json", "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&provinceId=0&pageSize=2&isVerify=1&pageNo=1")):
+                result = fetch_history(output, root / "raw", page_size=2, delay_seconds=0)
+            self.assertEqual(result["records"], 1)
+            self.assertEqual(result["pagination_end_reason"], "short_page")
+            self.assertFalse(result["source_completeness_verified"])
+            self.assertEqual(result["trust_status"], "manifest_complete_not_officially_authenticated")
+            run_raw_dir = Path(result["raw_dir"])
+            self.assertEqual(run_raw_dir.parent, root / "raw")
+            self.assertEqual(run_raw_dir.name, result["run_id"])
+            sidecar_path = next(run_raw_dir.glob("*.manifest.json"))
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            self.assertEqual(sidecar["final_url"], sidecar["url"])
+            self.assertEqual(sidecar["redirect_chain"], [])
+            self.assertEqual(sidecar["run_id"], result["run_id"])
+
+class ImmutableRunSnapshotTests(unittest.TestCase):
+    def test_snapshot_is_write_once_and_does_not_replace_original_manifest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            raw_dir = Path(temp)
+            raw = b'{"success":true,"value":{"list":[]}}'
+            url = (
+                "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry"
+                "?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1"
+            )
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, url, "run-one")
+            manifest = next(raw_dir.glob("*.manifest.json"))
+            original = manifest.read_bytes()
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, url, "run-two")
+            self.assertEqual(manifest.read_bytes(), original)
+            metadata = json.loads(original)
+            self.assertEqual(metadata["run_id"], "run-one")
+            self.assertEqual(metadata["redirect_chain"], [])
+
+    def test_corrupted_content_addressed_snapshot_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            raw_dir = Path(temp)
+            raw = b'{"success":true,"value":{"list":[]}}'
+            url = (
+                "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry"
+                "?gameNo=85&provinceId=0&pageSize=100&isVerify=1&pageNo=1"
+            )
+            _snapshot(raw, 1, 200, "application/json", raw_dir, url, url, "run-one")
+            body = next(path for path in raw_dir.glob("*.json") if not path.name.endswith(".manifest.json"))
+            body.write_bytes(b"tampered")
+            with self.assertRaisesRegex(IngestionError, "collision or corruption"):
+                _snapshot(raw, 1, 200, "application/json", raw_dir, url, url, "run-two")
+
+    def test_repeated_fetches_use_separate_raw_directories(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw_parent = root / "raw"
+            payload = json.dumps({
+                "success": True,
+                "value": {"list": [{
+                    "lotteryDrawNum": "26131",
+                    "lotteryDrawTime": "2026-11-16",
+                    "lotteryDrawResult": "01 02 03 04 05 01 02",
+                }]},
+            }).encode("utf-8")
+            final_url = (
+                "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry"
+                "?gameNo=85&provinceId=0&pageSize=2&isVerify=1&pageNo=1"
+            )
+            with patch("lottery.ingest._fetch_page", return_value=(
+                payload, 200, "application/json", final_url
+            )):
+                first = fetch_history(root / "first.jsonl", raw_parent, page_size=2, delay_seconds=0)
+                second = fetch_history(root / "second.jsonl", raw_parent, page_size=2, delay_seconds=0)
+            self.assertNotEqual(first["run_id"], second["run_id"])
+            self.assertNotEqual(first["raw_dir"], second["raw_dir"])
+            for result in (first, second):
+                raw_dir = Path(result["raw_dir"])
+                self.assertEqual(raw_dir.parent, raw_parent)
+                sidecars = list(raw_dir.glob("*.manifest.json"))
+                self.assertEqual(len(sidecars), 1)
+                self.assertEqual(json.loads(sidecars[0].read_text())["run_id"], result["run_id"])
+
+    def test_fetch_refuses_existing_output_before_network_access(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "existing.jsonl"
+            output.write_text("prior evidence", encoding="utf-8")
+            with patch("lottery.ingest._fetch_page") as fetch:
+                with self.assertRaisesRegex(IngestionError, "output already exists"):
+                    fetch_history(output, root / "raw", delay_seconds=0)
+            fetch.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

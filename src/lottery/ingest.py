@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -26,6 +28,15 @@ class IngestionError(RuntimeError):
     pass
 
 
+class _RejectRedirect(urllib.request.HTTPRedirectHandler):
+    """Refuse redirects so archived bytes can only come from the requested origin."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise IngestionError(
+            f"refusing HTTP redirect from {req.full_url!r} to {newurl!r}"
+        )
+
+
 @dataclass(frozen=True)
 class Draw:
     draw_id: str
@@ -40,7 +51,9 @@ class Draw:
     source_equipment_count: Any = None
 
 
-def _fetch_page(page_no: int, page_size: int, timeout: int = 20, retries: int = 3) -> tuple[bytes, int, str]:
+def _fetch_page(
+    page_no: int, page_size: int, timeout: int = 20, retries: int = 3
+) -> tuple[bytes, int, str, str]:
     params = urllib.parse.urlencode({
         "gameNo": "85", "provinceId": "0", "pageSize": str(page_size),
         "isVerify": "1", "pageNo": str(page_no),
@@ -55,9 +68,30 @@ def _fetch_page(page_no: int, page_size: int, timeout: int = 20, retries: int = 
     for attempt in range(retries):
         request = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
+            opener = urllib.request.build_opener(_RejectRedirect)
+            with opener.open(request, timeout=timeout) as response:
+                final_url = response.geturl()
+                if final_url != url:
+                    raise IngestionError(
+                        f"page {page_no}: response URL differs from requested official endpoint"
+                    )
                 body = response.read()
-                return body, response.status, response.headers.get("Content-Type", "")
+                return (
+                    body,
+                    response.status,
+                    response.headers.get("Content-Type", ""),
+                    final_url,
+                )
+        except IngestionError:
+            raise
+        except urllib.error.HTTPError as exc:
+            if 300 <= exc.code < 400:
+                raise IngestionError(
+                    f"page {page_no}: HTTP redirect rejected ({exc.code})"
+                ) from exc
+            last_error = exc
+            if attempt + 1 < retries:
+                time.sleep(1.5 * (attempt + 1))
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_error = exc
             if attempt + 1 < retries:
@@ -65,25 +99,98 @@ def _fetch_page(page_no: int, page_size: int, timeout: int = 20, retries: int = 
     raise IngestionError(f"page {page_no}: request failed after {retries} attempts: {last_error}")
 
 
-def _snapshot(raw: bytes, page_no: int, status: int, content_type: str, raw_dir: Path, url: str, run_id: str) -> str:
+def _atomic_write_new(path: Path, content: bytes) -> None:
+    """Publish a complete file atomically without replacing prior evidence."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=path.name + ".", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            raise
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _snapshot(
+    raw: bytes,
+    page_no: int,
+    status: int,
+    content_type: str,
+    raw_dir: Path,
+    url: str,
+    final_url: str,
+    run_id: str,
+) -> str:
     digest = hashlib.sha256(raw).hexdigest()
     retrieved_at = datetime.now(timezone.utc).isoformat()
     raw_dir.mkdir(parents=True, exist_ok=True)
     body_path = raw_dir / f"page-{page_no:05d}-{digest[:12]}.json"
-    body_path.write_bytes(raw)
+    if body_path.exists():
+        if hashlib.sha256(body_path.read_bytes()).hexdigest() != digest:
+            raise IngestionError(f"content-addressed snapshot collision or corruption: {body_path}")
+    else:
+        try:
+            _atomic_write_new(body_path, raw)
+        except FileExistsError:
+            if hashlib.sha256(body_path.read_bytes()).hexdigest() != digest:
+                raise IngestionError(f"content-addressed snapshot collision or corruption: {body_path}")
+
     manifest_path = raw_dir / f"page-{page_no:05d}-{digest[:12]}.manifest.json"
-    manifest_path.write_text(json.dumps({
-        "source": "Sporttery public historical draw API",
-        "url": url,
-        "retrieved_at": retrieved_at,
-        "http_status": status,
-        "content_type": content_type,
-        "sha256": digest,
-        "parser_version": PARSER_VERSION,
-        "run_id": run_id,
-        "page_no": page_no,
-        "raw_file": body_path.name,
-    }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if manifest_path.exists():
+        try:
+            existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise IngestionError(f"existing snapshot manifest is corrupt: {manifest_path}") from exc
+        if (not isinstance(existing, dict)
+                or existing.get("sha256") != digest
+                or existing.get("raw_file") != body_path.name
+                or existing.get("url") != url
+                or existing.get("final_url") != final_url
+                or existing.get("redirect_chain") != []
+                or existing.get("http_status") != status):
+            raise IngestionError(f"existing immutable snapshot manifest conflicts: {manifest_path}")
+    else:
+        manifest = {
+            "source": "Sporttery public historical draw API",
+            "url": url,
+            "final_url": final_url,
+            "redirect_chain": [],
+            "retrieved_at": retrieved_at,
+            "http_status": status,
+            "content_type": content_type,
+            "bytes": len(raw),
+            "sha256": digest,
+            "parser_version": PARSER_VERSION,
+            "run_id": run_id,
+            "page_no": page_no,
+            "raw_file": body_path.name,
+        }
+        try:
+            _atomic_write_new(
+                manifest_path,
+                (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+            )
+        except FileExistsError:
+            try:
+                existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise IngestionError(f"existing snapshot manifest is corrupt: {manifest_path}") from exc
+            if (not isinstance(existing, dict)
+                    or existing.get("sha256") != digest
+                    or existing.get("raw_file") != body_path.name
+                    or existing.get("url") != url
+                    or existing.get("final_url") != final_url
+                    or existing.get("redirect_chain") != []
+                    or existing.get("http_status") != status):
+                raise IngestionError(f"existing immutable snapshot manifest conflicts: {manifest_path}")
     return digest
 
 
@@ -154,6 +261,27 @@ def _parse_page(raw: bytes, page_no: int, source_id: str) -> list[Draw]:
     return rows
 
 
+def _pagination_metadata(raw: bytes, page_no: int) -> tuple[int, int] | None:
+    """Read source-reported total records/pages without treating absence as proof."""
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise IngestionError(f"page {page_no}: cannot read pagination metadata from invalid JSON") from exc
+    value = payload.get("value") if isinstance(payload, dict) else None
+    if not isinstance(value, dict):
+        return None
+    total = value.get("total")
+    total_pages = value.get("totalPage")
+    if total is None and total_pages is None:
+        return None
+    if (type(total) is not int or total < 1
+            or type(total_pages) is not int or total_pages < 1):
+        raise IngestionError(
+            f"page {page_no}: source pagination metadata must contain positive integer total and totalPage"
+        )
+    return total, total_pages
+
+
 def _add_draw(rows: dict[str, Draw], row: Draw) -> None:
     previous = rows.get(row.draw_id)
     if previous is not None:
@@ -180,6 +308,9 @@ def ingest_snapshot_directory(
     require_manifests: bool = False,
 ) -> dict[str, Any]:
     """Rebuild normalized draws from immutable JSON response snapshots offline."""
+    output_manifest_path = output.with_suffix(output.suffix + ".manifest.json")
+    if output.exists() or output_manifest_path.exists():
+        raise IngestionError("output or output manifest already exists; refusing to overwrite prior evidence")
     if not snapshots_dir.is_dir():
         raise IngestionError(f"snapshot directory does not exist: {snapshots_dir}")
     snapshot_paths = sorted(
@@ -192,6 +323,10 @@ def ingest_snapshot_directory(
     all_rows: dict[str, Draw] = {}
     snapshot_reports: list[dict[str, Any]] = []
     provenance_complete = True
+    page_numbers: list[int] = []
+    run_ids: set[str] = set()
+    page_sizes: set[int] = set()
+    source_pagination: tuple[int, int] | None = None
     for path in snapshot_paths:
         raw = path.read_bytes()
         digest = hashlib.sha256(raw).hexdigest()
@@ -215,13 +350,26 @@ def ingest_snapshot_directory(
             if require_manifests:
                 raise IngestionError(f"{path}: required sidecar manifest is missing")
 
-        rows = _parse_page(raw, len(snapshot_reports) + 1, f"sha256:{digest}")
+        page_no_for_payload = len(snapshot_reports) + 1
+        page_pagination = _pagination_metadata(raw, page_no_for_payload)
+        if page_no_for_payload == 1:
+            source_pagination = page_pagination
+        elif (page_pagination is not None and source_pagination is not None
+                and page_pagination != source_pagination):
+            raise IngestionError("source pagination totals changed between pages")
+        rows = _parse_page(raw, page_no_for_payload, f"sha256:{digest}")
         for row in rows:
             _add_draw(all_rows, row)
         source_url = sidecar.get("url") if isinstance(sidecar, dict) else None
         parsed_url = urllib.parse.urlsplit(source_url) if isinstance(source_url, str) else None
         query = urllib.parse.parse_qs(parsed_url.query) if parsed_url is not None else {}
         retrieved_at = sidecar.get("retrieved_at") if isinstance(sidecar, dict) else None
+        page_size_text = query.get("pageSize", [None])[0]
+        page_size_valid = (
+            isinstance(page_size_text, str)
+            and page_size_text.isdigit()
+            and 1 <= int(page_size_text) <= 100
+        )
         timestamp_valid = False
         if isinstance(retrieved_at, str):
             try:
@@ -235,10 +383,24 @@ def ingest_snapshot_directory(
             and parsed_url is not None
             and parsed_url.scheme == "https"
             and parsed_url.hostname == "webapi.sporttery.cn"
+            and parsed_url.netloc == "webapi.sporttery.cn"
             and parsed_url.path == "/gateway/lottery/getHistoryPageListV1.qry"
+            and set(query) == {"gameNo", "provinceId", "pageSize", "isVerify", "pageNo"}
+            and sidecar.get("final_url") == source_url
+            and sidecar.get("redirect_chain") == []
             and query.get("gameNo") == ["85"]
+            and query.get("provinceId") == ["0"]
+            and query.get("isVerify") == ["1"]
+            and page_size_valid
+            and type(sidecar.get("page_no")) is int
+            and sidecar.get("page_no") >= 1
+            and query.get("pageNo") == [str(sidecar.get("page_no"))]
+            and isinstance(sidecar.get("run_id"), str)
+            and bool(sidecar.get("run_id"))
             and timestamp_valid
             and sidecar.get("http_status") == 200
+            and type(sidecar.get("bytes")) is int
+            and sidecar.get("bytes") == len(raw)
             and sidecar.get("sha256") == digest
             and sidecar.get("raw_file") == path.name
         )
@@ -248,27 +410,78 @@ def ingest_snapshot_directory(
                 raise IngestionError(
                     f"{sidecar_path}: manifest lacks complete official-source provenance"
                 )
+        else:
+            page_numbers.append(sidecar["page_no"])
+            run_ids.add(sidecar["run_id"])
+            page_sizes.add(int(page_size_text))
         snapshot_reports.append({
             "raw_file": path.name,
             "sha256": digest,
             "bytes": len(raw),
             "records": len(rows),
+            "page_no": sidecar.get("page_no") if isinstance(sidecar, dict) else None,
+            "run_id": sidecar.get("run_id") if isinstance(sidecar, dict) else None,
             "sidecar_manifest": sidecar_path.name if sidecar is not None else None,
             "provenance_complete": bool(required_provenance),
         })
+
+    if require_manifests:
+        expected_pages = list(range(1, len(snapshot_paths) + 1))
+        if sorted(page_numbers) != expected_pages:
+            raise IngestionError(
+                "snapshot page inventory is not contiguous from page 1; "
+                f"expected {expected_pages}, found {sorted(page_numbers)}"
+            )
+        if len(run_ids) != 1:
+            raise IngestionError("strict snapshot import requires all pages from one fetch run")
+        if len(page_sizes) != 1:
+            raise IngestionError("strict snapshot import requires one consistent pageSize")
 
     ordered = sorted(all_rows.values(), key=lambda row: (row.draw_date, row.draw_id))
     from .validate import validate_records
     validation = validate_records([asdict(row) for row in ordered])
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    temporary.write_text(
-        "".join(json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered),
-        encoding="utf-8",
-    )
-    temporary.replace(output)
+    completeness_attestation = None
+    if require_manifests and provenance_complete and source_pagination is not None:
+        total_records, total_pages = source_pagination
+        if len(page_sizes) != 1:
+            raise IngestionError("source pagination totals require one consistent pageSize")
+        page_size = next(iter(page_sizes))
+        expected_pages = (total_records + page_size - 1) // page_size
+        if total_pages != expected_pages or total_pages != len(snapshot_reports):
+            raise IngestionError("source pagination totals do not match the archived page inventory")
+        if len(all_rows) != total_records or sum(item["records"] for item in snapshot_reports) != total_records:
+            raise IngestionError("source total records do not match the archived and deduplicated draw inventory")
+        attested_pages = []
+        for expected_page_no, item in enumerate(snapshot_reports, 1):
+            expected_records = (
+                page_size if expected_page_no < total_pages
+                else total_records - page_size * (total_pages - 1)
+            )
+            if item["page_no"] != expected_page_no or item["records"] != expected_records:
+                raise IngestionError(
+                    f"page {expected_page_no}: observed records do not match source pagination totals"
+                )
+            attested_pages.append({
+                "page_no": expected_page_no,
+                "raw_file": item["raw_file"],
+                "sha256": item["sha256"],
+                "records": item["records"],
+            })
+        completeness_attestation = {
+            "schema": "sporttery-pagination-attestation-v1",
+            "source_total_records": total_records,
+            "source_total_pages": total_pages,
+            "page_size": page_size,
+            "metadata_page_no": 1,
+            "total_records_pointer": "/value/total",
+            "total_pages_pointer": "/value/totalPage",
+            "pages": attested_pages,
+        }
 
+    output_bytes = "".join(
+        json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered
+    ).encode("utf-8")
     manifest = {
         "source": "offline import of immutable JSON response snapshots",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -277,15 +490,24 @@ def ingest_snapshot_directory(
         "snapshot_sha256": [item["sha256"] for item in snapshot_reports],
         "snapshots": snapshot_reports,
         "provenance_complete": provenance_complete,
+        # Complete per-page provenance does not prove that the upstream page
+        # inventory itself was complete. Keep publication blocked until a
+        # separately validated source-total reconciliation is implemented.
+        "source_completeness_verified": completeness_attestation is not None,
+        "source_completeness_status": (
+            "source_totals_reconciled" if completeness_attestation is not None else "unverified"
+        ),
+        "source_completeness_attestation": completeness_attestation,
         "validation": validation,
         "output_file": output.name,
-        "output_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "output_sha256": hashlib.sha256(output_bytes).hexdigest(),
         "trust_status": "candidate_unverified" if not provenance_complete else "manifest_complete_not_officially_authenticated",
     }
-    manifest_path = output.with_suffix(output.suffix + ".manifest.json")
-    manifest_tmp = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
-    manifest_tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    manifest_tmp.replace(manifest_path)
+    _atomic_write_new(output, output_bytes)
+    _atomic_write_new(
+        output_manifest_path,
+        (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8"),
+    )
     return manifest
 
 def fetch_history(
@@ -301,42 +523,95 @@ def fetch_history(
         raise ValueError("max_pages must be at least 1")
     if delay_seconds < 0:
         raise ValueError("delay_seconds must not be negative")
+    if output.exists():
+        raise IngestionError("output already exists; refusing to overwrite prior evidence")
     run_id = uuid.uuid4().hex
+    run_raw_dir = raw_dir / run_id
     all_rows: dict[str, Draw] = {}
     page_manifests: list[dict[str, Any]] = []
+    pagination_end_reason: str | None = None
+    source_pagination: tuple[int, int] | None = None
     for page_no in range(1, (max_pages or 10**9) + 1):
         params = urllib.parse.urlencode({
             "gameNo": "85", "provinceId": "0", "pageSize": str(page_size),
             "isVerify": "1", "pageNo": str(page_no),
         })
         url = f"{API_URL}?{params}"
-        raw, status, content_type = _fetch_page(page_no, page_size)
+        raw, status, content_type, final_url = _fetch_page(page_no, page_size)
         if status != 200:
             raise IngestionError(f"page {page_no}: unexpected HTTP status {status}")
-        digest = _snapshot(raw, page_no, status, content_type, raw_dir, url, run_id)
+        digest = _snapshot(
+            raw, page_no, status, content_type, run_raw_dir, url, final_url, run_id
+        )
+        page_pagination = _pagination_metadata(raw, page_no)
+        if page_no == 1:
+            source_pagination = page_pagination
+            if source_pagination is not None:
+                total_records, total_pages = source_pagination
+                if total_pages != (total_records + page_size - 1) // page_size:
+                    raise IngestionError("source total pages do not reconcile with total records and page size")
+        elif (page_pagination is not None and source_pagination is not None
+                and page_pagination != source_pagination):
+            raise IngestionError("source pagination totals changed between pages")
+
         rows = _parse_page(raw, page_no, digest)
         page_manifests.append({"page_no": page_no, "sha256": digest, "records": len(rows), "run_id": run_id})
-        if not rows:
-            break
-        for row in rows:
-            _add_draw(all_rows, row)
-        if len(rows) < page_size:
-            break
+        if source_pagination is not None:
+            total_records, total_pages = source_pagination
+            if page_no > total_pages:
+                raise IngestionError("collector received more pages than source-reported totalPage")
+            expected_records = (
+                page_size if page_no < total_pages
+                else total_records - page_size * (total_pages - 1)
+            )
+            if len(rows) != expected_records:
+                raise IngestionError(
+                    f"page {page_no}: record count does not match source-reported pagination totals"
+                )
+            for row in rows:
+                _add_draw(all_rows, row)
+            if page_no == total_pages:
+                pagination_end_reason = "source_total_pages"
+                break
+        else:
+            if not rows:
+                if page_no == 1:
+                    raise IngestionError("page 1: source returned no draws; refusing to publish an empty dataset")
+                pagination_end_reason = "empty_page"
+                break
+            for row in rows:
+                _add_draw(all_rows, row)
+            if len(rows) < page_size:
+                pagination_end_reason = "short_page"
+                break
         if max_pages is not None and page_no >= max_pages:
-            break
+            raise IngestionError(
+                f"pagination limit reached at page {page_no} while page was full; "
+                "refusing to publish a potentially truncated dataset"
+            )
         if delay_seconds:
             time.sleep(delay_seconds)
+    if source_pagination is not None:
+        total_records, total_pages = source_pagination
+        if len(page_manifests) != total_pages or len(all_rows) != total_records:
+            raise IngestionError("observed fetch inventory does not match source-reported pagination totals")
     ordered = sorted(all_rows.values(), key=lambda row: (row.draw_date, row.draw_id))
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    temporary.write_text("".join(json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered), encoding="utf-8")
-    temporary.replace(output)
+    output_bytes = "".join(
+        json.dumps(asdict(row), ensure_ascii=False) + "\n" for row in ordered
+    ).encode("utf-8")
+    _atomic_write_new(output, output_bytes)
     return {
         "records": len(ordered),
         "first_draw": ordered[0].draw_id if ordered else None,
         "last_draw": ordered[-1].draw_id if ordered else None,
         "output": str(output),
+        "raw_dir": str(run_raw_dir),
         "pages": page_manifests,
         "parser_version": PARSER_VERSION,
         "run_id": run_id,
+        "pagination_end_reason": pagination_end_reason,
+        "source_total_records": source_pagination[0] if source_pagination else None,
+        "source_total_pages": source_pagination[1] if source_pagination else None,
+        "source_completeness_verified": source_pagination is not None,
+        "trust_status": "manifest_complete_not_officially_authenticated",
     }

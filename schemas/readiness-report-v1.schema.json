@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/lottery/readiness-report-v1.schema.json",
+  "title": "Lottery readiness report v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "release_id",
+    "policy_version",
+    "release_manifest_sha256",
+    "gate_results_sha256",
+    "readiness_state",
+    "gate_statuses",
+    "gates",
+    "verified_evidence",
+    "blocking_reasons",
+    "holdout_accessed",
+    "production_approval",
+    "activation_performed",
+    "serving_enabled_by_report",
+    "automatic_promotion_enabled_by_report",
+    "report_sha256"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "lottery.readiness-report/v1"
+    },
+    "readiness_state": {
+      "enum": [
+        "NOT_READY",
+        "READY_FOR_OFFLINE_VALIDATION",
+        "READY_FOR_SHADOW",
+        "READY_FOR_PRODUCTION"
+      ]
+    },
+    "release_manifest_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "gate_results_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "holdout_accessed": {
+      "type": "boolean"
+    },
+    "activation_performed": {
+      "const": false
+    },
+    "serving_enabled_by_report": {
+      "const": false
+    },
+    "automatic_promotion_enabled_by_report": {
+      "const": false
+    },
+    "report_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

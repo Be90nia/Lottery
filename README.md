@@ -39,6 +39,13 @@
 - [研究方法](docs/RESEARCH_METHODS.md)
 - [奖金规则时期](docs/PRIZE_RULE_ERAS.md)
 - [初步随机基线结果](docs/BASELINE_RESULTS.md)
+- [MVP 首轮样本外评估](docs/TICKET_MVP_RESULTS.md)
+- [三策略批量生成与凭据契约](docs/TICKET_MVP_BATCH_CONTRACT.md)
+- [自动开奖同步 MVP](docs/AUTO_DRAW_SYNC_MVP.md)
+- [追加式开奖数据发布门禁](docs/APPEND_ONLY_DRAW_PUBLICATION.md)
+- [模型回归评估凭据](docs/MODEL_REGRESSION_RECEIPTS.md)
+- [LOT-067 发布就绪门禁](docs/RELEASE_READINESS.md)
+- [开奖结果快照绑定](docs/OUTCOME_SNAPSHOT_BINDING.md)
 - [任务清单](TASKS.md)
 - [测试计划](TEST_PLAN.md)
 
@@ -51,18 +58,24 @@
 Python 3.10+ is sufficient; the initial collector uses only the standard library.
 
 ```bash
-python scripts/fetch_history.py --max-pages 2
+python scripts/fetch_history.py
 python scripts/fetch_history.py --snapshots-dir data/raw/user-supplied --require-manifests --output data/processed/from-snapshots.jsonl
 python scripts/validate_dataset.py
 python scripts/validate_legacy_prizes.py
 python scripts/reconcile_sources.py
-python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl --simulations 999 --seed 20261118
+python scripts/analyze_baseline.py data/candidates/pinned-draws-20261118.jsonl --simulations 999 --seed 20261118
 python -m unittest discover -s tests -v
 ```
 
-Remove `--max-pages 2` to request all available pages. The collector writes immutable raw page snapshots and SHA-256 manifests under `data/raw/sporttery/`, then writes normalized JSON Lines to `data/processed/draws.jsonl`. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
+Each fetch writes immutable raw page snapshots and SHA-256 manifests under a unique `data/raw/sporttery/<run_id>/` directory and returns that exact directory as `raw_dir` in its JSON summary. Import only that directory with `--snapshots-dir`; never combine pages from different fetch runs. HTTP redirects are rejected before following them, and both raw snapshots and output datasets are write-once. `--max-pages` is a diagnostic safety cap: if the final allowed page is full, the run fails closed rather than publishing a potentially truncated dataset. An observed short/empty terminal page is not independent proof of upstream completeness. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
 
-The live endpoint has not yet passed this repository's end-to-end verification. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset. If an authorized party supplies raw JSON response snapshots, they can be imported offline with `--snapshots-dir`; use `--require-manifests` to require matching per-file SHA-256 sidecars with the exact Sporttery API endpoint, timezone-aware retrieval timestamp, HTTP 200, and matching raw filename. This checks consistency of supplied metadata, not cryptographic source authenticity or uncertain field semantics.
+The live endpoint has not yet passed this repository's end-to-end verification. Strict import checks the exact HTTPS host/path/query, final URL, empty redirect chain, contiguous page inventory, and single-run identity. When page 1 supplies positive integer `value.total` and `value.totalPage`, it also reconciles the ceiling relation, per-page record counts, and deduplicated draw inventory into a raw-page-backed pagination attestation; missing totals leave completeness unverified, and inconsistent totals fail closed. This does not provide cryptographic source authenticity. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset. If an authorized party supplies raw JSON response snapshots, they can be imported offline with `--snapshots-dir`; use `--require-manifests` to require matching per-file SHA-256 sidecars with the exact Sporttery API endpoint, timezone-aware retrieval timestamp, HTTP 200, and matching raw filename. This checks consistency of supplied metadata, not cryptographic source authenticity or uncertain field semantics.
+
+## Reported ball-set index evidence
+
+The manual-only [ball-set evidence workflow](.github/workflows/ball-set-evidence.yml) archives per-draw set-index announcements from the approved Jiangsu provincial source, builds a raw-evidence-backed coverage report and write-once reported-index view, runs the preregistered rolling-origin pilot, and emits 45 exploratory candidates (5 per estimator lane × 3 reported indices). The current verified view covers 1,067 draws in the 2019-08-31–2026-11-16 window (index counts 360 / 347 / 360). It excludes out-of-inventory observations and preserves `equipment_regime_id` and `physical_ball_set_id` as null.
+
+This is a **reported-index evidence view**, not a physical ball-set identity map. The existing regime eligibility remains blocked. The research-only pilot protocol is [preregistered here](docs/REPORTED_SET_INDEX_CONDITIONAL_MODEL_PREREGISTRATION.md); it does not access LOT-042 or authorize model promotion. See [the evidence archive guide](docs/BALL_SET_EVIDENCE_ARCHIVE.md).
 
 ## Legacy historical candidate data
 
@@ -72,7 +85,7 @@ An existing 2,901-draw dataset from the earlier `dlt-analysis` project has been 
 Monte Carlo frequency baseline details are documented in [research methods](docs/RESEARCH_METHODS.md). The baseline uses legal draws without replacement within each number zone and reports global frequency diagnostics; it does not produce a predictive number ranking.
 
 
-The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into the legacy candidate.
+The preserved independent comparison snapshot is `data/candidates/pickwise_dlt.csv`. Its provenance, comparison scope, and limitations are described in [source notes](docs/SOURCES.md); it is not silently merged into either draw candidate.
 
 ### Prospective forecast logging
 
@@ -93,22 +106,55 @@ The ledger is not a digital signature or proof of source authenticity. See
 eligibility, archival, and analysis rules. The prospective test has not started.
 
 
+### Exploratory ticket-candidate MVP
+
+Generate legal candidate combinations from a draw-history JSONL file:
+
+```bash
+python scripts/run_mvp.py --dataset data/candidates/pinned-draws-20261118.jsonl \
+  --tickets-per-strategy 5 --seed 20261119 \
+  --code-commit "$(git rev-parse HEAD)" --output mvp-output.json
+```
+
+The default pinned candidate contains 2,949 draws through 2026-11-16 (draw 26131), SHA-256 `9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa`; its trust status is `manifest_complete_not_officially_authenticated`, not official authentication. The older 2,901-row legacy candidate remains available for reproducing historical benchmark results. The runner verifies an adjacent dataset manifest when present and carries its hash and trust status into the receipt. The one-command runner requires a full code commit SHA (or the Actions-provided `GITHUB_SHA`), binds it into the deterministic generation identity and ticket IDs, and atomically publishes a machine-readable receipt alongside the batch. It refuses to overwrite an existing output file; choose a new path for each batch. The receipt makes explicit that source authentication, automatic sync, model training, and promotion were not performed by this command. The lower-level `scripts/generate_tickets.py` command remains available for direct candidate generation.
+
+The command emits a schema-v2 batch and receipt, including the conditional-Poisson sampler version and the maximum marginal-calibration residual, and generates N tickets in each of three explicitly separate strategy
+lanes: legal uniform sampling, expanding-frequency weights, and EWMA weights.
+Duplicate complete tickets are preserved (sampling is with replacement across
+tickets) and reported in the batch receipt; no hidden deduplication or reroll occurs.
+(3N tickets total; N is limited to 1..100 per lane). Every zone is sampled
+without replacement. The output records the exact input SHA-256, canonical
+training fingerprint, deterministic run/ticket IDs, master and lane seeds,
+training cutoff, and per-lane counts. Each lane's first-order inclusion
+marginals are calibrated (maximum residual 1e-8) to an exact
+conditional-Poisson/rejective fixed-size distribution before sampling. This
+defines a coherent joint distribution for ticket generation, but its
+higher-order dependence structure is a modeling assumption, not a verified
+physical draw mechanism or demonstrated predictive advantage. The tool does
+not authenticate the input dataset: the checked-in legacy history remains an
+unverified candidate. Strategy lanes are not physical ball-set labels. See
+the output's limitations field.
+
 ### Post-draw outcome capture and scoring
 
 After a result is officially published and its raw response snapshot is
 captured, `scripts/outcome_ledger.py` can append a separately hash-chained
-outcome event linked to the pre-draw forecast event. It checks the submitted
-official-domain URL, HTTP status, timestamp ordering, result number ranges,
-and hashes the exact snapshot bytes. It never fetches results itself and never
-modifies the forecast ledger.
+outcome event linked to the pre-draw forecast event. It requires the exact HTTPS Sporttery history endpoint with `gameNo=85`,
+parses the raw response, derives the selected numbers from the unique matching
+target draw, and rejects any CLI-supplied numbers that disagree with the
+snapshot. It also checks HTTP status and timestamp ordering and hashes the
+exact source bytes. It never fetches results itself and never modifies the
+forecast ledger.
 
 ```bash
 python scripts/outcome_ledger.py record --forecasts data/holdout/forecast-ledger.jsonl \
   --outcomes data/holdout/outcome-ledger.jsonl --target-draw-id 27XXX \
   --published-at 2027-01-01T20:40:00+08:00 --captured-at 2027-01-01T20:41:00+08:00 \
-  --source-url https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry \
+  --source-url 'https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1' \
   --snapshot data/raw/sporttery/official-response.json --http-status 200 \
   --front 1,2,3,4,5 --back 1,2
+python scripts/outcome_ledger.py verify data/holdout/outcome-ledger.jsonl \
+  --forecasts data/holdout/forecast-ledger.jsonl
 python scripts/outcome_ledger.py score --forecasts data/holdout/forecast-ledger.jsonl \
   --outcomes data/holdout/outcome-ledger.jsonl
 ```
@@ -141,7 +187,7 @@ Run all 595 front-zone and 66 back-zone pair tests under the legal uniform-draw
 null, with one Holm correction family across all 661 hypotheses:
 
 ```bash
-python scripts/analyze_pairs.py data/candidates/legacy_draws.jsonl \
+python scripts/analyze_pairs.py data/candidates/pinned-draws-20261118.jsonl \
   --output pair-cooccurrence.json
 ```
 
@@ -152,8 +198,8 @@ manipulation; the binomial null assumes independence across draws.
 ### Chronological train/validation/test splits
 
 ```bash
-python scripts/split_dataset.py data/candidates/legacy_draws.jsonl \
-  --output-dir data/splits/legacy-70-15-15
+python scripts/split_dataset.py data/candidates/pinned-draws-20261118.jsonl \
+  --output-dir data/splits/pinned-70-15-15
 ```
 
 This deterministic utility keeps every draw date intact and records input/output

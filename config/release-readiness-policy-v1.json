@@ -1,0 +1,97 @@
+{
+  "schema_version": "lottery.release-readiness-policy/v1",
+  "policy_version": "LOT-067-v1",
+  "gate_order": [
+    "G0",
+    "G1",
+    "G2",
+    "G3",
+    "G4",
+    "G5",
+    "G6",
+    "G7",
+    "G8"
+  ],
+  "gates": {
+    "G0": "source_build_integrity",
+    "G1": "canonical_data_source_evidence",
+    "G2": "numerical_engine",
+    "G3": "experimental_validity",
+    "G4": "set_conditioned_population_validity",
+    "G5": "champion_lifecycle_and_serving",
+    "G6": "feedback_and_monitoring",
+    "G7": "durable_storage_and_recovery",
+    "G8": "security_and_operations"
+  },
+  "readiness_stages": {
+    "READY_FOR_OFFLINE_VALIDATION": {
+      "requires": [
+        "G0",
+        "G1",
+        "G2",
+        "G3"
+      ],
+      "activation": {
+        "scheduled_collection_enabled": false,
+        "user_facing_serving_enabled": false,
+        "automatic_promotion_enabled": false
+      }
+    },
+    "READY_FOR_SHADOW": {
+      "requires": [
+        "G0",
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7"
+      ],
+      "activation": {
+        "shadow_only": true,
+        "user_facing_serving_enabled": false,
+        "automatic_promotion_enabled": false
+      }
+    },
+    "READY_FOR_PRODUCTION": {
+      "requires": [
+        "G0",
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7",
+        "G8"
+      ],
+      "additional_approval": "protected_environment_cryptographic_verifier_required"
+    }
+  },
+  "gate_statuses": [
+    "PASS",
+    "FAIL",
+    "BLOCKED",
+    "UNKNOWN"
+  ],
+  "pass_requires": {
+    "verified_evidence_file": true,
+    "non_empty_evidence": true,
+    "no_blockers": true,
+    "all_declared_fault_tests_pass": true
+  },
+  "three_slot_policy": {
+    "count": 3,
+    "all_or_none": true,
+    "same_registry_generation": true,
+    "distinct_artifact_ids": true,
+    "distinct_artifact_sha256": true,
+    "independence_claim": "not_inferred"
+  },
+  "holdout_policy": {
+    "lot_042_access_allowed": false
+  },
+  "production_activation_by_report": false,
+  "production_approval_verifier_implemented": false
+}
