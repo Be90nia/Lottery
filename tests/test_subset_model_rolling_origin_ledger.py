@@ -123,7 +123,13 @@ def _fixture(fail_candidate=False):
         "code_commit": "abc123",
         "snapshot_source_commit": "def456",
         "snapshot_trust_status": "manifest_complete_not_officially_authenticated",
-        "bootstrap": {"replicates": 1000, "block_length": 50, "seed": 20261118},
+        "bootstrap": {
+            "replicates": 1000, "block_length": 50, "seed": 20261118,
+            "seeds_by_zone_and_comparison": {
+                "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+                "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+            },
+        },
     }
     for zone, m, k, active, candidate_features in (
         ("front", 35, 5, ["sum", "odd_count", "range", "adjacent_count", "gap_variance"],
