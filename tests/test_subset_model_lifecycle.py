@@ -259,6 +259,69 @@ class ChampionLifecycleTests(unittest.TestCase):
         self.assertFalse(slot["suspended"])
         self.assertTrue(self.store.events_path.exists())
 
+
+    def test_replacement_requires_complete_prospective_shadow_receipt(self):
+        population = "pooled_equipment_blind"
+        first_id, first_receipt, first_validation = self.register_and_validate(
+            population, snapshot_hash="a" * 64
+        )
+        first_approval = approval_for(first_id, population, "front", first_receipt)
+        first_promoted = self.store.promote_candidate(
+            population_key=population, zone="front", artifact_id=first_id,
+            expected_champion_artifact_id=None,
+            expected_generation=first_validation["generation"],
+            approval=first_approval, approval_verifier=self.verifier, actor="test-suite",
+        )
+
+        second_id, second_receipt, second_validation = self.register_and_validate(
+            population, snapshot_hash="d" * 64
+        )
+        failed_shadow = shadow_receipt(
+            second_id, population, "front", first_id, full_coverage=False
+        )
+        failed = self.store.mark_shadow(
+            population_key=population, zone="front", artifact_id=second_id,
+            shadow_receipt=failed_shadow,
+            expected_generation=second_validation["generation"], actor="test-suite",
+        )
+        slot = failed["slots"][f"{population}|front"]
+        self.assertEqual(slot["challenger_artifact_id"], second_id)
+        self.assertIsNone(slot["shadow_artifact_id"])
+        with self.assertRaisesRegex(LifecycleError, "prospective shadow receipt"):
+            self.store.promote_candidate(
+                population_key=population, zone="front", artifact_id=second_id,
+                expected_champion_artifact_id=first_id,
+                expected_generation=failed["generation"],
+                approval=approval_for(
+                    second_id, population, "front", second_receipt,
+                    expected_champion_artifact_id=first_id,
+                ),
+                approval_verifier=self.verifier, actor="test-suite",
+            )
+
+        passing_shadow = shadow_receipt(second_id, population, "front", first_id)
+        shadowed = self.store.mark_shadow(
+            population_key=population, zone="front", artifact_id=second_id,
+            shadow_receipt=passing_shadow,
+            expected_generation=failed["generation"], actor="test-suite",
+        )
+        shadow_hash = hashlib.sha256(canonicalize(passing_shadow)).hexdigest()
+        approval = approval_for(
+            second_id, population, "front", second_receipt,
+            expected_champion_artifact_id=first_id,
+            shadow_receipt_sha256=shadow_hash,
+        )
+        promoted = self.store.promote_candidate(
+            population_key=population, zone="front", artifact_id=second_id,
+            expected_champion_artifact_id=first_id,
+            expected_generation=shadowed["generation"],
+            approval=approval, approval_verifier=self.verifier, actor="test-suite",
+        )
+        self.assertEqual(
+            promoted["slots"][f"{population}|front"]["champion_artifact_id"],
+            second_id,
+        )
+
     def test_incomplete_or_unregistered_evaluation_cannot_promote(self):
         population = "regime-a|reported-1"
         artifact_id, receipt, validated = self.register_and_validate(population, passed=False)
