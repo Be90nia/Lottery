@@ -90,6 +90,12 @@ def _write_once(path: Path, raw: bytes) -> None:
         handle.write(raw)
         handle.flush()
         os.fsync(handle.fileno())
+    if hasattr(os, "O_DIRECTORY"):
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
 
 def _slot_key(population_key: str, zone: str) -> str:
@@ -194,6 +200,10 @@ def _validate_approval(
     for field in ("approval_id", "issued_at_utc", "signer_id", "signature"):
         if not isinstance(approval[field], str) or not approval[field]:
             raise LifecycleError(f"approval {field} must be a non-empty string")
+    if not _is_sha(evaluation_receipt_sha256):
+        raise LifecycleError("approval evaluation_receipt_sha256 must be a lowercase SHA-256")
+    if approval["action"] not in ("promote", "restore"):
+        raise LifecycleError("approval action must be promote or restore")
     try:
         datetime.fromisoformat(approval["issued_at_utc"].replace("Z", "+00:00"))
     except ValueError as exc:
@@ -235,8 +245,36 @@ class ChampionLifecycle:
             or type(registry.get("generation")) is not int
             or registry["generation"] < 0
             or not isinstance(registry.get("slots"), dict)
+            or (registry.get("last_operation_id") is not None
+                and (not isinstance(registry["last_operation_id"], str)
+                     or not registry["last_operation_id"]))
         ):
             raise LifecycleError("Champion registry schema or generation is invalid")
+        for key, slot in registry["slots"].items():
+            if not isinstance(key, str) or not isinstance(slot, dict):
+                raise LifecycleError("Champion registry slot entries must be objects with string keys")
+            expected_key = _slot_key(slot.get("population_key"), slot.get("zone"))
+            if key != expected_key:
+                raise LifecycleError("Champion registry slot key does not match its population/zone")
+            if (type(slot.get("suspended")) is not bool
+                    or not isinstance(slot.get("retired_artifact_ids"), list)
+                    or not isinstance(slot.get("rejected_artifact_ids"), list)
+                    or not isinstance(slot.get("validation"), dict)
+                    or not isinstance(slot.get("approval"), dict)
+                    or (slot.get("suspension_reason") is not None
+                        and not isinstance(slot["suspension_reason"], str))):
+                raise LifecycleError("Champion registry slot state is malformed")
+            for field in ("champion_artifact_id", "challenger_artifact_id"):
+                artifact_id = slot.get(field)
+                if artifact_id is not None:
+                    self._artifact_path(artifact_id)
+            for artifact_id in slot["retired_artifact_ids"] + slot["rejected_artifact_ids"]:
+                self._artifact_path(artifact_id)
+            if any(not isinstance(v, dict) for v in slot["validation"].values()):
+                raise LifecycleError("Champion validation references are malformed")
+            for approval_hash in slot["approval"].values():
+                if not _is_sha(approval_hash):
+                    raise LifecycleError("Champion approval hash is malformed")
         return registry
 
     def _read_events(self) -> list[dict[str, Any]]:
@@ -388,6 +426,8 @@ class ChampionLifecycle:
                 for validation in slot.get("validation", {}).values():
                     self._load_evaluation_receipt(validation["receipt_sha256"])
                 for approval_hash in slot.get("approval", {}).values():
+                    if not _is_sha(approval_hash):
+                        raise LifecycleError("immutable approval receipt reference is malformed")
                     approval_raw = (self.approvals / f"{approval_hash}.json").read_bytes()
                     if _sha(approval_raw) != approval_hash:
                         raise LifecycleError("immutable approval receipt hash mismatch")
@@ -422,6 +462,8 @@ class ChampionLifecycle:
             existing = slot.get("challenger_artifact_id")
             if existing == artifact_id:
                 return registry
+            if artifact_id in slot.get("rejected_artifact_ids", []):
+                raise LifecycleError("a rejected immutable artifact cannot be re-registered")
             if existing is not None:
                 raise LifecycleError("slot already has a challenger; reject it before registering another")
             slot["challenger_artifact_id"] = artifact_id
@@ -709,6 +751,7 @@ class ChampionLifecycle:
         if (
             not isinstance(population_keys, list)
             or len(population_keys) != 3
+            or any(not isinstance(key, str) or not key for key in population_keys)
             or len(set(population_keys)) != 3
         ):
             raise LifecycleError("three-slot resolution requires exactly three distinct population keys")
