@@ -150,6 +150,15 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                         artifact_id = verified["artifact_id"]
                         if artifact_id != artifact_entry.get("artifact_id"):
                             status, failure_reason = "artifact_invalid", "artifact_id_mismatch"
+                        elif (verified.get("zone") != zone
+                              or verified.get("population_size") != m
+                              or verified.get("selection_size") != k
+                              or verified.get("training_snapshot_sha256") != snapshot_digest
+                              or verified.get("training_cutoff_draw_id") != record["training_cutoff_draw_id"]
+                              or verified.get("training_row_count") != record["training_count"]
+                              or verified.get("model_configuration_hash") != model_config_hashes[(zone, name)]
+                              or verified.get("feature_schema_hash") != feature_schema_hashes[(zone, name)]):
+                            status, failure_reason = "artifact_invalid", "artifact_provenance_or_schema_mismatch"
                         else:
                             artifact_bytes = canonicalize(verified)
                             if artifact_id not in artifact_ids:
@@ -201,6 +210,13 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             if count != len(target_rows):
                 raise ValueError(f"ledger denominator mismatch for {zone}/{name}")
 
+    ledger_bytes = b"".join(canonicalize(row) + b"\n" for row in ledger)
+    artifact_file_bytes = b"".join(line + b"\n" for line in artifact_lines)
+    artifact_code_revisions = sorted({
+        row["code_revision"]
+        for row in ledger
+        if row["artifact_id"] is not None
+    })
     manifest = {
         "schema": "lot-055-run-manifest-v1",
         "run_id": run_id,
@@ -221,6 +237,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             "target_list_sha256": target_list_hash,
         },
         "code_revision": code_revision,
+        "artifact_code_revisions": artifact_code_revisions,
         "model_spec_revision": identity["model_spec_revision"],
         "preregistration_revision": identity["preregistration_revision"],
         "runtime": {
@@ -247,6 +264,10 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
         "expected_target_record_count": expected,
         "actual_target_record_count": len(ledger),
         "model_artifact_count": len(artifact_lines),
+        "output_files": {
+            "target-score-ledger.jsonl": {"sha256": _sha256(ledger_bytes), "bytes": len(ledger_bytes)},
+            "model-artifacts.jsonl": {"sha256": _sha256(artifact_file_bytes), "bytes": len(artifact_file_bytes)},
+        },
         "terminal_status_counts": {
             status: sum(1 for row in ledger if row["terminal_status"] == status)
             for status in ("scored", "fit_failed", "artifact_invalid", "probability_invalid", "runner_error")
@@ -257,10 +278,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
     output_dir = output_path.parent
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "run_manifest.json").write_bytes(canonicalize(manifest) + b"\n")
-    (output_dir / "target-score-ledger.jsonl").write_bytes(
-        b"".join(canonicalize(row) + b"\n" for row in ledger))
-    (output_dir / "model-artifacts.jsonl").write_bytes(
-        b"".join(line + b"\n" for line in artifact_lines))
+    (output_dir / "target-score-ledger.jsonl").write_bytes(ledger_bytes)
+    (output_dir / "model-artifacts.jsonl").write_bytes(artifact_file_bytes)
     return {
         "run_id": run_id,
         "manifest_sha256": manifest["manifest_sha256"],
