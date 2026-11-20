@@ -202,13 +202,20 @@ class ChampionLifecycleTests(unittest.TestCase):
         population = "regime-a|reported-1"
         artifact_id, receipt, validated = self.register_and_validate(population)
         approval = approval_for(artifact_id, population, "front", receipt)
+        shadow = self.store.mark_shadow(
+            population_key=population, zone="front", artifact_id=artifact_id,
+            expected_generation=validated["generation"], actor="test-suite",
+        )
+        self.assertEqual(
+            shadow["slots"][f"{population}|front"]["shadow_artifact_id"], artifact_id
+        )
         with self.assertRaisesRegex(LifecycleError, "verifier is absent"):
             self.store.promote_candidate(
                 population_key=population,
                 zone="front",
                 artifact_id=artifact_id,
                 expected_champion_artifact_id=None,
-                expected_generation=validated["generation"],
+                expected_generation=shadow["generation"],
                 approval=approval,
                 approval_verifier=None,
                 actor="test-suite",
@@ -218,7 +225,7 @@ class ChampionLifecycleTests(unittest.TestCase):
             zone="front",
             artifact_id=artifact_id,
             expected_champion_artifact_id=None,
-            expected_generation=validated["generation"],
+            expected_generation=shadow["generation"],
             approval=approval,
             approval_verifier=self.verifier,
             actor="test-suite",
