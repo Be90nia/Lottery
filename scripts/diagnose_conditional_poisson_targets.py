@@ -71,7 +71,8 @@ def run(snapshot_path: Path, output_path: Path, front_ids: list[str], back_ids: 
             for baseline in ("expanding", "ewma"):
                 marginals = _probabilities(
                     training, field, population, selection,
-                    model=baseline, alpha=100.0, half_life=100.0,
+                    model=baseline, alpha=100.0,
+                    half_life=100.0 if baseline == "ewma" else None,
                 )
                 calibration = ConditionalPoisson.calibrate(
                     marginals, selection,
@@ -118,7 +119,7 @@ def run(snapshot_path: Path, output_path: Path, front_ids: list[str], back_ids: 
     }
     body["diagnostic_sha256"] = _sha(canonicalize(body))
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    output_path.write_text(json.dumps(body, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     print("CONDITIONAL_POISSON_TARGET_DIAGNOSTIC=" + json.dumps({
         "diagnostic_sha256": body["diagnostic_sha256"],
         "all_converged": body["all_converged"],
