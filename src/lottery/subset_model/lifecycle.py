@@ -6,6 +6,7 @@ three-slot resolution are unavailable.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -557,6 +558,20 @@ class ChampionLifecycle:
         if _sha(raw) != receipt_hash or canonicalize(receipt) != raw:
             raise LifecycleError("shadow receipt content hash or canonical bytes mismatch")
         return receipt
+
+    @contextmanager
+    def generation_guard(self, expected_generation: int):
+        """Hold the registry CAS lock while publishing a dependent pointer."""
+        if type(expected_generation) is not int or expected_generation < 0:
+            raise LifecycleError("expected registry generation must be a non-negative integer")
+        with ledger_lock(self.registry_path):
+            self._recover_locked()
+            registry = self._read_registry()
+            if registry["generation"] != expected_generation:
+                raise StaleRegistryError(
+                    "Champion registry generation changed before dependent publication"
+                )
+            yield registry
 
     def snapshot(self) -> dict[str, Any]:
         with ledger_lock(self.registry_path):
@@ -1508,7 +1523,19 @@ class ChampionLifecycle:
                     "artifact_id": artifact_id,
                     "artifact_sha256": artifact_id[7:],
                     "model_family": artifact["model_family"],
+                    "artifact_schema": artifact["artifact_schema"],
+                    "feature_schema_hash": artifact["feature_schema_hash"],
+                    "population_size": artifact["population_size"],
+                    "selection_size": artifact["selection_size"],
                     "training_cutoff_draw_id": artifact["training_cutoff_draw_id"],
+                    "training_snapshot_sha256": artifact["training_snapshot_sha256"],
+                    "training_row_count": artifact["training_row_count"],
+                    "training_first_draw_id": artifact["training_first_draw_id"],
+                    "training_last_draw_id": artifact["training_last_draw_id"],
+                    "population_evidence_sha256": evidence_hash,
+                    "evaluation_manifest_sha256": validation["evaluation_manifest_sha256"],
+                    "evaluation_receipt_sha256": validation["receipt_sha256"],
+                    "shadow_receipt_sha256": shadow_hash,
                     "approval_sha256": approval_hash,
                 })
         if len(set(training_by_population.values())) != 3:
