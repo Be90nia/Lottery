@@ -946,6 +946,7 @@ class ProspectiveLedger:
             if not math.isfinite(logp) or logp >= 0.0:
                 record_failure("invalid_log_probability")
                 raise ProspectiveLedgerError("exact-set log probability must be finite and strictly negative")
+            evaluation_receipt_sha256 = _sha(canonicalize(evaluation))
             population, selection = (35, 5) if forecast["zone"] == "front" else (12, 2)
             nll = -logp
             uniform_nll = log(comb(population, selection))
@@ -955,9 +956,18 @@ class ProspectiveLedger:
                 "outcome_id": outcome_id,
                 "target_draw_id": forecast["target_draw_id"],
                 "artifact_sha256": forecast["artifact_sha256"],
+                "front_artifact_sha256": forecast["front_artifact_sha256"],
+                "back_artifact_sha256": forecast["back_artifact_sha256"],
+                "distribution_sha256": forecast["distribution_sha256"],
+                "active_registry_snapshot_id": forecast["active_registry_snapshot_id"],
+                "registry_generation": forecast["registry_generation"],
+                "model_spec_sha256": forecast["model_spec_sha256"],
                 "zone": forecast["zone"],
                 "population_key": forecast["population_key"],
+                "scoring_policy_version": forecast["scoring_policy_version"],
                 "scorer_version": scorer_version,
+                "normalization_verified": True,
+                "evaluation_receipt_sha256": evaluation_receipt_sha256,
                 "log_probability": logp,
                 "negative_log_score": nll,
                 "uniform_negative_log_score": uniform_nll,
