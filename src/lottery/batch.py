@@ -439,6 +439,8 @@ class ThreeSlotBatchPublisher:
             raise BatchPublicationError(f"batch storage/publication failed closed: {exc}") from exc
         return {
             "batch_id": manifest["batch_id"],
+            "status": "published",
+            "created_at_utc": pointer["published_at_utc"],
             "batch_sha256": _sha(raw),
             "ticket_count": total,
             "registry_generation": resolved["registry_generation"],
