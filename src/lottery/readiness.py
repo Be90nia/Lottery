@@ -77,13 +77,40 @@ def _safe_evidence(root: Path, item: Any) -> tuple[bool, str]:
     return True, "verified"
 
 
+def _validate_policy(policy: Any) -> None:
+    if not isinstance(policy, dict) or set(policy) != {"schema", "gates", "faults", "offline", "shadow", "production"}:
+        raise ReadinessError("readiness policy has invalid shape")
+    if policy.get("schema") != "lottery.readiness-policy/v1":
+        raise ReadinessError("readiness policy schema mismatch")
+    if policy.get("gates") != list(GATES) or policy.get("faults") != list(FAULTS):
+        raise ReadinessError("readiness policy gate/fault inventory differs from evaluator")
+    offline = policy.get("offline")
+    shadow = policy.get("shadow")
+    production = policy.get("production")
+    if (offline != {
+        "required_gates": list(OFFLINE_GATES),
+        "required_faults": list(OFFLINE_FAULTS),
+        "state": "READY_FOR_OFFLINE_VALIDATION",
+    } or shadow != {
+        "required_gates": list(GATES),
+        "required_faults": list(FAULTS),
+        "state": "READY_FOR_SHADOW",
+    }):
+        raise ReadinessError("readiness policy thresholds differ from evaluator")
+    if production != {
+        "enabled": False,
+        "reason": "protected_cryptographic_approval_verifier_not_implemented",
+    }:
+        raise ReadinessError("production readiness must remain disabled in policy v1")
+
+
 def _validate_manifest(manifest: Any) -> list[str]:
     if not isinstance(manifest, dict) or manifest.get("schema") != "lottery.release-manifest/v1":
         raise ReadinessError("release manifest schema must be lottery.release-manifest/v1")
     if set(manifest) != {
         "schema", "release_id", "release_ref", "source_commit",
         "workflow_policy_sha256", "dependency_lock_sha256",
-        "snapshot_sha256", "lot042_accessed",
+        "readiness_policy_sha256", "snapshot_sha256", "lot042_accessed",
     }:
         raise ReadinessError("release manifest has missing or unknown fields")
     for field in ("release_id", "release_ref", "source_commit"):
@@ -93,7 +120,7 @@ def _validate_manifest(manifest: Any) -> list[str]:
         raise ReadinessError("source_commit must be a full lowercase Git SHA")
     if manifest["release_ref"] != manifest["source_commit"]:
         raise ReadinessError("release_ref must pin the exact source_commit; mutable refs are forbidden")
-    for field in ("workflow_policy_sha256", "dependency_lock_sha256", "snapshot_sha256"):
+    for field in ("workflow_policy_sha256", "dependency_lock_sha256", "readiness_policy_sha256", "snapshot_sha256"):
         if not isinstance(manifest.get(field), str) or not _SHA256.fullmatch(manifest[field]):
             raise ReadinessError(f"manifest {field} must be a lowercase SHA-256")
     if type(manifest.get("lot042_accessed")) is not bool:
@@ -122,9 +149,15 @@ def evaluate_readiness(
     gate_results: list[dict[str, Any]],
     fault_results: list[dict[str, Any]],
     evidence_root: str | Path,
+    *,
+    policy: dict[str, Any],
 ) -> dict[str, Any]:
     """Verify evidence and derive a readiness state; never emits production-ready."""
+    _validate_policy(policy)
     _validate_manifest(manifest)
+    policy_digest = "sha256:" + _digest(canonicalize(policy))
+    if manifest["readiness_policy_sha256"] != policy_digest.removeprefix("sha256:"):
+        raise ReadinessError("manifest readiness_policy_sha256 does not match the supplied policy")
     root = Path(evidence_root).resolve(strict=True)
     if not root.is_dir():
         raise ReadinessError("evidence_root must be a directory")
@@ -234,6 +267,7 @@ def evaluate_readiness(
         "release_id": manifest["release_id"],
         "source_commit": manifest["source_commit"],
         "release_manifest_sha256": "sha256:" + _digest(canonicalize(manifest)),
+        "readiness_policy_sha256": policy_digest,
         "gate_results_sha256": "sha256:" + _digest(canonicalize(gate_results)),
         "fault_results_sha256": "sha256:" + _digest(canonicalize(fault_results)),
         "readiness": readiness,
