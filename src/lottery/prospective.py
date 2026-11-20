@@ -245,7 +245,9 @@ class ProspectiveLedger:
         zone: str,
         population_key: str,
         training_snapshot_sha256: str,
+        training_first_draw_id: str,
         training_last_draw_id: str,
+        training_row_count: int,
         training_last_draw_date: str,
         registry_generation: int,
         forecast_policy_version: str,
@@ -256,8 +258,14 @@ class ProspectiveLedger:
     ) -> dict[str, Any]:
         if not isinstance(target_draw_id, str) or re.fullmatch(r"\d{5}", target_draw_id) is None:
             raise ProspectiveLedgerError("target_draw_id must be a five-digit ID")
-        if not isinstance(training_last_draw_id, str) or re.fullmatch(r"\d{5}", training_last_draw_id) is None:
-            raise ProspectiveLedgerError("training_last_draw_id must be a five-digit ID")
+        if (not isinstance(training_first_draw_id, str)
+                or re.fullmatch(r"\d{5}", training_first_draw_id) is None
+                or not isinstance(training_last_draw_id, str)
+                or re.fullmatch(r"\d{5}", training_last_draw_id) is None
+                or training_first_draw_id > training_last_draw_id):
+            raise ProspectiveLedgerError("training draw range must use ordered five-digit IDs")
+        if type(training_row_count) is not int or training_row_count < 1:
+            raise ProspectiveLedgerError("training_row_count must be a positive integer")
         if zone not in ("front", "back"):
             raise ProspectiveLedgerError("forecast zone must be front or back")
         for field, value in (
@@ -297,6 +305,8 @@ class ProspectiveLedger:
             reasons.append("training_draw_not_before_target")
         if training_date >= cutoff.date():
             reasons.append("training_date_not_before_target_cutoff")
+        if training_row_count < 300:
+            reasons.append("insufficient_training_history")
         record = {
             "schema": FORECAST_SCHEMA,
             "target_draw_id": target_draw_id,
@@ -308,7 +318,9 @@ class ProspectiveLedger:
             "zone": zone,
             "population_key": population_key,
             "training_snapshot_sha256": training_snapshot_sha256,
+            "training_first_draw_id": training_first_draw_id,
             "training_last_draw_id": training_last_draw_id,
+            "training_row_count": training_row_count,
             "training_last_draw_date": training_date.isoformat(),
             "registry_generation": registry_generation,
             "forecast_policy_version": forecast_policy_version,
