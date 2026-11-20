@@ -213,9 +213,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
     ledger_bytes = b"".join(canonicalize(row) + b"\n" for row in ledger)
     artifact_file_bytes = b"".join(line + b"\n" for line in artifact_lines)
     artifact_code_revisions = sorted({
-        row["code_revision"]
-        for row in ledger
-        if row["artifact_id"] is not None
+        json.loads(line.decode("utf-8"))["code_revision"]
+        for line in artifact_lines
     })
     manifest = {
         "schema": "lot-055-run-manifest-v1",
