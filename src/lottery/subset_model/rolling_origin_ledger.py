@@ -32,11 +32,6 @@ def _model_identity(zone: str, name: str, m: int, k: int,
         schema = {"schema": "uniform-subset-v1", "population_size": m, "selection_size": k}
     elif name in ("expanding", "ewma"):
         family = "conditional_poisson"
-        config = {"model_family": family, "baseline": name, "zone": zone,
-                  "population_size": m, "selection_size": k, "alpha": 100.0,
-                  "half_life": 100.0 if name == "ewma" else None,
-                  "weighting": "expanding" if name == "expanding" else "2^(-lag/100)",
-                  "feature_schema_hash": _hash_object(schema)}
         schema = {
             "version": "lottery-item-inclusion/v1",
             "names": [f"item_{item}" for item in range(1, m + 1)],
@@ -44,6 +39,11 @@ def _model_identity(zone: str, name: str, m: int, k: int,
             "uniform_population_stds": [((k / m) * (1.0 - k / m)) ** 0.5] * m,
             "zero_variance_policy": "not_applicable_item_indicator_schema",
         }
+        config = {"model_family": family, "baseline": name, "zone": zone,
+                  "population_size": m, "selection_size": k, "alpha": 100.0,
+                  "half_life": 100.0 if name == "ewma" else None,
+                  "weighting": "expanding" if name == "expanding" else "2^(-lag/100)",
+                  "feature_schema_hash": _hash_object(schema)}
     else:
         family = "complete_subset_exponential"
         schema = {
