@@ -83,6 +83,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
         "code_revision": code_revision,
         "model_spec_revision": "PR-16@aec3a864ea14d84b8b9fac971e0d4b08e72cb0c0",
         "preregistration_revision": "Be90nia/Lottery#18",
+        "experiment_registration_revision": "Be90nia/Lottery#27-comment-7028060751",
         "bootstrap": result["bootstrap"],
         "models": model_specs,
     }
