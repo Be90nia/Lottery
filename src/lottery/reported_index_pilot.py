@@ -138,8 +138,15 @@ def _calibrated_nll(
             probabilities, pick, tolerance=1e-8, max_iterations=5000, history_size=10
         )
         if not calibration.converged:
+            probability_sum_error = abs(sum(probabilities) - pick)
             raise ReportedIndexPilotError(
-                f"{model} calibration failed at target {target['draw_id']}: {calibration.terminal_status}"
+                f"{model} calibration failed at target {target['draw_id']} ({field}): "
+                f"{calibration.terminal_status}; iterations={calibration.iterations}; "
+                f"gradient_inf={calibration.gradient_infinity_norm:.6e}; "
+                f"marginal_residual={calibration.maximum_absolute_residual:.6e}; "
+                f"target_marginal_range=[{min(probabilities):.6e}, {max(probabilities):.6e}]; "
+                f"target_sum_error={probability_sum_error:.6e}; "
+                f"objective={calibration.objective:.12g}; message={calibration.message}"
             )
         sampler = ConditionalPoisson(calibration.centered_log_weights, pick)
         achieved = sampler.inclusion_marginals()
