@@ -105,7 +105,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
             },
             parameters={"centered_log_weights": [0.0] * 35,
                         "parameter_order": "feature_schema.names"},
-            fit=dict(common["fit"], lambda_=None),
+            fit=dict(common["fit"]),
             centered_log_weights=[0.0] * 35,
             target_marginals=[p] * 35, achieved_marginals=[p] * 35,
             solver_status="converged", calibration_residual=0.0,
