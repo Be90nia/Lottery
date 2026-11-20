@@ -21,7 +21,9 @@ def _hash_object(value: dict) -> str:
     return "sha256:" + _sha256(canonicalize(value))
 
 
-def _model_identity(zone: str, name: str, m: int, k: int, active_features: list[str]) -> tuple[str, str, dict]:
+def _model_identity(zone: str, name: str, m: int, k: int,
+                    active_features: list[str], candidate_features: list[str],
+                    zero_variance_features: list[str]) -> tuple[str, str, dict]:
     if name == "uniform":
         family = "uniform_analytic"
         config = {"model_family": family, "zone": zone, "population_size": m,
@@ -37,14 +39,22 @@ def _model_identity(zone: str, name: str, m: int, k: int, active_features: list[
                   "selection_size": k, "parameterization": "zero-sum-centered-log-weights"}
     else:
         family = "complete_subset_exponential"
-        config = {"model_family": family, "zone": zone, "population_size": m,
-                  "selection_size": k, "feature_schema_version": "lot-051-symmetric-v1",
-                  "active_feature_names": active_features, "objective_scale": "mean_nll",
-                  "regularization_lambda": 1.0, "solver": "deterministic_unbounded_lbfgsb_strong_wolfe_v1",
-                  "max_iterations": 5000, "gradient_tolerance": 1e-8}
-        schema = {"schema": "lot-051-symmetric-v1", "population_size": m,
-                  "selection_size": k, "active_feature_names": active_features,
-                  "zero_variance_policy": "drop_and_record"}
+        schema = {
+            "feature_schema_version": "lot-051-symmetric-v1",
+            "candidate_feature_names": candidate_features,
+            "active_feature_names": active_features,
+            "zero_variance_features": zero_variance_features,
+            "zero_variance_policy": "drop_and_record",
+            "population_size": m, "selection_size": k,
+        }
+        config = {
+            "model_family": "complete_subset_exponential", "zone": zone,
+            "population_size": m, "selection_size": k,
+            "feature_schema_hash": _hash_object(schema),
+            "objective_scale": "mean_nll", "regularization_lambda": 1.0,
+            "solver": "deterministic_unbounded_lbfgsb_strong_wolfe_v1",
+            "max_iterations": 5000, "gradient_tolerance": 1e-8,
+        }
     return family, _hash_object(config), schema
 
 
@@ -58,8 +68,13 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                    for row in target_rows]
     target_list_hash = _hash_object({"targets": target_list})
     model_specs = {
-        "front": {"m": 35, "k": 5, "features": ["sum", "odd_count", "range", "adjacent_count", "gap_variance"]},
-        "back": {"m": 12, "k": 2, "features": ["sum", "odd_count", "range", "adjacent_count"]},
+        zone: {
+            "m": result[zone]["population_size"], "k": result[zone]["selection_size"],
+            "features": result[zone]["active_feature_names"],
+            "candidate_features": result[zone]["candidate_feature_names"],
+            "zero_variance_features": result[zone]["zero_variance_features"],
+        }
+        for zone in ("front", "back")
     }
     identity = {
         "protocol": "LOT-055",
@@ -78,7 +93,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
     for zone, spec in model_specs.items():
         for name in MODEL_ORDER:
             family, config_hash, schema = _model_identity(
-                zone, name, spec["m"], spec["k"], spec["features"])
+                zone, name, spec["m"], spec["k"], spec["features"],
+                spec["candidate_features"], spec["zero_variance_features"])
             model_config_hashes[(zone, name)] = config_hash
             feature_schema_hashes[(zone, name)] = _hash_object(schema)
             families[(zone, name)] = family
@@ -147,6 +163,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                 if log_probability is not None and (not math_isfinite(log_probability) or log_probability > 1e-12):
                     status, failure_reason, log_probability, score = (
                         "probability_invalid", "non_finite_or_positive_log_probability", None, None)
+                if status == "artifact_invalid":
+                    log_probability, score = None, None
                 row = {
                     "run_id": run_id,
                     "target_draw_id": target_row["draw_id"],
