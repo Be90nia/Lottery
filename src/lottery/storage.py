@@ -377,6 +377,8 @@ class FileSystemObjectStore:
             "validated_without_commit": [],
             "committed_unreferenced": [],
             "dangling_pointers": [],
+            "corrupt_commit_receipts": [],
+            "orphan_objects": [],
             "corrupt_objects": [],
             "pointer_count": 0,
             "object_count": 0,
@@ -385,7 +387,11 @@ class FileSystemObjectStore:
         referenced: set[str] = set()
         commits_by_hash: dict[str, list[str]] = {}
         for path in sorted(self.commits.glob("*.json")):
-            receipt = _read_canonical(path)
+            try:
+                receipt = _read_canonical(path)
+            except StorageError:
+                report["corrupt_commit_receipts"].append(path.stem)
+                continue
             digest = receipt.get("content_sha256")
             if isinstance(digest, str):
                 commits_by_hash.setdefault(digest, []).append(path.stem)
@@ -412,9 +418,17 @@ class FileSystemObjectStore:
                 report["committed_unreferenced"].extend(operation_ids)
         report["object_count"] = sum(1 for _ in self.objects.glob("*/*.bin"))
         for path in self.objects.glob("*/*.bin"):
-            if path.stem not in commits_by_hash:
+            try:
+                raw = path.read_bytes()
+            except OSError:
                 report["corrupt_objects"].append(path.stem)
+                continue
+            if _sha(raw) != path.stem or path.parent.name != path.stem[:2]:
+                report["corrupt_objects"].append(path.stem)
+            elif path.stem not in commits_by_hash:
+                report["orphan_objects"].append(path.stem)
         for key in ("staged_without_validation", "validated_without_commit",
-                    "committed_unreferenced", "dangling_pointers", "corrupt_objects"):
+                    "committed_unreferenced", "dangling_pointers", "corrupt_commit_receipts",
+                    "orphan_objects", "corrupt_objects"):
             report[key] = sorted(set(report[key]))
         return report
