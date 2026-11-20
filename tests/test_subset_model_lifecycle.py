@@ -363,7 +363,9 @@ class ChampionLifecycleTests(unittest.TestCase):
         ]
         generation = self.store.snapshot()["generation"]
         evidence_hash = hashlib.sha256(b"shared-regime-evidence-manifest").hexdigest()
-        transitions = []
+        first_transitions = []
+        first_artifacts = {}
+        first_receipts = {}
         for population_key in population_keys:
             training_hash = hashlib.sha256(population_key.encode("utf-8")).hexdigest()
             for zone in ("front", "back"):
@@ -385,7 +387,18 @@ class ChampionLifecycleTests(unittest.TestCase):
                     receipt=receipt, expected_generation=registered["generation"],
                     actor="test-suite",
                 )
-                transitions.append({
+                if not first_transitions:
+                    with self.assertRaisesRegex(LifecycleError, "atomic three-slot generation"):
+                        self.store.promote_candidate(
+                            population_key=population_key, zone=zone, artifact_id=artifact_id,
+                            expected_champion_artifact_id=None,
+                            expected_generation=validated["generation"],
+                            approval=approval_for(artifact_id, population_key, zone, receipt),
+                            approval_verifier=self.verifier, actor="test-suite",
+                        )
+                first_artifacts[(population_key, zone)] = artifact_id
+                first_receipts[(population_key, zone)] = receipt
+                first_transitions.append({
                     "population_key": population_key,
                     "zone": zone,
                     "artifact_id": artifact_id,
@@ -393,18 +406,84 @@ class ChampionLifecycleTests(unittest.TestCase):
                     "approval": approval_for(artifact_id, population_key, zone, receipt),
                 })
                 generation = validated["generation"]
-        promoted = self.store.promote_three_slot_generation(
-            transitions,
-            expected_generation=generation,
-            approval_verifier=self.verifier,
-            actor="test-suite",
+        first_promoted = self.store.promote_three_slot_generation(
+            first_transitions, expected_generation=generation,
+            approval_verifier=self.verifier, actor="test-suite",
+        )
+
+        second_transitions = []
+        second_artifacts = {}
+        generation = first_promoted["generation"]
+        for population_key in population_keys:
+            training_hash = hashlib.sha256(("second:" + population_key).encode("utf-8")).hexdigest()
+            for zone in ("front", "back"):
+                artifact_payload = model_payload(zone, training_hash)
+                from lottery.subset_model.artifact import create_artifact
+                _, artifact_id = create_artifact(artifact_payload)
+                registered = self.store.register_challenger(
+                    artifact_payload, population_key=population_key, zone=zone,
+                    expected_generation=generation, actor="test-suite",
+                )
+                receipt = evaluation_receipt(
+                    artifact_id, population_key, zone,
+                    snapshot_hash=training_hash,
+                    population_eligibility="verified_regime",
+                    population_evidence_sha256=evidence_hash,
+                )
+                validated = self.store.validate_candidate(
+                    population_key=population_key, zone=zone, artifact_id=artifact_id,
+                    receipt=receipt, expected_generation=registered["generation"],
+                    actor="test-suite",
+                )
+                old_id = first_artifacts[(population_key, zone)]
+                second_artifacts[(population_key, zone)] = artifact_id
+                second_transitions.append({
+                    "population_key": population_key,
+                    "zone": zone,
+                    "artifact_id": artifact_id,
+                    "expected_champion_artifact_id": old_id,
+                    "approval": approval_for(
+                        artifact_id, population_key, zone, receipt,
+                        expected_champion_artifact_id=old_id,
+                    ),
+                })
+                generation = validated["generation"]
+        second_promoted = self.store.promote_three_slot_generation(
+            second_transitions, expected_generation=generation,
+            approval_verifier=self.verifier, actor="test-suite",
+        )
+
+        restore_transitions = []
+        for population_key in population_keys:
+            for zone in ("front", "back"):
+                first_id = first_artifacts[(population_key, zone)]
+                second_id = second_artifacts[(population_key, zone)]
+                first_receipt = first_receipts[(population_key, zone)]
+                restore_transitions.append({
+                    "population_key": population_key,
+                    "zone": zone,
+                    "artifact_id": first_id,
+                    "expected_champion_artifact_id": second_id,
+                    "approval": approval_for(
+                        first_id, population_key, zone, first_receipt,
+                        action="restore", expected_champion_artifact_id=second_id,
+                    ),
+                })
+        restored = self.store.restore_three_slot_generation(
+            restore_transitions, expected_generation=second_promoted["generation"],
+            approval_verifier=self.verifier, actor="test-suite",
         )
         resolved = self.store.resolve_three_slot_generation(
             population_keys, approval_verifier=self.verifier
         )
         self.assertEqual(len(resolved["slots"]), 6)
-        self.assertEqual(resolved["registry_generation"], promoted["generation"])
-        self.assertEqual(resolved["champion_generation"], promoted["generation"])
+        self.assertEqual(resolved["registry_generation"], restored["generation"])
+        self.assertEqual(resolved["champion_generation"], restored["generation"])
+        resolved_ids = {
+            (item["population_key"], item["zone"]): item["artifact_id"]
+            for item in resolved["slots"]
+        }
+        self.assertEqual(resolved_ids, first_artifacts)
 
     def test_three_slot_resolution_is_all_or_none_and_reverifies_approval(self):
         with self.assertRaisesRegex(LifecycleError, "exactly three distinct"):
