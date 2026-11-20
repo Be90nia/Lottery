@@ -71,7 +71,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             zone="back",
             population_key="pooled-equipment-blind",
             training_snapshot_sha256=sha("training-late"),
-            training_last_draw_id="26131",
+            training_last_draw_id="26132",
             training_last_draw_date="2026-11-20",
             registry_generation=7,
             forecast_policy_version="prospective-v1",
@@ -138,7 +138,7 @@ class ProspectiveLedgerTests(unittest.TestCase):
             log_probability=lambda record, subset: -10.5,
         )
         self.assertEqual(score["negative_log_score"], 10.5)
-        self.assertAlmostEqual(score["uniform_negative_log_score"], 12.690449)
+        self.assertAlmostEqual(score["uniform_negative_log_score"], 12.6904475)
         self.assertAlmostEqual(score["candidate_minus_uniform_nll"], 10.5 - score["uniform_negative_log_score"])
         retry = self.ledger.score_forecast(
             forecast_id=self.forecast["forecast_id"],
