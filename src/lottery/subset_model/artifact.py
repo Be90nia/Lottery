@@ -295,30 +295,33 @@ def validate_model_artifact(payload: dict) -> None:
             or set(model_configuration).difference(model_configuration_fields)):
         raise ArtifactValidationError("model_configuration must use only registered family fields")
     if family == "conditional_poisson":
-        legacy_fields = {"model_family", "zone", "population_size", "selection_size",
-                         "feature_schema_hash", "baseline", "alpha", "half_life", "weighting"}
+        identity_fields = {
+            "model_family", "zone", "population_size", "selection_size", "feature_schema_hash",
+        }
+        legacy_fields = identity_fields | {"baseline", "alpha", "half_life", "weighting"}
         solver_fields = legacy_fields | {
             "optimizer", "gradient_tolerance", "max_iterations", "history_size",
         }
-        if set(model_configuration) not in (legacy_fields, solver_fields):
-            raise ArtifactValidationError("conditional-Poisson configuration must use the legacy or registered solver schema")
-        if (model_configuration.get("baseline") not in ("expanding", "ewma")
-                or type(model_configuration.get("alpha")) not in (int, float)
-                or not math.isfinite(model_configuration["alpha"])
-                or model_configuration["alpha"] <= 0
-                or not isinstance(model_configuration.get("weighting"), str)
-                or not model_configuration["weighting"]):
-            raise ArtifactValidationError("conditional-Poisson baseline configuration is invalid")
-        half_life = model_configuration.get("half_life")
-        if half_life is not None and (
-            type(half_life) not in (int, float) or not math.isfinite(half_life) or half_life <= 0
-        ):
-            raise ArtifactValidationError("conditional-Poisson half_life must be null or positive")
-        if model_configuration["baseline"] == "expanding":
-            if half_life is not None or model_configuration["weighting"] != "expanding":
-                raise ArtifactValidationError("expanding baseline cannot carry an EWMA half-life")
-        elif half_life is None or model_configuration["weighting"] != "2^(-lag/100)":
-            raise ArtifactValidationError("EWMA baseline must bind its registered half-life weighting")
+        if set(model_configuration) not in (identity_fields, legacy_fields, solver_fields):
+            raise ArtifactValidationError("conditional-Poisson configuration must use a registered schema")
+        if set(model_configuration) in (legacy_fields, solver_fields):
+            if (model_configuration.get("baseline") not in ("expanding", "ewma")
+                    or type(model_configuration.get("alpha")) not in (int, float)
+                    or not math.isfinite(model_configuration["alpha"])
+                    or model_configuration["alpha"] <= 0
+                    or not isinstance(model_configuration.get("weighting"), str)
+                    or not model_configuration["weighting"]):
+                raise ArtifactValidationError("conditional-Poisson baseline configuration is invalid")
+            half_life = model_configuration.get("half_life")
+            if half_life is not None and (
+                type(half_life) not in (int, float) or not math.isfinite(half_life) or half_life <= 0
+            ):
+                raise ArtifactValidationError("conditional-Poisson half_life must be null or positive")
+            if model_configuration["baseline"] == "expanding":
+                if half_life is not None or model_configuration["weighting"] != "expanding":
+                    raise ArtifactValidationError("expanding baseline cannot carry an EWMA half-life")
+            elif half_life is None or model_configuration["weighting"] != "2^(-lag/100)":
+                raise ArtifactValidationError("EWMA baseline must bind its registered half-life weighting")
         if set(model_configuration) == solver_fields:
             if (model_configuration.get("optimizer") != "conditional_poisson_calibration_lbfgs_strong_wolfe_v2"
                     or model_configuration.get("gradient_tolerance") != 1e-8
