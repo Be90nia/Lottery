@@ -522,6 +522,15 @@ class ChampionLifecycleTests(unittest.TestCase):
                     actor="test-suite",
                 )
                 old_id = first_artifacts[(population_key, zone)]
+                prospective_shadow = shadow_receipt(
+                    artifact_id, population_key, zone, old_id
+                )
+                shadowed = self.store.mark_shadow(
+                    population_key=population_key, zone=zone, artifact_id=artifact_id,
+                    shadow_receipt=prospective_shadow,
+                    expected_generation=validated["generation"], actor="test-suite",
+                )
+                shadow_hash = hashlib.sha256(canonicalize(prospective_shadow)).hexdigest()
                 second_artifacts[(population_key, zone)] = artifact_id
                 second_transitions.append({
                     "population_key": population_key,
@@ -531,9 +540,10 @@ class ChampionLifecycleTests(unittest.TestCase):
                     "approval": approval_for(
                         artifact_id, population_key, zone, receipt,
                         expected_champion_artifact_id=old_id,
+                        shadow_receipt_sha256=shadow_hash,
                     ),
                 })
-                generation = validated["generation"]
+                generation = shadowed["generation"]
         second_promoted = self.store.promote_three_slot_generation(
             second_transitions, expected_generation=generation,
             approval_verifier=self.verifier, actor="test-suite",
