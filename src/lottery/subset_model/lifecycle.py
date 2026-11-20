@@ -126,6 +126,7 @@ def _new_slot(population_key: str, zone: str) -> dict[str, Any]:
         "zone": zone,
         "champion_artifact_id": None,
         "challenger_artifact_id": None,
+        "shadow_artifact_id": None,
         "retired_artifact_ids": [],
         "rejected_artifact_ids": [],
         "validation": {},
@@ -289,7 +290,7 @@ class ChampionLifecycle:
                     or (slot.get("suspension_reason") is not None
                         and not isinstance(slot["suspension_reason"], str))):
                 raise LifecycleError("Champion registry slot state is malformed")
-            for field in ("champion_artifact_id", "challenger_artifact_id"):
+            for field in ("champion_artifact_id", "challenger_artifact_id", "shadow_artifact_id"):
                 artifact_id = slot.get(field)
                 if artifact_id is not None:
                     self._artifact_path(artifact_id)
@@ -444,6 +445,7 @@ class ChampionLifecycle:
                 for artifact_id in (
                     slot.get("champion_artifact_id"),
                     slot.get("challenger_artifact_id"),
+                    slot.get("shadow_artifact_id"),
                     *slot.get("retired_artifact_ids", []),
                 ):
                     if artifact_id is not None:
@@ -489,12 +491,12 @@ class ChampionLifecycle:
             slots = dict(registry["slots"])
             slot = dict(slots.get(key, _new_slot(population_key, zone)))
             existing = slot.get("challenger_artifact_id")
-            if existing == artifact_id:
+            if existing == artifact_id or slot.get("shadow_artifact_id") == artifact_id:
                 return registry
             if artifact_id in slot.get("rejected_artifact_ids", []):
                 raise LifecycleError("a rejected immutable artifact cannot be re-registered")
-            if existing is not None:
-                raise LifecycleError("slot already has a challenger; reject it before registering another")
+            if existing is not None or slot.get("shadow_artifact_id") is not None:
+                raise LifecycleError("slot already has a challenger or shadow; resolve it before registering another")
             slot["challenger_artifact_id"] = artifact_id
             slots[key] = slot
             new_registry = {**registry, "slots": slots}
@@ -596,6 +598,38 @@ class ChampionLifecycle:
         _write_once(self.approvals / f"{digest}.json", raw)
         return raw, digest
 
+    def mark_shadow(
+        self, *, population_key: str, zone: str, artifact_id: str,
+        expected_generation: int, actor: str, workflow_run_id: str | None = None,
+    ) -> dict[str, Any]:
+        key = _slot_key(population_key, zone)
+        with ledger_lock(self.registry_path):
+            self._recover_locked()
+            registry = self._read_registry()
+            if registry["generation"] != expected_generation:
+                raise StaleRegistryError("registry generation changed before shadow transition")
+            slots = dict(registry["slots"])
+            if key not in slots or slots[key].get("challenger_artifact_id") != artifact_id:
+                raise LifecycleError("only the registered challenger can enter shadow")
+            validation = slots[key].get("validation", {}).get(artifact_id)
+            if not validation or validation.get("eligible") is not True:
+                raise LifecycleError("candidate cannot enter shadow before passing validation")
+            slot = dict(slots[key])
+            if slot.get("shadow_artifact_id") is not None:
+                raise LifecycleError("slot already contains a shadow artifact")
+            slot["challenger_artifact_id"] = None
+            slot["shadow_artifact_id"] = artifact_id
+            slots[key] = slot
+            new_registry = {**registry, "slots": slots}
+            return self._commit_locked(
+                registry, new_registry, event_type="candidate_entered_shadow",
+                population_key=population_key, zone=zone, artifact_id=artifact_id,
+                previous_artifact_id=slot.get("champion_artifact_id"), actor=actor,
+                workflow_run_id=workflow_run_id,
+                evidence_sha256=validation["receipt_sha256"],
+                reason_code="validated_candidate_waiting_for_shadow_outcomes",
+            )
+
     def promote_candidate(
         self,
         *,
@@ -614,8 +648,9 @@ class ChampionLifecycle:
         if slot_snapshot is None:
             raise LifecycleError("slot does not exist")
         validation = slot_snapshot.get("validation", {}).get(artifact_id)
-        if slot_snapshot.get("challenger_artifact_id") != artifact_id or not validation or validation.get("eligible") is not True:
-            raise LifecycleError("challenger has not passed every preregistered promotion gate")
+        if (artifact_id not in (slot_snapshot.get("challenger_artifact_id"), slot_snapshot.get("shadow_artifact_id"))
+                or not validation or validation.get("eligible") is not True):
+            raise LifecycleError("challenger/shadow artifact has not passed every preregistered promotion gate")
         if slot_snapshot.get("champion_artifact_id") != expected_champion_artifact_id:
             raise StaleRegistryError("expected Champion artifact does not match current registry")
         manifest_hash = validation["evaluation_manifest_sha256"]
@@ -633,8 +668,9 @@ class ChampionLifecycle:
                 raise StaleRegistryError("registry generation changed before promotion")
             slots = dict(registry["slots"])
             slot = dict(slots[key])
-            if slot.get("challenger_artifact_id") != artifact_id or slot.get("champion_artifact_id") != expected_champion_artifact_id:
-                raise StaleRegistryError("Champion/challenger pointers changed before promotion")
+            if (artifact_id not in (slot.get("challenger_artifact_id"), slot.get("shadow_artifact_id"))
+                    or slot.get("champion_artifact_id") != expected_champion_artifact_id):
+                raise StaleRegistryError("Champion/challenger/shadow pointers changed before promotion")
             if slot.get("suspended") is True:
                 raise LifecycleError("suspended slot cannot be promoted without an explicit revalidation")
             retired = list(slot.get("retired_artifact_ids", []))
@@ -643,6 +679,7 @@ class ChampionLifecycle:
             slot["retired_artifact_ids"] = retired
             slot["champion_artifact_id"] = artifact_id
             slot["challenger_artifact_id"] = None
+            slot["shadow_artifact_id"] = None
             slot["suspended"] = False
             slot["suspension_reason"] = None
             approvals = dict(slot.get("approval", {}))
@@ -672,14 +709,15 @@ class ChampionLifecycle:
             if registry["generation"] != expected_generation:
                 raise StaleRegistryError("registry generation changed before rejection")
             slots = dict(registry["slots"])
-            if key not in slots or slots[key].get("challenger_artifact_id") != artifact_id:
-                raise LifecycleError("artifact is not the current challenger")
+            if key not in slots or artifact_id not in (slots[key].get("challenger_artifact_id"), slots[key].get("shadow_artifact_id")):
+                raise LifecycleError("artifact is not the current challenger or shadow")
             slot = dict(slots[key])
             rejected = list(slot.get("rejected_artifact_ids", []))
             if artifact_id not in rejected:
                 rejected.append(artifact_id)
             slot["rejected_artifact_ids"] = rejected
             slot["challenger_artifact_id"] = None
+            slot["shadow_artifact_id"] = None
             slots[key] = slot
             new_registry = {**registry, "slots": slots}
             return self._commit_locked(
