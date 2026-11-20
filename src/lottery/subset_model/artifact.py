@@ -178,6 +178,15 @@ def validate_model_artifact(payload: dict) -> None:
         raise ArtifactValidationError("training_cutoff_draw_id must be a non-empty string")
     if not isinstance(payload["code_revision"], str) or not payload["code_revision"]:
         raise ArtifactValidationError("code_revision must be a non-empty string")
+    for hash_field in ("feature_schema_hash", "model_configuration_hash"):
+        value = payload.get(hash_field)
+        if (not isinstance(value, str) or not value.startswith("sha256:")
+                or len(value) != 71):
+            raise ArtifactValidationError(f"{hash_field} must be a sha256 content identifier")
+        try:
+            int(value[7:], 16)
+        except ValueError as exc:
+            raise ArtifactValidationError(f"{hash_field} must contain hexadecimal SHA-256") from exc
     if not isinstance(payload["runtime"], dict) or not isinstance(payload["fit_diagnostics"], dict):
         raise ArtifactValidationError("runtime and fit_diagnostics must be objects")
     if type(payload["forecast_ready"]) is not bool:
