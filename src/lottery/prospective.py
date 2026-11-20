@@ -354,14 +354,6 @@ class ProspectiveLedger:
 
         with ledger_lock(self.path):
             snapshot = self._snapshot_unlocked()
-            current_id = snapshot["latest_outcome_by_draw"].get(draw_id)
-            if supersedes_outcome_id != current_id:
-                if supersedes_outcome_id is not None or current_id is not None:
-                    raise ProspectiveLedgerError("correction must explicitly supersede the current outcome version")
-            if supersedes_outcome_id is not None:
-                previous = snapshot["outcomes"].get(supersedes_outcome_id)
-                if previous is None or previous["draw_id"] != draw_id:
-                    raise ProspectiveLedgerError("superseded outcome must belong to the same draw")
             record = {
                 "schema": OUTCOME_SCHEMA,
                 "draw_id": draw_id,
@@ -375,6 +367,17 @@ class ProspectiveLedger:
                 "reason_code": reason_code,
             }
             record["outcome_id"] = _sha(canonicalize(record))
+            existing = snapshot["outcomes"].get(record["outcome_id"])
+            if existing is not None:
+                return existing
+            current_id = snapshot["latest_outcome_by_draw"].get(draw_id)
+            if supersedes_outcome_id != current_id:
+                if supersedes_outcome_id is not None or current_id is not None:
+                    raise ProspectiveLedgerError("correction must explicitly supersede the current outcome version")
+            if supersedes_outcome_id is not None:
+                previous = snapshot["outcomes"].get(supersedes_outcome_id)
+                if previous is None or previous["draw_id"] != draw_id:
+                    raise ProspectiveLedgerError("superseded outcome must belong to the same draw")
             self._append_locked(f"outcome:{record['outcome_id']}", "outcome_observed", record)
             return record
 
