@@ -100,6 +100,8 @@ class ProspectiveLedger:
                 event = parse_json_strict(line)
             except ArtifactValidationError as exc:
                 raise ProspectiveLedgerError(f"event line {line_number} is invalid JSON") from exc
+            if not isinstance(event, dict):
+                raise ProspectiveLedgerError(f"event line {line_number} must be an object")
             body = {key: value for key, value in event.items() if key != "event_hash"}
             event_id = event.get("event_id")
             if (not isinstance(event_id, str) or not event_id or event_id in seen
@@ -214,6 +216,7 @@ class ProspectiveLedger:
         self,
         *,
         target_draw_id: str,
+        target_draw_at_utc: str,
         target_cutoff_utc: str,
         issued_at_utc: str,
         artifact_sha256: str,
@@ -255,8 +258,13 @@ class ProspectiveLedger:
                 raise ProspectiveLedgerError(f"{field} must be a non-empty string")
         if re.fullmatch(r"[0-9a-f]{40}", code_commit) is None:
             raise ProspectiveLedgerError("code_commit must be a full lowercase Git SHA")
+        draw_at = _timestamp(target_draw_at_utc, "target_draw_at_utc")
         cutoff = _timestamp(target_cutoff_utc, "target_cutoff_utc")
         issued = _timestamp(issued_at_utc, "issued_at_utc")
+        if draw_at <= cutoff:
+            raise ProspectiveLedgerError("target draw time must be strictly after its forecast cutoff")
+        if population_key not in ("pooled", "pooled-equipment-blind") and source_evidence_sha256 is None:
+            raise ProspectiveLedgerError("set-conditioned forecast requires a source evidence manifest digest")
         try:
             training_date = date.fromisoformat(training_last_draw_date)
         except (TypeError, ValueError) as exc:
@@ -271,6 +279,7 @@ class ProspectiveLedger:
         record = {
             "schema": FORECAST_SCHEMA,
             "target_draw_id": target_draw_id,
+            "target_draw_at_utc": draw_at.isoformat(),
             "target_cutoff_utc": cutoff.isoformat(),
             "issued_at_utc": issued.isoformat(),
             "artifact_sha256": artifact_sha256,
@@ -412,9 +421,9 @@ class ProspectiveLedger:
             if forecast["target_draw_id"] != outcome["draw_id"]:
                 raise ProspectiveLedgerError("forecast and outcome target draw IDs differ")
             if _timestamp(outcome["observed_at_utc"], "observed_at_utc") < _timestamp(
-                forecast["target_cutoff_utc"], "target_cutoff_utc"
+                forecast["target_draw_at_utc"], "target_draw_at_utc"
             ):
-                raise ProspectiveLedgerError("outcome observation predates the forecast target cutoff")
+                raise ProspectiveLedgerError("outcome observation predates the scheduled target draw")
             actual = outcome["front_numbers"] if forecast["zone"] == "front" else outcome["back_numbers"]
             if actual is None:
                 raise ProspectiveLedgerError("validated outcome is missing the forecast zone subset")
