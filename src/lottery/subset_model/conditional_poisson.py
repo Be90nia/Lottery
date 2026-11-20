@@ -89,8 +89,6 @@ def _backward_dp(log_weights: tuple[float, ...], k: int) -> list[list[float]]:
     return suffix
 
 
-@dataclass(frozen=True)
-
 def _dot(left: Sequence[float], right: Sequence[float]) -> float:
     if len(left) != len(right):
         raise ValueError("vector dimensions do not match")
@@ -170,6 +168,7 @@ def _strong_wolfe_search(
     return None
 
 
+@dataclass(frozen=True)
 class CalibrationResult:
     terminal_status: str
     converged: bool
