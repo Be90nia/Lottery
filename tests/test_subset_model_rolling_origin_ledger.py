@@ -71,6 +71,7 @@ def _fixture(fail_candidate=False):
         theta = [0.0] * len(active)
         candidate_payload = {
             "schema_version": 1, "artifact_schema": "lottery.subset-probability-model/v1",
+                    "artifact_type": "fitted_model",
             "model_family": "complete_subset_exponential",
             "zone": zone, "population_size": m, "selection_size": k,
             "support": support, "feature_schema": feature_schema,
@@ -133,6 +134,7 @@ def _fixture(fail_candidate=False):
             }
             baseline_payload = {
                 "schema_version": 1, "artifact_schema": "lottery.subset-probability-model/v1",
+                    "artifact_type": "fitted_model",
                 "model_family": "conditional_poisson",
                 "zone": zone, "population_size": m, "selection_size": k,
                 "support": support, "feature_schema": schema,
