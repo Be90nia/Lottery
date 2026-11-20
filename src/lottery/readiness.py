@@ -161,6 +161,7 @@ def evaluate_readiness(
         record = fault_index.get(fault_id)
         if record is None:
             fault_states[fault_id] = "UNKNOWN"
+            blockers.append(f"{fault_id}:missing_fault_result")
             continue
         declared = record.get("status")
         if declared not in STATUSES:
