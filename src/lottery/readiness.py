@@ -109,6 +109,11 @@ def _validate_manifest(manifest: dict[str, Any]) -> None:
         raise ReadinessError("source_commit must be a full lowercase Git SHA")
     if not isinstance(manifest["protected_release_ref"], str) or not manifest["protected_release_ref"]:
         raise ReadinessError("protected_release_ref must be non-empty")
+    if manifest["policy_version"] != "LOT-067-v1":
+        raise ReadinessError("release manifest uses an unsupported readiness policy version")
+    if type(manifest["holdout_accessed"]) is not bool:
+        raise ReadinessError("holdout_accessed must be boolean")
+
     pins = manifest["workflow_action_pins"]
     if not isinstance(pins, list):
         raise ReadinessError("workflow_action_pins must be an array")
@@ -132,12 +137,33 @@ def _validate_manifest(manifest: dict[str, Any]) -> None:
     _require_sha(runtime.get("dependency_lock_sha256"), "runtime.dependency_lock_sha256", nullable=True)
 
     data = manifest["data"]
-    _require_sha(data.get("snapshot_sha256"), "data.snapshot_sha256", nullable=True)
-    _require_sha(data.get("evidence_ledger_sha256"), "data.evidence_ledger_sha256", nullable=True)
+    for field in ("snapshot_sha256", "evidence_ledger_sha256", "regime_evidence_sha256"):
+        _require_sha(data.get(field), f"data.{field}", nullable=True)
+
+    for index, artifact in enumerate(manifest["model_artifacts"]):
+        artifact = _require_mapping(artifact, f"model_artifacts[{index}]")
+        if any(not isinstance(artifact.get(field), str) or not artifact[field]
+               for field in ("artifact_id", "model_family", "training_cutoff_draw_id")):
+            raise ReadinessError(f"model_artifacts[{index}] is missing identity or cutoff fields")
+        _require_sha(artifact.get("artifact_sha256"), f"model_artifacts[{index}].artifact_sha256")
+        _require_sha(artifact.get("feature_schema_hash"), f"model_artifacts[{index}].feature_schema_hash")
 
     experiments = manifest["experiments"]
     _require_sha(experiments.get("registry_sha256"), "experiments.registry_sha256", nullable=True)
     _require_sha(experiments.get("evaluation_manifest_sha256"), "experiments.evaluation_manifest_sha256", nullable=True)
+
+    champion = manifest["champion"]
+    if champion.get("registry_generation") is not None and (
+            not isinstance(champion["registry_generation"], str) or not champion["registry_generation"]):
+        raise ReadinessError("champion.registry_generation must be a non-empty string or null")
+    _require_sha(champion.get("registry_receipt_sha256"), "champion.registry_receipt_sha256", nullable=True)
+    if not isinstance(champion.get("slots"), list):
+        raise ReadinessError("champion.slots must be an array")
+
+    sampler = manifest["sampler"]
+    for field in ("algorithm", "rng_version"):
+        if not isinstance(sampler.get(field), str) or not sampler[field]:
+            raise ReadinessError(f"sampler.{field} must be non-empty")
 
     feedback = manifest["feedback"]
     _require_sha(feedback.get("ledger_sha256"), "feedback.ledger_sha256", nullable=True)
@@ -145,17 +171,93 @@ def _validate_manifest(manifest: dict[str, Any]) -> None:
 
     storage = manifest["storage"]
     _require_sha(storage.get("commit_receipt_sha256"), "storage.commit_receipt_sha256", nullable=True)
+    _require_sha(storage.get("backup_manifest_sha256"), "storage.backup_manifest_sha256", nullable=True)
     _require_sha(storage.get("restore_drill_receipt_sha256"), "storage.restore_drill_receipt_sha256", nullable=True)
+    if storage.get("backup_generation") is not None and (
+            not isinstance(storage["backup_generation"], str) or not storage["backup_generation"]):
+        raise ReadinessError("storage.backup_generation must be a non-empty string or null")
 
     security = manifest["security"]
-    for field in ("sbom_sha256", "security_scan_sha256", "provenance_sha256", "rollback_drill_receipt_sha256"):
+    for field in ("sbom_sha256", "security_scan_sha256", "provenance_sha256",
+                  "signer_registry_sha256", "rollback_drill_receipt_sha256"):
         _require_sha(security.get(field), f"security.{field}", nullable=True)
+    if security.get("signer_id") is not None and (
+            not isinstance(security["signer_id"], str) or not security["signer_id"]):
+        raise ReadinessError("security.signer_id must be a non-empty string or null")
 
     activation = manifest["activation"]
     for field in ("scheduled_collection_enabled", "shadow_only",
                   "user_facing_serving_enabled", "automatic_promotion_enabled"):
         if type(activation.get(field)) is not bool:
             raise ReadinessError(f"activation.{field} must be boolean")
+
+
+def _required_hashes_for_gate(manifest: dict[str, Any], gate_id: str) -> set[str]:
+    """Return manifest-bound hashes that the gate's evidence must actually contain."""
+    if gate_id == "G0":
+        if not manifest["workflow_action_pins"]:
+            raise ReadinessError("G0 cannot PASS without reviewed full-SHA workflow/action pins")
+        values = [
+            manifest["runtime"].get("dependency_lock_sha256"),
+            manifest["security"].get("sbom_sha256"),
+            manifest["security"].get("security_scan_sha256"),
+            manifest["security"].get("provenance_sha256"),
+        ]
+    elif gate_id == "G1":
+        values = [
+            manifest["data"].get("snapshot_sha256"),
+            manifest["data"].get("evidence_ledger_sha256"),
+        ]
+    elif gate_id == "G2":
+        if not manifest["model_artifacts"]:
+            raise ReadinessError("G2 cannot PASS without immutable model artifacts")
+        values = [
+            digest
+            for artifact in manifest["model_artifacts"]
+            for digest in (artifact["artifact_sha256"], artifact["feature_schema_hash"])
+        ]
+    elif gate_id == "G3":
+        values = [
+            manifest["experiments"].get("registry_sha256"),
+            manifest["experiments"].get("evaluation_manifest_sha256"),
+        ]
+    elif gate_id == "G4":
+        values = [manifest["data"].get("regime_evidence_sha256")]
+    elif gate_id == "G5":
+        slot_problem = _validate_three_slots(manifest)
+        if slot_problem:
+            raise ReadinessError("G5 cannot PASS: " + slot_problem)
+        values = [manifest["champion"].get("registry_receipt_sha256")]
+        values.extend(slot["artifact_sha256"] for slot in manifest["champion"]["slots"])
+    elif gate_id == "G6":
+        values = [
+            manifest["feedback"].get("ledger_sha256"),
+            manifest["feedback"].get("monitoring_policy_sha256"),
+        ]
+    elif gate_id == "G7":
+        if not manifest["storage"].get("backup_generation"):
+            raise ReadinessError("G7 cannot PASS without a backup generation")
+        values = [
+            manifest["storage"].get("commit_receipt_sha256"),
+            manifest["storage"].get("backup_manifest_sha256"),
+            manifest["storage"].get("restore_drill_receipt_sha256"),
+        ]
+    elif gate_id == "G8":
+        if not manifest["security"].get("signer_id"):
+            raise ReadinessError("G8 cannot PASS without a verified signer identity")
+        values = [
+            manifest["security"].get("sbom_sha256"),
+            manifest["security"].get("security_scan_sha256"),
+            manifest["security"].get("provenance_sha256"),
+            manifest["security"].get("signer_registry_sha256"),
+            manifest["security"].get("rollback_drill_receipt_sha256"),
+        ]
+    else:
+        raise ReadinessError(f"unknown gate ID: {gate_id}")
+    if any(value is None for value in values):
+        raise ReadinessError(f"{gate_id} cannot PASS while a required manifest digest is missing")
+    return set(values)
+
 
 
 def _verify_evidence(evidence: Any, evidence_root: Path, gate_id: str) -> list[dict[str, str]]:
@@ -182,7 +284,7 @@ def _verify_evidence(evidence: Any, evidence_root: Path, gate_id: str) -> list[d
     return verified
 
 
-def _validate_gates(gate_document: dict[str, Any], evidence_root: Path) -> tuple[dict[str, dict], list[dict]]:
+def _validate_gates(gate_document: dict[str, Any], evidence_root: Path, manifest_for_gate: dict[str, Any]) -> tuple[dict[str, dict], list[dict]]:
     if gate_document.get("schema_version") != "lottery.release-gates/v1":
         raise ReadinessError("unsupported release gate-results schema")
     gates = gate_document.get("gates")
@@ -208,6 +310,17 @@ def _validate_gates(gate_document: dict[str, Any], evidence_root: Path) -> tuple
         verified = _verify_evidence(gate.get("evidence", []), evidence_root, gate_id)
         if status == "PASS" and not verified:
             raise ReadinessError(f"{gate_id} cannot PASS without at least one verified evidence file")
+        if status == "PASS":
+            required_hashes = _required_hashes_for_gate(
+                # Manifest is supplied to _validate_gates by build_readiness_report.
+                manifest_for_gate, gate_id,
+            )
+            supplied_hashes = {item["sha256"] for item in verified}
+            missing_hashes = required_hashes.difference(supplied_hashes)
+            if missing_hashes:
+                raise ReadinessError(
+                    f"{gate_id} evidence does not bind required manifest hashes: {sorted(missing_hashes)}"
+                )
         fault_tests = gate.get("fault_tests", [])
         if not isinstance(fault_tests, list):
             raise ReadinessError(f"{gate_id}.fault_tests must be an array")
@@ -292,7 +405,7 @@ def build_readiness_report(
     manifest, manifest_raw = _read_json(release_manifest_path)
     gates_doc, gates_raw = _read_json(gate_results_path)
     _validate_manifest(manifest)
-    gate_map, evidence = _validate_gates(gates_doc, evidence_root)
+    gate_map, evidence = _validate_gates(gates_doc, evidence_root, manifest)
     blockers: list[str] = []
     statuses = {gate_id: gate_map[gate_id]["status"] for gate_id in GATE_IDS}
 
