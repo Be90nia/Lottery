@@ -11,8 +11,10 @@ from lottery.subset_model.artifact import (
     ArtifactValidationError,
     canonicalize,
     create_artifact,
+    create_derived_cache,
     parse_json_strict,
     verify_artifact,
+    verify_derived_cache,
 )
 
 
@@ -225,6 +227,48 @@ class ModelArtifactTests(unittest.TestCase):
         self.assertEqual(verified["artifact_id"], artifact_id)
         self.assertEqual(verified["artifact_type"], "fit_failure")
         self.assertFalse(verified["forecast_ready"])
+
+    def test_derived_cache_is_content_addressed_and_bound_to_parent(self):
+        _, parent_id = create_artifact(exponential_payload())
+        cache_payload = {
+            "schema_version": 1,
+            "artifact_schema": "lottery.derived-cache/v1",
+            "cache_type": "log-partition-fixture",
+            "parent_artifact_id": parent_id,
+            "cache_payload": {"support_count": 324632, "log_partition": 12.0},
+            "code_revision": "b" * 40,
+            "runtime": {"python": "3.12"},
+        }
+        raw, cache_id = create_derived_cache(cache_payload)
+        verified = verify_derived_cache(raw, expected_parent_artifact_id=parent_id)
+        self.assertEqual(verified["artifact_id"], cache_id)
+        self.assertEqual(verified["parent_artifact_id"], parent_id)
+
+        _, other_parent_id = create_artifact(dict(exponential_payload(), theta=[0.2, -0.2, 0.3, 0.0, 0.05]))
+        with self.assertRaisesRegex(ArtifactValidationError, "parent artifact ID mismatch"):
+            verify_derived_cache(raw, expected_parent_artifact_id=other_parent_id)
+
+    def test_derived_cache_rejects_unknown_fields_and_tampering(self):
+        _, parent_id = create_artifact(exponential_payload())
+        cache_payload = {
+            "schema_version": 1,
+            "artifact_schema": "lottery.derived-cache/v1",
+            "cache_type": "test",
+            "parent_artifact_id": parent_id,
+            "cache_payload": {"value": 1},
+            "code_revision": "b" * 40,
+            "runtime": {},
+            "mutable_latest": True,
+        }
+        with self.assertRaisesRegex(ArtifactValidationError, "registered schema"):
+            create_derived_cache(cache_payload)
+
+        cache_payload.pop("mutable_latest")
+        raw, _ = create_derived_cache(cache_payload)
+        altered = json.loads(raw)
+        altered["cache_payload"]["value"] = 2
+        with self.assertRaises(ArtifactValidationError):
+            verify_derived_cache(canonicalize(altered), expected_parent_artifact_id=parent_id)
 
     def test_conditional_poisson_family_requires_centered_weights(self):
         p = 2 / 12
