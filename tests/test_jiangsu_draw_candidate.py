@@ -167,8 +167,8 @@ def make_inputs(root, *, mismatch=False, new_draw_id="26132"):
         "report_sha256": coverage_sha,
         "summary": {
             "primary_verified_draws": 2,
-            "out_of_inventory_observation_count": 1,
         },
+        "out_of_inventory_observation_count": 1,
         "out_of_inventory_observations": [{
             "draw_id": new_draw_id,
             "draw_date": "2026-11-18" if new_draw_id == "26132" else "2026-11-20",
@@ -252,6 +252,15 @@ class JiangsuDrawCandidateTests(unittest.TestCase):
         self.assertTrue(live[-1]["eligible_for_live_candidate_generation"])
         self.assertFalse(live[-1]["eligible_for_reported_index_pilot"])
         self.assertEqual(receipt["live_set_index_counts"], {"1": 2, "2": 1, "3": 0})
+
+    def test_out_of_inventory_count_mismatch_fails_closed(self):
+        coverage = json.loads(self.inputs["coverage_path"].read_text(encoding="utf-8"))
+        coverage["out_of_inventory_observation_count"] = 2
+        self.inputs["coverage_path"].write_text(json.dumps(coverage), encoding="utf-8")
+        with self.assertRaisesRegex(
+            JiangsuDrawCandidateError, "coverage report out-of-inventory count is inconsistent"
+        ):
+            self.build()
 
     def test_historical_result_mismatch_fails_closed(self):
         inputs = make_inputs(self.root / "mismatch", mismatch=True)
