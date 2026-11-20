@@ -34,40 +34,63 @@ def _fixture(fail_candidate=False):
          ["sum", "odd_count", "range", "adjacent_count"]),
     ):
         zero_variance = []
+        means = [0.0] * len(active)
+        stds = [1.0] * len(active)
         target = rows[300][f"{zone}_numbers"]
         feature_schema = {
-            "feature_schema_version": "lot-051-symmetric-v1",
-            "candidate_feature_names": candidate_features,
-            "active_feature_names": active,
-            "zero_variance_features": zero_variance,
+            "version": "lot-051-symmetric-v1", "names": active,
+            "uniform_means": means, "uniform_population_stds": stds,
             "zero_variance_policy": "drop_and_record",
-            "population_size": m, "selection_size": k,
+            "candidate_names": candidate_features,
+            "zero_variance_features": zero_variance,
         }
         _, candidate_config_hash, _ = _model_identity(
-            zone, "exponential_family", m, k, active, candidate_features, zero_variance)
+            zone, "exponential_family", m, k, active, candidate_features,
+            zero_variance, means, stds)
+        runtime = {"python": "3.12"}
+        training = {
+            "snapshot_sha256": snapshot_hash, "row_count": 300,
+            "first_draw_id": rows[0]["draw_id"],
+            "last_draw_id": rows[299]["draw_id"],
+            "cutoff_draw_id": rows[299]["draw_id"], "cutoff_inclusive": True,
+        }
+        support = {
+            "population_size": m, "selection_size": k,
+            "support_count": math.comb(m, k), "subset_order": "lexicographic_ascending",
+        }
+        theta = [0.0] * len(active)
         candidate_payload = {
-            "schema_version": 1, "model_family": "complete_subset_exponential",
+            "schema_version": 1, "artifact_schema": "lottery.subset-probability-model/v1",
+            "model_family": "complete_subset_exponential",
             "zone": zone, "population_size": m, "selection_size": k,
+            "support": support, "feature_schema": feature_schema,
+            "parameters": {"theta": theta, "parameter_order": "feature_schema.names"},
+            "normalization": {"method": "full_support_logsumexp",
+                              "log_partition": 0.0, "numeric_dtype": "float64"},
+            "fit": {"status": "converged", "termination_reason": "gradient_tolerance",
+                    "objective": 0.0, "gradient_inf_norm": 0.0, "iterations": 1,
+                    "optimizer": "L-BFGS-B", "lambda": 1.0},
+            "training": training,
+            "implementation": {
+                "code_revision": "abc123", "runtime": runtime, "library_versions": {},
+                "rng_algorithm": "injected_rng.random_v1",
+            },
             "training_snapshot_sha256": snapshot_hash,
             "training_first_draw_id": rows[0]["draw_id"],
             "training_last_draw_id": rows[299]["draw_id"],
             "training_cutoff_draw_id": rows[299]["draw_id"],
-            "training_row_count": 300, "code_revision": "abc123",
-            "runtime": {"python": "3.12"},
+            "training_row_count": 300, "code_revision": "abc123", "runtime": runtime,
             "fit_diagnostics": {"terminal_status": "converged", "converged": True,
                                 "gradient_infinity_norm": 0.0},
             "forecast_ready": False,
             "feature_schema_version": "lot-051-symmetric-v1",
             "candidate_feature_names": candidate_features,
-            "active_feature_names": active,
-            "zero_variance_features": zero_variance,
+            "active_feature_names": active, "zero_variance_features": zero_variance,
             "feature_schema_hash": _hash_object(feature_schema),
             "model_configuration_hash": candidate_config_hash,
-            "theta": [0.0] * len(active),
-            "objective_scale": "mean_nll", "regularization_lambda": 1.0,
+            "theta": theta, "objective_scale": "mean_nll", "regularization_lambda": 1.0,
         }
         candidate_bytes, candidate_id = create_artifact(candidate_payload)
-
         artifacts = {"candidate": {
             "artifact_id": candidate_id, "payload": json.loads(candidate_bytes)
         }}
@@ -78,23 +101,44 @@ def _fixture(fail_candidate=False):
             "ewma": math.log(math.comb(m, k)) - 0.05,
             "exponential_family": math.log(math.comb(m, k)) - 0.2,
         }
+        p = k / m
+        baseline_schema = {
+            "version": "lottery-item-inclusion/v1",
+            "names": [f"item_{item}" for item in range(1, m + 1)],
+            "uniform_means": [p] * m,
+            "uniform_population_stds": [(p * (1.0 - p)) ** 0.5] * m,
+            "zero_variance_policy": "not_applicable_item_indicator_schema",
+        }
         for baseline in ("expanding", "ewma"):
             _, config_hash, schema = _model_identity(
-                zone, baseline, m, k, active, candidate_features, zero_variance)
+                zone, baseline, m, k, active, candidate_features,
+                zero_variance, means, stds)
             baseline_payload = {
-                "schema_version": 1, "model_family": "conditional_poisson",
+                "schema_version": 1, "artifact_schema": "lottery.subset-probability-model/v1",
+                "model_family": "conditional_poisson",
                 "zone": zone, "population_size": m, "selection_size": k,
+                "support": support, "feature_schema": schema,
+                "parameters": {"centered_log_weights": [0.0] * m,
+                               "parameter_order": "feature_schema.names"},
+                "normalization": {"method": "exact_conditional_poisson_log_space_dp",
+                                  "log_partition": 0.0, "numeric_dtype": "float64"},
+                "fit": {"status": "converged", "termination_reason": "gradient_tolerance",
+                        "objective": 0.0, "gradient_inf_norm": 0.0, "iterations": 1,
+                        "optimizer": "conditional_poisson_calibration_lbfgs_v1", "lambda": None},
+                "training": training,
+                "implementation": {
+                    "code_revision": "abc123", "runtime": runtime, "library_versions": {},
+                    "rng_algorithm": "conditional_poisson_backward_dp_with_injected_rng_v1",
+                },
                 "training_snapshot_sha256": snapshot_hash,
                 "training_first_draw_id": rows[0]["draw_id"],
                 "training_last_draw_id": rows[299]["draw_id"],
                 "training_cutoff_draw_id": rows[299]["draw_id"],
-                "training_row_count": 300, "code_revision": "abc123",
-                "runtime": {"python": "3.12"},
+                "training_row_count": 300, "code_revision": "abc123", "runtime": runtime,
                 "fit_diagnostics": {"terminal_status": "converged", "converged": True},
                 "forecast_ready": False,
                 "centered_log_weights": [0.0] * m,
-                "target_marginals": [k / m] * m,
-                "achieved_marginals": [k / m] * m,
+                "target_marginals": [p] * m, "achieved_marginals": [p] * m,
                 "solver_status": "converged", "calibration_residual": 0.0,
                 "feature_schema_hash": _hash_object(schema),
                 "model_configuration_hash": config_hash,
@@ -142,9 +186,12 @@ def _fixture(fail_candidate=False):
             "active_feature_names": active,
             "candidate_feature_names": candidate_features,
             "zero_variance_features": [],
+            "uniform_feature_means": [0.0] * len(active),
+            "uniform_feature_standard_deviations": [1.0] * len(active),
             "target_records": [records[zone]],
         }
     return rows, result
+
 
 
 class ImmutableRollingOriginLedgerTests(unittest.TestCase):
