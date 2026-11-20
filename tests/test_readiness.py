@@ -148,6 +148,19 @@ class ReadinessTests(unittest.TestCase):
             write_readiness_report(report, output)
         self.assertEqual(output.read_bytes(), original)
 
+    def test_closed_input_schemas_reject_unknown_fields(self):
+        bad_manifest = dict(self.manifest, unexpected=True)
+        with self.assertRaisesRegex(ReadinessError, "unknown fields"):
+            evaluate_readiness(bad_manifest, self.gates, self.faults, self.evidence)
+        bad_gates = [dict(item) for item in self.gates]
+        bad_gates[0]["unexpected"] = True
+        with self.assertRaisesRegex(ReadinessError, "gate result has missing or unknown"):
+            evaluate_readiness(self.manifest, bad_gates, self.faults, self.evidence)
+        bad_faults = [dict(item) for item in self.faults]
+        bad_faults[0]["unexpected"] = True
+        with self.assertRaisesRegex(ReadinessError, "fault result has missing or unknown"):
+            evaluate_readiness(self.manifest, self.gates, bad_faults, self.evidence)
+
     def test_machine_readable_policy_matches_evaluator_constants(self):
         policy_path = Path(__file__).resolve().parents[1] / "schemas" / "readiness-policy-v1.json"
         policy = json.loads(policy_path.read_text(encoding="utf-8"))
