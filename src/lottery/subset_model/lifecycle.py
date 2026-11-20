@@ -232,9 +232,11 @@ def _validate_approval(
     if approval["action"] not in ("promote", "restore"):
         raise LifecycleError("approval action must be promote or restore")
     try:
-        datetime.fromisoformat(approval["issued_at_utc"].replace("Z", "+00:00"))
+        issued_at = datetime.fromisoformat(approval["issued_at_utc"].replace("Z", "+00:00"))
     except ValueError as exc:
         raise LifecycleError("approval issued_at_utc must be ISO-8601") from exc
+    if issued_at.tzinfo is None:
+        raise LifecycleError("approval issued_at_utc must include a timezone")
 
 
 class ChampionLifecycle:
@@ -382,6 +384,10 @@ class ChampionLifecycle:
         reason_code: str | None,
         event_details: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if not isinstance(actor, str) or not actor:
+            raise LifecycleError("lifecycle actor must be a non-empty string")
+        if workflow_run_id is not None and (not isinstance(workflow_run_id, str) or not workflow_run_id):
+            raise LifecycleError("workflow_run_id must be a non-empty string or null")
         operation_id = uuid4().hex
         new_registry["generation"] = registry["generation"] + 1
         new_registry["last_operation_id"] = operation_id
@@ -501,6 +507,8 @@ class ChampionLifecycle:
                 return registry
             if artifact_id in slot.get("rejected_artifact_ids", []):
                 raise LifecycleError("a rejected immutable artifact cannot be re-registered")
+            if artifact_id == slot.get("champion_artifact_id") or artifact_id in slot.get("retired_artifact_ids", []):
+                raise LifecycleError("an existing Champion/retired artifact cannot be re-registered as challenger")
             if existing is not None or slot.get("shadow_artifact_id") is not None:
                 raise LifecycleError("slot already has a challenger or shadow; resolve it before registering another")
             slot["challenger_artifact_id"] = artifact_id
@@ -686,6 +694,8 @@ class ChampionLifecycle:
                 slot.get("challenger_artifact_id"), slot.get("shadow_artifact_id")
             ):
                 raise LifecycleError("three-slot candidate is not registered as challenger or shadow")
+            if slot.get("suspended") is True:
+                raise LifecycleError("suspended slots require an approved restore before promotion")
             if slot.get("champion_artifact_id") != expected_champion:
                 raise StaleRegistryError("three-slot expected Champion pointer does not match")
             validation = slot.get("validation", {}).get(artifact_id)
@@ -959,6 +969,7 @@ class ChampionLifecycle:
         if (retired_receipt.get("artifact_id") != artifact_id
                 or retired_receipt.get("population_key") != population_key
                 or retired_receipt.get("zone") != zone
+                or retired_receipt.get("training_population_sha256") != artifact.get("training_snapshot_sha256")
                 or artifact.get("zone") != zone):
             raise LifecycleError("retired artifact evidence/zone is incompatible with slot")
         if expected_champion_artifact_id is not None:
