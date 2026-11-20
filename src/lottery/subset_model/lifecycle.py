@@ -125,7 +125,7 @@ def _validate_evaluation_receipt(receipt: dict[str, Any]) -> bool:
     required = {
         "schema_version", "artifact_id", "population_key", "zone",
         "evaluation_manifest_sha256", "target_list_sha256", "target_count",
-        "population_eligibility", "population_evidence_sha256", "full_coverage", "preregistered", "holdout_accessed", "numerical_pass",
+        "training_population_sha256", "population_eligibility", "population_evidence_sha256", "full_coverage", "preregistered", "holdout_accessed", "numerical_pass",
         "calibration_pass", "stability_pass", "front_improved", "back_improved",
         "multiplicity_pass", "uniform_non_regression_pass", "decision", "reason_code",
     }
@@ -133,7 +133,7 @@ def _validate_evaluation_receipt(receipt: dict[str, Any]) -> bool:
         raise LifecycleError("evaluation receipt fields do not match the closed LOT-060 schema")
     if receipt["schema_version"] != EVALUATION_SCHEMA:
         raise LifecycleError("unsupported lifecycle evaluation schema")
-    for field in ("evaluation_manifest_sha256", "target_list_sha256"):
+    for field in ("evaluation_manifest_sha256", "target_list_sha256", "training_population_sha256"):
         if not _is_sha(receipt[field]):
             raise LifecycleError(f"{field} must be a lowercase SHA-256")
     if receipt["population_eligibility"] not in (
@@ -510,7 +510,11 @@ class ChampionLifecycle:
             or receipt["artifact_id"] != artifact_id
         ):
             raise LifecycleError("evaluation receipt scope does not match challenger")
-        self._load_artifact(artifact_id)
+        artifact = self._load_artifact(artifact_id)
+        if receipt["training_population_sha256"] != artifact["training_snapshot_sha256"]:
+            raise LifecycleError("evaluation training population hash does not match immutable artifact")
+        if receipt["population_eligibility"] == "verified_regime" and artifact["training_row_count"] < 300:
+            raise LifecycleError("verified regime artifact requires at least 300 prior same-key training rows")
         receipt_raw = canonicalize(receipt)
         receipt_hash = _sha(receipt_raw)
         _write_once(self.evaluations / f"{receipt_hash}.json", receipt_raw)
@@ -783,6 +787,8 @@ class ChampionLifecycle:
         registry = self.snapshot()
         resolved = []
         evidence_by_population: dict[str, str] = {}
+        training_by_population: dict[str, str] = {}
+        artifacts_by_zone: dict[str, set[str]] = {"front": set(), "back": set()}
         for population_key in population_keys:
             for zone in ZONES:
                 key = _slot_key(population_key, zone)
@@ -806,6 +812,15 @@ class ChampionLifecycle:
                 previous_evidence_hash = evidence_by_population.setdefault(population_key, evidence_hash)
                 if previous_evidence_hash != evidence_hash:
                     raise LifecycleError("front/back artifacts for a population key bind different evidence manifests")
+                training_hash = receipt["training_population_sha256"]
+                if training_hash != artifact.get("training_snapshot_sha256") or artifact.get("training_row_count", 0) < 300:
+                    raise LifecycleError("three-slot artifact training population/cutoff is invalid")
+                previous_training_hash = training_by_population.setdefault(population_key, training_hash)
+                if previous_training_hash != training_hash:
+                    raise LifecycleError("front/back artifacts for a population key use different training populations")
+                if artifact_id in artifacts_by_zone[zone]:
+                    raise LifecycleError("three population slots cannot reuse the same zone artifact")
+                artifacts_by_zone[zone].add(artifact_id)
                 if not _is_sha(approval_hash):
                     raise LifecycleError("Champion approval reference is malformed")
                 approval_path = self.approvals / f"{approval_hash}.json"
@@ -838,4 +853,6 @@ class ChampionLifecycle:
                     "training_cutoff_draw_id": artifact["training_cutoff_draw_id"],
                     "approval_sha256": approval_hash,
                 })
+        if len(set(training_by_population.values())) != 3:
+            raise LifecycleError("three population slots must bind three distinct training populations")
         return {"registry_generation": registry["generation"], "slots": resolved}
