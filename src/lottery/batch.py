@@ -36,7 +36,7 @@ def _derive_slot_seed(
     })
     return hmac.new(
         master_seed,
-        b"lottery.three-slot-rng.v1\\0" + context,
+        b"lottery.three-slot-rng.v1|" + context,
         hashlib.sha256,
     ).digest()
 
