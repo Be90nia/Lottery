@@ -8,6 +8,7 @@ from lottery.subset_model.artifact import canonicalize
 from lottery.subset_model.lifecycle import (
     APPROVAL_SCHEMA,
     EVALUATION_SCHEMA,
+    SHADOW_SCHEMA,
     ChampionLifecycle,
     LifecycleError,
     StaleRegistryError,
@@ -139,8 +140,36 @@ def evaluation_receipt(artifact_id, population_key, zone, *, passed=True,
     }
 
 
+def shadow_receipt(artifact_id, population_key, zone, champion_artifact_id, *,
+                   first_target_draw_id="26131", last_target_draw_id="26140",
+                   full_coverage=True):
+    return {
+        "schema_version": SHADOW_SCHEMA,
+        "shadow_manifest_sha256": "d" * 64,
+        "artifact_id": artifact_id,
+        "population_key": population_key,
+        "zone": zone,
+        "champion_artifact_id": champion_artifact_id,
+        "target_list_sha256": "e" * 64,
+        "source_evidence_sha256": "f" * 64,
+        "first_target_draw_id": first_target_draw_id,
+        "last_target_draw_id": last_target_draw_id,
+        "target_count": 10,
+        "full_coverage": full_coverage,
+        "targets_after_training_cutoff": True,
+        "holdout_accessed": False,
+        "champion_non_regression_pass": True,
+        "uniform_non_regression_pass": True,
+        "calibration_pass": True,
+        "probability_integrity_pass": True,
+        "stability_pass": True,
+        "decision": "PASS" if full_coverage else "FAIL",
+        "reason_code": "" if full_coverage else "incomplete_shadow_coverage",
+    }
+
+
 def approval_for(artifact_id, population_key, zone, receipt, *, action="promote",
-                 expected_champion_artifact_id=None):
+                 expected_champion_artifact_id=None, shadow_receipt_sha256=None):
     receipt_hash = hashlib.sha256(canonicalize(receipt)).hexdigest()
     return {
         "schema_version": APPROVAL_SCHEMA,
@@ -152,6 +181,7 @@ def approval_for(artifact_id, population_key, zone, receipt, *, action="promote"
         "expected_champion_artifact_id": expected_champion_artifact_id,
         "evaluation_manifest_sha256": receipt["evaluation_manifest_sha256"],
         "evaluation_receipt_sha256": receipt_hash,
+        "shadow_receipt_sha256": shadow_receipt_sha256,
         "policy_version": "LOT-060-v1",
         "issued_at_utc": "2026-11-20T10:00:00+00:00",
         "signer_id": "fixture-signer",
