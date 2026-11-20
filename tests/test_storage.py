@@ -1,7 +1,9 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+from lottery import storage as storage_module
 from lottery.storage import (
     FileSystemObjectStore,
     IdempotencyConflict,
@@ -115,6 +117,34 @@ class FileSystemObjectStoreTests(unittest.TestCase):
         self.assertTrue(report["read_only"])
         self.assertEqual(report["committed_unreferenced"], [staged["operation_id"]])
         self.assertFalse(self.store.pointers.exists())
+
+    def test_retry_recovers_crash_after_pointer_replace_before_receipt(self):
+        staged, _ = self.stage_validate_commit(key="crash-publication")
+        real_write_once = storage_module._atomic_immutable
+
+        def fail_publication_receipt(path, raw):
+            if path.parent == self.store.publications:
+                raise OSError("simulated crash before publication receipt")
+            return real_write_once(path, raw)
+
+        with patch("lottery.storage._atomic_immutable", side_effect=fail_publication_receipt):
+            with self.assertRaisesRegex(OSError, "simulated crash"):
+                self.store.publish_pointer(
+                    name="active-inventory",
+                    operation_id=staged["operation_id"],
+                    expected_generation=0,
+                )
+        pointer = self.store.read_pointer("active-inventory")
+        self.assertEqual(pointer["generation"], 1)
+        recovered = self.store.publish_pointer(
+            name="active-inventory",
+            operation_id=staged["operation_id"],
+            expected_generation=0,
+        )
+        self.assertEqual(recovered, pointer)
+        self.assertTrue(
+            (self.store.publications / f"active-inventory.{staged['operation_id']}.json").exists()
+        )
 
     def test_pointer_detects_tampered_object_bytes(self):
         staged, _ = self.stage_validate_commit(key="tamper-me")
