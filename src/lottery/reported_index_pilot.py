@@ -239,6 +239,8 @@ def build_reported_index_pilot(
     comparisons: dict[str, dict[str, Any]] = {}
     raw_pvalues: dict[str, float] = {}
     model_summary: dict[str, Any] = {}
+    target_scores_by_index: dict[str, dict[str, dict[str, list[float]]]] = {}
+    failures: list[dict[str, Any]] = []
     for index in ("1", "2", "3"):
         group = per_index[index]
         index_summary = {
@@ -275,11 +277,34 @@ def build_reported_index_pilot(
             for model in MODELS:
                 row_scores["model_scores"][model] = {}
                 for zone, field, pool_size, pick in ZONES:
-                    nll, brier, marginal_log_loss, residual = _calibrated_nll(
-                        train, target, field=field, pool_size=pool_size,
-                        pick=pick, model=model,
-                    )
+                    try:
+                        nll, brier, marginal_log_loss, residual = _calibrated_nll(
+                            train, target, field=field, pool_size=pool_size,
+                            pick=pick, model=model,
+                        )
+                    except ReportedIndexPilotError as exc:
+                        failure_status = "fit_failed" if "calibration failed" in str(exc) else "runner_error"
+                        failure = {
+                            "reported_set_index": int(index),
+                            "target_draw_id": target["draw_id"],
+                            "target_draw_date": target["draw_date"],
+                            "model": model,
+                            "zone": zone,
+                            "terminal_status": failure_status,
+                            "failure_reason": str(exc),
+                        }
+                        row_scores["model_scores"][model][zone] = {
+                            "terminal_status": failure_status,
+                            "failure_reason": str(exc),
+                            "exact_subset_nll": None,
+                            "marginal_brier": None,
+                            "marginal_log_loss": None,
+                            "maximum_marginal_calibration_residual": None,
+                        }
+                        failures.append(failure)
+                        continue
                     row_scores["model_scores"][model][zone] = {
+                        "terminal_status": "scored",
                         "exact_subset_nll": nll,
                         "marginal_brier": brier,
                         "marginal_log_loss": marginal_log_loss,
@@ -294,40 +319,74 @@ def build_reported_index_pilot(
         for model in MODELS:
             index_summary["models"][model] = {}
             for zone, _, _, _ in ZONES:
+                scored_count = len(target_scores[model][zone])
                 index_summary["models"][model][zone] = {
-                    "mean_exact_subset_nll": sum(target_scores[model][zone]) / target_counts[index],
-                    "mean_marginal_brier": sum(target_brier[model][zone]) / target_counts[index],
-                    "mean_marginal_log_loss": sum(target_marginal_log_loss[model][zone]) / target_counts[index],
-                    "maximum_calibration_residual": max(calibration_residuals[model][zone]),
+                    "expected_target_count": target_counts[index],
+                    "scored_target_count": scored_count,
+                    "complete_coverage": scored_count == target_counts[index],
+                    "mean_exact_subset_nll": (
+                        sum(target_scores[model][zone]) / scored_count if scored_count else None
+                    ),
+                    "mean_marginal_brier": (
+                        sum(target_brier[model][zone]) / scored_count if scored_count else None
+                    ),
+                    "mean_marginal_log_loss": (
+                        sum(target_marginal_log_loss[model][zone]) / scored_count if scored_count else None
+                    ),
+                    "maximum_calibration_residual": (
+                        max(calibration_residuals[model][zone])
+                        if calibration_residuals[model][zone] else None
+                    ),
                 }
         model_summary[index] = index_summary
+        target_scores_by_index[index] = target_scores
 
-        for challenger in ("expanding", "ewma"):
-            for zone, _, _, _ in ZONES:
-                key = f"index_{index}:{challenger}:{zone}:exact_subset_nll"
-                deltas = [
-                    candidate - uniform
-                    for candidate, uniform in zip(
-                        target_scores[challenger][zone], target_scores["uniform"][zone]
-                    )
-                ]
-                seed = RANDOM_SEED + int(index) * 100 + (0 if challenger == "expanding" else 10) + (0 if zone == "front" else 1)
-                ci = _moving_block_ci(deltas, seed=seed)
-                pvalue, complete_blocks = _block_sign_flip_pvalue(deltas, seed=seed + 1)
-                comparisons[key] = {
-                    "reported_set_index": int(index),
-                    "challenger": challenger,
-                    "zone": zone,
-                    "target_count": len(deltas),
-                    "complete_non_overlapping_blocks": complete_blocks,
-                    "mean_exact_subset_nll_delta_vs_uniform": ci["mean_delta"],
-                    "moving_block_bootstrap_ci_95": ci,
-                    "block_sign_flip_p_value_one_sided_improvement": pvalue,
-                    "negative_delta_is_better": True,
-                }
-                raw_pvalues[key] = pvalue
+    expected_score_count = sum(target_counts.values()) * len(MODELS) * len(ZONES)
+    actual_score_count = sum(
+        len(target_scores_by_index[index][model][zone])
+        for index in ("1", "2", "3")
+        for model in MODELS
+        for zone, _, _, _ in ZONES
+    )
+    complete_coverage = actual_score_count == expected_score_count and not failures
+    enough_blocks = all(
+        target_counts[index] // BLOCK_LENGTH >= MIN_COMPLETE_BLOCKS
+        for index in ("1", "2", "3")
+    )
+    inference_status = (
+        "passed" if complete_coverage and enough_blocks
+        else "suppressed_incomplete_coverage" if not complete_coverage
+        else "suppressed_insufficient_blocks"
+    )
+    if complete_coverage and enough_blocks:
+        for index in ("1", "2", "3"):
+            target_scores = target_scores_by_index[index]
+            for challenger in ("expanding", "ewma"):
+                for zone, _, _, _ in ZONES:
+                    key = f"index_{index}:{challenger}:{zone}:exact_subset_nll"
+                    deltas = [
+                        candidate - uniform
+                        for candidate, uniform in zip(
+                            target_scores[challenger][zone], target_scores["uniform"][zone]
+                        )
+                    ]
+                    seed = RANDOM_SEED + int(index) * 100 + (0 if challenger == "expanding" else 10) + (0 if zone == "front" else 1)
+                    ci = _moving_block_ci(deltas, seed=seed)
+                    pvalue, complete_blocks = _block_sign_flip_pvalue(deltas, seed=seed + 1)
+                    comparisons[key] = {
+                        "reported_set_index": int(index),
+                        "challenger": challenger,
+                        "zone": zone,
+                        "target_count": len(deltas),
+                        "complete_non_overlapping_blocks": complete_blocks,
+                        "mean_exact_subset_nll_delta_vs_uniform": ci["mean_delta"],
+                        "moving_block_bootstrap_ci_95": ci,
+                        "block_sign_flip_p_value_one_sided_improvement": pvalue,
+                        "negative_delta_is_better": True,
+                    }
+                    raw_pvalues[key] = pvalue
 
-    adjusted = _holm_adjust(raw_pvalues)
+    adjusted = _holm_adjust(raw_pvalues) if raw_pvalues else {}
     for key, result in comparisons.items():
         result["holm_adjusted_p_value"] = adjusted[key]
         result["significant_after_holm_alpha_0_05"] = adjusted[key] < 0.05
@@ -357,10 +416,24 @@ def build_reported_index_pilot(
             "sampler": "conditional-Poisson rejective fixed-size distribution",
             "sampler_calibration_tolerance": 1e-8,
         },
+        "score_coverage": {
+            "expected_model_zone_target_records": expected_score_count,
+            "scored_model_zone_target_records": actual_score_count,
+            "failure_count": len(failures),
+            "complete_coverage": complete_coverage,
+        },
         "inference": {
+            "status": inference_status,
+            "suppression_reason": (
+                "one_or_more_model_zone_target_fits_failed"
+                if not complete_coverage else
+                "fewer_than_the_preregistered_minimum_complete_blocks"
+                if not enough_blocks else None
+            ),
             "primary_metric": "exact unordered-subset negative log likelihood",
             "secondary_metrics": ["marginal Brier", "marginal log loss", "calibration residual"],
             "comparison_count": len(comparisons),
+            "expected_comparison_count": 12,
             "block_length": BLOCK_LENGTH,
             "bootstrap_replicates": BOOTSTRAP_REPLICATES,
             "sign_flip_replicates": SIGN_FLIP_REPLICATES,
@@ -371,12 +444,21 @@ def build_reported_index_pilot(
         "per_index_summary": model_summary,
         "comparisons": comparisons,
         "score_rows": score_rows,
+        "failures": failures,
         "significant_index_specific_improvements": all_significant,
         "decision": (
+            "incomplete_due_to_explicit_fit_failures_no_inference"
+            if not complete_coverage else
+            "insufficient_blocks_no_inference"
+            if not enough_blocks else
             "some_index_specific_signal_requires_independent_replication"
             if all_significant else "no_confirmed_index_specific_improvement_over_uniform"
         ),
-        "reported_index_pilot_status": "research_only_complete",
+        "reported_index_pilot_status": (
+            "research_only_complete" if complete_coverage and enough_blocks
+            else "incomplete_with_explicit_failures" if not complete_coverage
+            else "inference_suppressed_insufficient_blocks"
+        ),
         "physical_identity_claim": "none",
         "physical_model_eligibility": "blocked_regime_unresolved",
         "predictive_efficacy_claim": "none",
