@@ -155,6 +155,16 @@ class FileSystemObjectStoreTests(unittest.TestCase):
             (self.store.publications / f"active-inventory.{staged['operation_id']}.json").exists()
         )
 
+    def test_reconciliation_distinguishes_orphan_objects_and_corrupt_receipts(self):
+        staged, _ = self.stage_validate_commit(key="orphan-after-receipt-corruption")
+        operation_id = staged["operation_id"]
+        object_hash = staged["content_sha256"]
+        self.store._commit_path(operation_id).write_bytes(b"{")
+        report = self.store.reconcile()
+        self.assertIn(operation_id, report["corrupt_commit_receipts"])
+        self.assertIn(object_hash, report["orphan_objects"])
+        self.assertNotIn(object_hash, report["corrupt_objects"])
+
     def test_pointer_detects_tampered_object_bytes(self):
         staged, _ = self.stage_validate_commit(key="tamper-me")
         pointer = self.store.publish_pointer(
