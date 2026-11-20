@@ -58,10 +58,10 @@ class CheckpointIntegrityTests(unittest.TestCase):
             "model_configuration_hash": "sha256:" + "d" * 64,
             "training_first_draw_id": "07001", "training_last_draw_id": "09053",
             "training_cutoff_draw_id": "09053", "training_row_count": 300,
-            "code_revision": "abc123", "runtime": runtime,
+            "code_revision": "a" * 40, "runtime": runtime,
             "fit_diagnostics": {"terminal_status": "converged", "converged": True},
             "forecast_ready": False, "training": training,
-            "implementation": {"code_revision": "abc123", "runtime": runtime,
+            "implementation": {"code_revision": "a" * 40, "runtime": runtime,
                                "library_versions": {}, "rng_algorithm": "injected_rng.random_v1"},
             "normalization": {"method": "full_support_logsumexp",
                               "log_partition": 0.0, "numeric_dtype": "float64"},
@@ -114,7 +114,7 @@ class CheckpointIntegrityTests(unittest.TestCase):
         conditional["fit"]["lambda"] = None
         conditional["fit"]["optimizer"] = "conditional_poisson_calibration_lbfgs_v1"
         conditional["implementation"] = {
-            "code_revision": "abc123", "runtime": runtime, "library_versions": {},
+            "code_revision": "a" * 40, "runtime": runtime, "library_versions": {},
             "rng_algorithm": "conditional_poisson_backward_dp_with_injected_rng_v1",
         }
         conditional["feature_schema_hash"] = "sha256:" + hashlib.sha256(canonicalize(conditional["feature_schema"])).hexdigest()
