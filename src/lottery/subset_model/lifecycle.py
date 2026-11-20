@@ -125,6 +125,7 @@ def _new_slot(population_key: str, zone: str) -> dict[str, Any]:
         "population_key": population_key,
         "zone": zone,
         "champion_artifact_id": None,
+        "champion_generation": None,
         "challenger_artifact_id": None,
         "shadow_artifact_id": None,
         "retired_artifact_ids": [],
@@ -290,6 +291,8 @@ class ChampionLifecycle:
                     or (slot.get("suspension_reason") is not None
                         and not isinstance(slot["suspension_reason"], str))):
                 raise LifecycleError("Champion registry slot state is malformed")
+            if slot.get("champion_generation") is not None and type(slot["champion_generation"]) is not int:
+                raise LifecycleError("Champion slot generation is malformed")
             for field in ("champion_artifact_id", "challenger_artifact_id", "shadow_artifact_id"):
                 artifact_id = slot.get(field)
                 if artifact_id is not None:
@@ -377,6 +380,7 @@ class ChampionLifecycle:
         workflow_run_id: str | None,
         evidence_sha256: str | None,
         reason_code: str | None,
+        event_details: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         operation_id = uuid4().hex
         new_registry["generation"] = registry["generation"] + 1
@@ -396,6 +400,8 @@ class ChampionLifecycle:
             "reason_code": reason_code,
             "registry_generation": new_registry["generation"],
         }
+        if event_details:
+            event.update(event_details)
         journal = {
             "operation_id": operation_id,
             "old_generation": registry["generation"],
@@ -653,6 +659,9 @@ class ChampionLifecycle:
             raise LifecycleError("challenger/shadow artifact has not passed every preregistered promotion gate")
         if slot_snapshot.get("champion_artifact_id") != expected_champion_artifact_id:
             raise StaleRegistryError("expected Champion artifact does not match current registry")
+        evaluation = self._load_evaluation_receipt(validation["receipt_sha256"])
+        if evaluation["population_eligibility"] == "verified_regime":
+            raise LifecycleError("verified regime candidates must be promoted as one atomic three-slot generation")
         manifest_hash = validation["evaluation_manifest_sha256"]
         _, approval_hash = self._verified_approval(
             approval, approval_verifier=approval_verifier, action="promote",
@@ -678,6 +687,7 @@ class ChampionLifecycle:
                 retired.append(expected_champion_artifact_id)
             slot["retired_artifact_ids"] = retired
             slot["champion_artifact_id"] = artifact_id
+            slot["champion_generation"] = registry["generation"] + 1
             slot["challenger_artifact_id"] = None
             slot["shadow_artifact_id"] = None
             slot["suspended"] = False
@@ -773,6 +783,8 @@ class ChampionLifecycle:
             raise LifecycleError("retired artifact no longer has a passing validation receipt")
         artifact = self._load_artifact(artifact_id)
         retired_receipt = self._load_evaluation_receipt(validation["receipt_sha256"])
+        if retired_receipt["population_eligibility"] == "verified_regime":
+            raise LifecycleError("verified regime rollback must restore the complete three-slot generation atomically")
         if (retired_receipt.get("artifact_id") != artifact_id
                 or retired_receipt.get("population_key") != population_key
                 or retired_receipt.get("zone") != zone
@@ -807,6 +819,7 @@ class ChampionLifecycle:
                 retired.append(expected_champion_artifact_id)
             slot["retired_artifact_ids"] = retired
             slot["champion_artifact_id"] = artifact_id
+            slot["champion_generation"] = registry["generation"] + 1
             slot["suspended"] = False
             slot["suspension_reason"] = None
             approvals = dict(slot.get("approval", {}))
@@ -843,6 +856,7 @@ class ChampionLifecycle:
             raise LifecycleError("three-slot resolution requires the protected approval verifier")
         registry = self.snapshot()
         resolved = []
+        champion_generations: set[int] = set()
         evidence_by_population: dict[str, str] = {}
         training_by_population: dict[str, str] = {}
         artifacts_by_zone: dict[str, set[str]] = {"front": set(), "back": set()}
@@ -853,6 +867,10 @@ class ChampionLifecycle:
                 if not slot or slot.get("suspended") is True:
                     raise LifecycleError("three-slot generation is incomplete or contains a suspended slot")
                 artifact_id = slot.get("champion_artifact_id")
+                champion_generation = slot.get("champion_generation")
+                if type(champion_generation) is not int:
+                    raise LifecycleError("three-slot Champion pointers were not published as one generation")
+                champion_generations.add(champion_generation)
                 approval_hash = slot.get("approval", {}).get(artifact_id)
                 validation = slot.get("validation", {}).get(artifact_id)
                 if not artifact_id or not approval_hash or not validation or validation.get("eligible") is not True:
@@ -912,4 +930,6 @@ class ChampionLifecycle:
                 })
         if len(set(training_by_population.values())) != 3:
             raise LifecycleError("three population slots must bind three distinct training populations")
-        return {"registry_generation": registry["generation"], "slots": resolved}
+        if len(champion_generations) != 1:
+            raise LifecycleError("three-slot Champion pointers do not share one atomic generation")
+        return {"registry_generation": registry["generation"], "champion_generation": next(iter(champion_generations)), "slots": resolved}
