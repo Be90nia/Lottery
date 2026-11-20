@@ -141,7 +141,7 @@ class ProspectiveLedger:
 
     def _snapshot_unlocked(self) -> dict[str, Any]:
         forecasts: dict[str, dict[str, Any]] = {}
-        forecast_keys: dict[tuple[str, str, str, str, str], str] = {}
+        forecast_keys: dict[tuple[str, str, str, str, str, str], str] = {}
         outcomes: dict[str, dict[str, Any]] = {}
         latest_outcome: dict[str, str] = {}
         superseded: set[str] = set()
@@ -160,7 +160,8 @@ class ProspectiveLedger:
                     raise ProspectiveLedgerError("forecast record content hash mismatch")
                 forecast_id = record["forecast_id"]
                 key = (
-                    record["artifact_sha256"], record["target_draw_id"], record["zone"],
+                    record["front_artifact_sha256"], record["back_artifact_sha256"],
+                    record["target_draw_id"], record["zone"],
                     record["population_key"], record["forecast_policy_version"],
                 )
                 if forecast_id in forecasts or key in forecast_keys:
@@ -239,9 +240,17 @@ class ProspectiveLedger:
         target_draw_id: str,
         target_draw_at_utc: str,
         target_cutoff_utc: str,
+        target_cutoff_timezone_source: str,
         issued_at_utc: str,
         artifact_sha256: str,
         distribution_sha256: str,
+        front_artifact_sha256: str,
+        back_artifact_sha256: str,
+        front_distribution_sha256: str,
+        back_distribution_sha256: str,
+        active_registry_snapshot_id: str,
+        lifecycle_state: str,
+        model_spec_sha256: str,
         zone: str,
         population_key: str,
         training_snapshot_sha256: str,
@@ -251,10 +260,11 @@ class ProspectiveLedger:
         training_last_draw_date: str,
         registry_generation: int,
         forecast_policy_version: str,
+        scoring_policy_version: str,
         model_family: str,
         code_commit: str,
         runtime: str,
-        source_evidence_sha256: str | None = None,
+        source_evidence_manifest_sha256: str | None = None,
     ) -> dict[str, Any]:
         if not isinstance(target_draw_id, str) or re.fullmatch(r"\d{5}", target_draw_id) is None:
             raise ProspectiveLedgerError("target_draw_id must be a five-digit ID")
@@ -271,16 +281,28 @@ class ProspectiveLedger:
         for field, value in (
             ("artifact_sha256", artifact_sha256),
             ("distribution_sha256", distribution_sha256),
+            ("front_artifact_sha256", front_artifact_sha256),
+            ("back_artifact_sha256", back_artifact_sha256),
+            ("front_distribution_sha256", front_distribution_sha256),
+            ("back_distribution_sha256", back_distribution_sha256),
+            ("active_registry_snapshot_id", active_registry_snapshot_id),
+            ("model_spec_sha256", model_spec_sha256),
             ("training_snapshot_sha256", training_snapshot_sha256),
         ):
             if not _is_sha(value):
                 raise ProspectiveLedgerError(f"{field} must be a lowercase SHA-256")
-        if source_evidence_sha256 is not None and not _is_sha(source_evidence_sha256):
-            raise ProspectiveLedgerError("source_evidence_sha256 must be null or a lowercase SHA-256")
+        if source_evidence_manifest_sha256 is not None and not _is_sha(source_evidence_manifest_sha256):
+            raise ProspectiveLedgerError("source_evidence_manifest_sha256 must be null or a lowercase SHA-256")
+        selected_artifact = front_artifact_sha256 if zone == "front" else back_artifact_sha256
+        selected_distribution = front_distribution_sha256 if zone == "front" else back_distribution_sha256
+        if artifact_sha256 != selected_artifact or distribution_sha256 != selected_distribution:
+            raise ProspectiveLedgerError("zone artifact/distribution hashes must match the bound front/back pair")
         if type(registry_generation) is not int or registry_generation < 0:
             raise ProspectiveLedgerError("registry_generation must be a non-negative integer")
         for field, value in (
             ("population_key", population_key), ("forecast_policy_version", forecast_policy_version),
+            ("scoring_policy_version", scoring_policy_version),
+            ("target_cutoff_timezone_source", target_cutoff_timezone_source),
             ("model_family", model_family), ("code_commit", code_commit), ("runtime", runtime),
         ):
             if not isinstance(value, str) or not value:
@@ -292,13 +314,17 @@ class ProspectiveLedger:
         issued = _timestamp(issued_at_utc, "issued_at_utc")
         if draw_at <= cutoff:
             raise ProspectiveLedgerError("target draw time must be strictly after its forecast cutoff")
-        if population_key not in ("pooled", "pooled-equipment-blind") and source_evidence_sha256 is None:
+        if lifecycle_state not in ("champion", "shadow", "challenger", "retired", "suspended"):
+            raise ProspectiveLedgerError("lifecycle_state is not a registered state")
+        if population_key not in ("pooled", "pooled-equipment-blind") and source_evidence_manifest_sha256 is None:
             raise ProspectiveLedgerError("set-conditioned forecast requires a source evidence manifest digest")
         try:
             training_date = date.fromisoformat(training_last_draw_date)
         except (TypeError, ValueError) as exc:
             raise ProspectiveLedgerError("training_last_draw_date must be YYYY-MM-DD") from exc
         reasons = []
+        if lifecycle_state not in ("champion", "shadow"):
+            reasons.append("lifecycle_not_active")
         if issued >= cutoff:
             reasons.append("forecast_after_cutoff")
         if training_last_draw_id >= target_draw_id:
@@ -312,9 +338,17 @@ class ProspectiveLedger:
             "target_draw_id": target_draw_id,
             "target_draw_at_utc": draw_at.isoformat(),
             "target_cutoff_utc": cutoff.isoformat(),
+            "target_cutoff_timezone_source": target_cutoff_timezone_source,
             "issued_at_utc": issued.isoformat(),
             "artifact_sha256": artifact_sha256,
             "distribution_sha256": distribution_sha256,
+            "front_artifact_sha256": front_artifact_sha256,
+            "back_artifact_sha256": back_artifact_sha256,
+            "front_distribution_sha256": front_distribution_sha256,
+            "back_distribution_sha256": back_distribution_sha256,
+            "active_registry_snapshot_id": active_registry_snapshot_id,
+            "lifecycle_state": lifecycle_state,
+            "model_spec_sha256": model_spec_sha256,
             "zone": zone,
             "population_key": population_key,
             "training_snapshot_sha256": training_snapshot_sha256,
@@ -324,16 +358,18 @@ class ProspectiveLedger:
             "training_last_draw_date": training_date.isoformat(),
             "registry_generation": registry_generation,
             "forecast_policy_version": forecast_policy_version,
+            "scoring_policy_version": scoring_policy_version,
             "model_family": model_family,
             "code_commit": code_commit,
             "runtime": runtime,
-            "source_evidence_sha256": source_evidence_sha256,
+            "source_evidence_manifest_sha256": source_evidence_manifest_sha256,
             "status": "eligible" if not reasons else "ineligible",
             "reason_codes": reasons,
         }
         record["forecast_id"] = _sha(canonicalize(record))
         key = (
-            artifact_sha256, target_draw_id, zone, population_key, forecast_policy_version
+            front_artifact_sha256, back_artifact_sha256, target_draw_id,
+            zone, population_key, forecast_policy_version,
         )
         with ledger_lock(self.path):
             snapshot = self._snapshot_unlocked()
