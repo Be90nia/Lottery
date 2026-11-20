@@ -413,6 +413,77 @@ def validate_model_artifact(payload: dict) -> None:
         raise ArtifactValidationError("unknown model_family")
 
 
+DERIVED_CACHE_SCHEMA = "lottery.derived-cache/v1"
+
+
+def validate_derived_cache(payload: dict) -> None:
+    """Validate a non-executable derived cache bound to one immutable model artifact."""
+    required = {
+        "schema_version", "artifact_schema", "cache_type", "parent_artifact_id",
+        "cache_payload", "code_revision", "runtime",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise ArtifactValidationError("derived cache fields do not match the registered schema")
+    if type(payload["schema_version"]) is not int or payload["schema_version"] != 1:
+        raise ArtifactValidationError("unsupported derived cache schema_version")
+    if payload["artifact_schema"] != DERIVED_CACHE_SCHEMA:
+        raise ArtifactValidationError("unsupported derived cache schema")
+    if not isinstance(payload["cache_type"], str) or not payload["cache_type"]:
+        raise ArtifactValidationError("derived cache cache_type must be non-empty")
+    parent_id = payload["parent_artifact_id"]
+    if (not isinstance(parent_id, str) or len(parent_id) != 71
+            or not parent_id.startswith("sha256:")
+            or any(char not in "0123456789abcdef" for char in parent_id[7:])):
+        raise ArtifactValidationError("derived cache parent_artifact_id must be a lowercase sha256 ID")
+    revision = payload["code_revision"]
+    if (not isinstance(revision, str) or len(revision) != 40
+            or any(char not in "0123456789abcdef" for char in revision)):
+        raise ArtifactValidationError("derived cache code_revision must be a full lowercase Git SHA")
+    if not isinstance(payload["runtime"], dict):
+        raise ArtifactValidationError("derived cache runtime must be an object")
+    canonicalize(payload["cache_payload"])
+
+
+def create_derived_cache(payload: dict) -> tuple[bytes, str]:
+    """Create canonical content-addressed cache bytes with a mandatory parent reference."""
+    if not isinstance(payload, dict):
+        raise ArtifactValidationError("derived cache payload must be an object")
+    body = dict(payload)
+    body.pop("artifact_id", None)
+    validate_derived_cache(body)
+    digest = hashlib.sha256(canonicalize(body)).hexdigest()
+    artifact_id = "sha256:" + digest
+    complete = dict(body)
+    complete["artifact_id"] = artifact_id
+    return canonicalize(complete), artifact_id
+
+
+def verify_derived_cache(
+    raw: bytes | str, *, expected_parent_artifact_id: str | None = None
+) -> dict:
+    """Verify cache digest, canonical bytes, and optionally its expected parent."""
+    payload = parse_json_strict(raw)
+    artifact_id = payload.get("artifact_id")
+    if (not isinstance(artifact_id, str) or len(artifact_id) != 71
+            or not artifact_id.startswith("sha256:")
+            or any(char not in "0123456789abcdef" for char in artifact_id[7:])):
+        raise ArtifactValidationError("derived cache artifact_id is missing or malformed")
+    body = dict(payload)
+    body.pop("artifact_id")
+    validate_derived_cache(body)
+    if (expected_parent_artifact_id is not None
+            and body["parent_artifact_id"] != expected_parent_artifact_id):
+        raise ArtifactValidationError("derived cache parent artifact ID mismatch")
+    expected = "sha256:" + hashlib.sha256(canonicalize(body)).hexdigest()
+    if artifact_id != expected:
+        raise ArtifactValidationError("derived cache content hash does not match artifact_id")
+    canonical_full = canonicalize(payload)
+    raw_bytes = raw.encode("utf-8") if isinstance(raw, str) else raw
+    if canonical_full != raw_bytes:
+        raise ArtifactValidationError("derived cache bytes are not canonical RFC 8785 JSON")
+    return payload
+
+
 def create_artifact(payload: dict) -> tuple[bytes, str]:
     """Create canonical artifact bytes and ID; artifact_id is excluded from hash."""
     if not isinstance(payload, dict):
