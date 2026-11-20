@@ -18,6 +18,7 @@ from .subset_model.artifact import canonicalize, parse_json_strict, ArtifactVali
 
 
 LEDGER_SCHEMA = "lottery.prospective-ledger/v1"
+EXPECTATION_SCHEMA = "lottery.prospective-forecast-expectation/v1"
 FORECAST_SCHEMA = "lottery.prospective-forecast/v1"
 OUTCOME_SCHEMA = "lottery.prospective-outcome/v1"
 SCORE_SCHEMA = "lottery.prospective-score/v1"
@@ -140,6 +141,8 @@ class ProspectiveLedger:
             os.fsync(handle.fileno())
 
     def _snapshot_unlocked(self) -> dict[str, Any]:
+        expectations: dict[str, dict[str, Any]] = {}
+        expectation_keys: dict[tuple[str, str, str, str, str, str, str, int], str] = {}
         forecasts: dict[str, dict[str, Any]] = {}
         forecast_keys: dict[tuple[str, str, str, str, str, str, str, int], str] = {}
         outcomes: dict[str, dict[str, Any]] = {}
@@ -153,7 +156,23 @@ class ProspectiveLedger:
             record = event.get("record")
             if not isinstance(record, dict):
                 raise ProspectiveLedgerError("prospective event record must be an object")
-            if event["event_type"] in ("forecast_issued", "forecast_missing"):
+            if event["event_type"] == "forecast_expected":
+                if record.get("schema") != EXPECTATION_SCHEMA or _sha(canonicalize({
+                    key: value for key, value in record.items() if key != "expected_forecast_id"
+                })) != record.get("expected_forecast_id"):
+                    raise ProspectiveLedgerError("forecast expectation content hash mismatch")
+                expected_id = record["expected_forecast_id"]
+                key = (
+                    record["front_artifact_sha256"], record["back_artifact_sha256"],
+                    record["target_draw_id"], record["zone"],
+                    record["population_key"], record["forecast_policy_version"],
+                    record["active_registry_snapshot_id"], record["registry_generation"],
+                )
+                if expected_id in expectations or key in expectation_keys:
+                    raise ProspectiveLedgerError("duplicate expected artifact × target × zone forecast")
+                expectations[expected_id] = record
+                expectation_keys[key] = expected_id
+            elif event["event_type"] in ("forecast_issued", "forecast_missing"):
                 if record.get("schema") != FORECAST_SCHEMA or _sha(canonicalize({
                     key: value for key, value in record.items() if key != "forecast_id"
                 })) != record.get("forecast_id"):
@@ -223,6 +242,8 @@ class ProspectiveLedger:
             else:
                 raise ProspectiveLedgerError("unknown prospective ledger event type")
         return {
+            "expectations": expectations,
+            "expectation_keys": expectation_keys,
             "forecasts": forecasts,
             "forecast_keys": forecast_keys,
             "outcomes": outcomes,
