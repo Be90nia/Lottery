@@ -960,7 +960,9 @@ class ProspectiveLedger:
             elif record["forecast_id"] not in scored_forecasts:
                 score_pending += 1
         return {
-            "expected_forecast_records": len(forecasts),
+            "expected_forecast_records": len(snapshot["expectations"]),
+            "forecast_records": len(forecasts),
+            "unresolved_expected_forecasts": len(snapshot["expectations"]) - len(forecasts),
             "eligible": len(eligible),
             "ineligible": len(forecasts) - len(eligible),
             "forecast_missing_at_cutoff": sum(
