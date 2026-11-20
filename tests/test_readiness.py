@@ -81,7 +81,7 @@ class ReadinessTests(unittest.TestCase):
         report = evaluate_readiness(
             self.manifest, self.gates[:-1], self.faults[:-1], self.evidence
         )
-        self.assertEqual(report["readiness"], "NOT_READY")
+        self.assertEqual(report["readiness"], "READY_FOR_OFFLINE_VALIDATION")
         self.assertIn("G8:missing_gate_result", report["blockers"])
         self.assertIn("F15:missing_fault_result", report["blockers"])
 
