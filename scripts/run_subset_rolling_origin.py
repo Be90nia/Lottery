@@ -10,10 +10,14 @@ import hashlib
 import json
 import math
 import os
+import platform
 import random
+import sys
 from pathlib import Path
 
 from lottery.backtest import _probabilities
+from lottery.subset_model.artifact import canonicalize, create_artifact, verify_artifact
+from lottery.subset_model.rolling_origin_ledger import write_immutable_outputs
 from lottery.subset_model import (
     BACK_POPULATION,
     BACK_SELECTION,
@@ -160,16 +164,21 @@ def _load_and_validate(path: Path) -> tuple[list[dict], str]:
 
 def _checkpoint_record_hash(record: dict) -> str:
     body = {key: value for key, value in record.items() if key != "record_sha256"}
-    encoded = json.dumps(body, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return hashlib.sha256(canonicalize(body)).hexdigest()
+
+
+def _jcs_hash(value: dict) -> str:
+    return "sha256:" + hashlib.sha256(canonicalize(value)).hexdigest()
 
 
 def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
                                 uniform_nll: float) -> None:
     expected_record_keys = {
-        "record_type", "target_draw_id", "training_count", "training_cutoff_draw_id",
-        "fit_statuses", "exact_set_nll", "candidate_iterations",
-        "candidate_gradient_infinity_norm", "record_sha256",
+        "record_type", "target_draw_id", "target_draw_date", "training_count",
+        "training_first_draw_id", "training_last_draw_id", "training_cutoff_draw_id",
+        "training_cutoff_date", "training_dates_strictly_before_target",
+        "observed_subset", "fit_statuses", "exact_set_nll", "model_artifacts",
+        "candidate_iterations", "candidate_gradient_infinity_norm", "record_sha256",
     }
     if (not isinstance(record, dict) or set(record) != expected_record_keys
             or record.get("record_type") != "target"):
@@ -189,10 +198,31 @@ def _validate_checkpoint_record(record: dict, *, row: dict, training_count: int,
     if not isinstance(record.get("exact_set_nll"), dict) or set(record["exact_set_nll"]) != expected_scores:
         raise ValueError("checkpoint exact_set_nll schema mismatch")
     if (record.get("target_draw_id") != row["draw_id"]
-            or record.get("training_count") != training_count):
-        raise ValueError("checkpoint target order/training count mismatch")
+            or record.get("target_draw_date") != row["draw_date"]
+            or record.get("training_count") != training_count
+            or record.get("training_first_draw_id") != "07001"
+            or record.get("training_last_draw_id") != record.get("training_cutoff_draw_id")
+            or record.get("training_cutoff_draw_id") != row["draw_id"]):
+        raise ValueError("checkpoint target order/training range mismatch")
+    if record.get("training_dates_strictly_before_target") is not True:
+        raise ValueError("checkpoint strict-before-target assertion is missing")
+    if record.get("observed_subset") != row["front_numbers" if len(row["front_numbers"]) == 5 else "back_numbers"]:
+        raise ValueError("checkpoint observed subset does not match target")
     if not isinstance(record.get("training_cutoff_draw_id"), str) or not record["training_cutoff_draw_id"]:
         raise ValueError("checkpoint training cutoff is missing")
+    artifacts = record.get("model_artifacts")
+    if not isinstance(artifacts, dict) or set(artifacts) != {"candidate", "expanding", "ewma"}:
+        raise ValueError("checkpoint model artifact map is invalid")
+    for name, entry in artifacts.items():
+        if entry is None:
+            if record["fit_statuses"][name] == "converged":
+                raise ValueError(f"converged {name} fit is missing its immutable artifact")
+            continue
+        if not isinstance(entry, dict) or set(entry) != {"artifact_id", "payload"}:
+            raise ValueError(f"checkpoint {name} artifact entry has invalid shape")
+        verified = verify_artifact(canonicalize(entry["payload"]))
+        if verified.get("artifact_id") != entry["artifact_id"]:
+            raise ValueError(f"checkpoint {name} artifact ID mismatch")
     if any(not isinstance(status, str) or not status for status in record["fit_statuses"].values()):
         raise ValueError("checkpoint fit status must be a non-empty string")
     scores = record["exact_set_nll"]
@@ -222,7 +252,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     uniform_nll = math.log(math.comb(m, k))
     expected = len(rows) - MIN_TRAIN
     header = {
-        "record_type": "header", "schema": "lot-055-checkpoint-v2",
+        "record_type": "header", "schema": "lot-055-checkpoint-v3",
         "snapshot_sha256": snapshot_digest,
         "snapshot_source_commit": os.environ.get("RESEARCH_SNAPSHOT_COMMIT", "unverified-local-input"),
         "snapshot_trust_status": os.environ.get("RESEARCH_SNAPSHOT_TRUST_STATUS", "not_verified_by_runner"),
@@ -271,24 +301,140 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
             fit = model.fit(observations[:idx])
             statuses = {"candidate": fit.terminal_status}
             scores = {"uniform": uniform_nll}
+            model_artifacts = {"candidate": None, "expanding": None, "ewma": None}
             candidate = -model.log_probability(target, fit.theta) if fit.converged else None
+            active_features = list(model.table.stats.feature_names)
+            feature_schema = {
+                "feature_schema_version": model.table.stats.feature_schema_version,
+                "candidate_feature_names": list(model.table.stats.candidate_feature_names),
+                "active_feature_names": active_features,
+                "zero_variance_features": list(model.table.stats.zero_variance_features),
+                "zero_variance_policy": "drop_and_record",
+                "population_size": m, "selection_size": k,
+            }
+            candidate_config = {
+                "model_family": "complete_subset_exponential", "zone": zone,
+                "population_size": m, "selection_size": k,
+                "feature_schema_hash": _jcs_hash(feature_schema),
+                "objective_scale": fit.objective_scale,
+                "regularization_lambda": fit.regularization_lambda,
+                "solver": fit.solver, "max_iterations": 5000,
+                "gradient_tolerance": 1e-8,
+            }
+            if fit.converged:
+                candidate_payload = {
+                    "schema_version": 1, "model_family": "complete_subset_exponential",
+                    "zone": zone, "population_size": m, "selection_size": k,
+                    "training_snapshot_sha256": snapshot_digest,
+                    "training_first_draw_id": rows[0]["draw_id"],
+                    "training_last_draw_id": rows[idx - 1]["draw_id"],
+                    "training_cutoff_draw_id": rows[idx - 1]["draw_id"],
+                    "training_row_count": idx, "code_revision": header["code_commit"],
+                    "runtime": {"python": platform.python_version(),
+                                "implementation": platform.python_implementation()},
+                    "fit_diagnostics": {
+                        "terminal_status": fit.terminal_status, "converged": fit.converged,
+                        "message": fit.message, "iterations": fit.iterations,
+                        "gradient_infinity_norm": fit.gradient_infinity_norm,
+                        "unregularized_mean_nll": fit.unregularized_mean_nll,
+                        "penalized_objective": fit.penalized_objective,
+                        "solver": fit.solver,
+                    },
+                    "forecast_ready": False,
+                    "feature_schema_version": model.table.stats.feature_schema_version,
+                    "candidate_feature_names": list(model.table.stats.candidate_feature_names),
+                    "active_feature_names": active_features,
+                    "zero_variance_features": list(model.table.stats.zero_variance_features),
+                    "feature_schema_hash": _jcs_hash(feature_schema),
+                    "model_configuration_hash": _jcs_hash(candidate_config),
+                    "theta": list(fit.theta), "objective_scale": fit.objective_scale,
+                    "regularization_lambda": fit.regularization_lambda,
+                    "normalization": {"method": "full_support_logsumexp",
+                                      "log_partition": model.log_partition(fit.theta),
+                                      "numeric_dtype": "float64"},
+                }
+                artifact_bytes, artifact_id = create_artifact(candidate_payload)
+                model_artifacts["candidate"] = {
+                    "artifact_id": artifact_id, "payload": verify_artifact(artifact_bytes)}
             for baseline in ("expanding", "ewma"):
                 try:
                     marginals = _probabilities(training, field, m, k, model=baseline,
                                                alpha=100.0, half_life=100.0)
                     calibration = ConditionalPoisson.calibrate(marginals, k)
                     statuses[baseline] = calibration.terminal_status
-                    scores[baseline] = (-ConditionalPoisson(
-                        calibration.centered_log_weights, k
-                    ).log_probability(target)) if calibration.converged else None
+                    scores[baseline] = None
+                    if calibration.converged:
+                        conditional = ConditionalPoisson(calibration.centered_log_weights, k)
+                        scores[baseline] = -conditional.log_probability(target)
+                        baseline_config = {
+                            "model_family": "conditional_poisson", "baseline": baseline,
+                            "zone": zone, "population_size": m, "selection_size": k,
+                            "alpha": 100.0,
+                            "half_life": 100.0 if baseline == "ewma" else None,
+                            "weighting": "expanding" if baseline == "expanding" else "2^(-lag/100)",
+                        }
+                        baseline_schema = {
+                            "schema": "conditional-poisson-v1", "population_size": m,
+                            "selection_size": k,
+                            "parameterization": "zero-sum-centered-log-weights",
+                        }
+                        baseline_payload = {
+                            "schema_version": 1, "model_family": "conditional_poisson",
+                            "zone": zone, "population_size": m, "selection_size": k,
+                            "training_snapshot_sha256": snapshot_digest,
+                            "training_first_draw_id": rows[0]["draw_id"],
+                            "training_last_draw_id": rows[idx - 1]["draw_id"],
+                            "training_cutoff_draw_id": rows[idx - 1]["draw_id"],
+                            "training_row_count": idx, "code_revision": header["code_commit"],
+                            "runtime": {"python": platform.python_version(),
+                                        "implementation": platform.python_implementation()},
+                            "fit_diagnostics": {
+                                "terminal_status": calibration.terminal_status,
+                                "converged": calibration.converged,
+                                "message": calibration.message,
+                                "iterations": calibration.iterations,
+                                "gradient_infinity_norm": calibration.gradient_infinity_norm,
+                                "calibration_residual": calibration.maximum_absolute_residual,
+                                "objective": calibration.objective,
+                            },
+                            "forecast_ready": False,
+                            "baseline": baseline, "alpha": 100.0,
+                            "half_life": 100.0 if baseline == "ewma" else None,
+                            "target_marginals": list(calibration.target_marginals),
+                            "achieved_marginals": list(calibration.achieved_marginals),
+                            "centered_log_weights": list(calibration.centered_log_weights),
+                            "solver_status": calibration.terminal_status,
+                            "calibration_residual": calibration.maximum_absolute_residual,
+                            "feature_schema_hash": _jcs_hash(baseline_schema),
+                            "model_configuration_hash": _jcs_hash(baseline_config),
+                            "normalization": {
+                                "method": "exact_conditional_poisson_log_space_dp",
+                                "log_partition": conditional.log_normalizer,
+                                "numeric_dtype": "float64",
+                            },
+                        }
+                        artifact_bytes, artifact_id = create_artifact(baseline_payload)
+                        model_artifacts[baseline] = {
+                            "artifact_id": artifact_id, "payload": verify_artifact(artifact_bytes)}
                 except (ValueError, ArithmeticError, OverflowError) as exc:
                     statuses[baseline] = "failed:" + type(exc).__name__
                     scores[baseline] = None
+                    model_artifacts[baseline] = None
             scores["exponential_family"] = candidate
+            training_dates_strict = all(item["draw_date"] < rows[idx]["draw_date"] for item in training)
+            if not training_dates_strict:
+                raise ValueError(f"training date is not strictly earlier than target {rows[idx]['draw_id']}")
             record = {
                 "record_type": "target", "target_draw_id": rows[idx]["draw_id"],
-                "training_count": idx, "training_cutoff_draw_id": rows[idx - 1]["draw_id"],
+                "target_draw_date": rows[idx]["draw_date"],
+                "training_count": idx, "training_first_draw_id": rows[0]["draw_id"],
+                "training_last_draw_id": rows[idx - 1]["draw_id"],
+                "training_cutoff_draw_id": rows[idx - 1]["draw_id"],
+                "training_cutoff_date": rows[idx - 1]["draw_date"],
+                "training_dates_strictly_before_target": True,
+                "observed_subset": list(target),
                 "fit_statuses": statuses, "exact_set_nll": scores,
+                "model_artifacts": model_artifacts,
                 "candidate_iterations": fit.iterations,
                 "candidate_gradient_infinity_norm": fit.gradient_infinity_norm,
             }
@@ -330,6 +476,9 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     }
     return {
         "zone": zone, "population_size": m, "selection_size": k,
+        "active_feature_names": list(model.table.stats.feature_names),
+        "candidate_feature_names": list(model.table.stats.candidate_feature_names),
+        "zero_variance_features": list(model.table.stats.zero_variance_features),
         "target_count": expected, "scored_target_counts": scored,
         "fit_status_counts": status_counts, "complete_coverage": complete,
         "mean_exact_set_nll": {name: sums[name] / scored[name] if scored[name] else None for name in sums},
@@ -454,6 +603,8 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
                          else "candidate optimizer had no line_search_failed fits"),
                         "Holm inference is implemented for the preregistered two-hypothesis candidate-vs-uniform family; expanding/EWMA remain non-regression comparators"],
     }
+    immutable_outputs = write_immutable_outputs(result, rows, snapshot_path, output_path)
+    result["immutable_outputs"] = immutable_outputs
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
                            encoding="utf-8")
