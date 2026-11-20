@@ -100,12 +100,17 @@ class ThreeSlotBatchPublisher:
         if len({slot["artifact_id"] for slot in resolved["slots"] if slot["zone"] == "back"}) != 3:
             raise BatchPublicationError("three population slots must not reuse back artifacts")
         for zone in ("front", "back"):
-            families = {
-                slot["model_family"] for slot in resolved["slots"] if slot["zone"] == zone
+            contracts = {
+                (
+                    slot["model_family"], slot["artifact_schema"],
+                    slot["feature_schema_hash"], slot["population_size"],
+                    slot["selection_size"],
+                )
+                for slot in resolved["slots"] if slot["zone"] == zone
             }
-            if len(families) != 1:
+            if len(contracts) != 1:
                 raise BatchPublicationError(
-                    f"all three {zone} population artifacts must use one compatible model family"
+                    f"all three {zone} population artifacts must share one compatible model/schema contract"
                 )
 
         slots_by_population: dict[str, dict[str, str]] = {};
