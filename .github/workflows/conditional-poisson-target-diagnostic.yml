@@ -1,6 +1,9 @@
 name: Conditional-Poisson Targeted Diagnostic
 
 on:
+  push:
+    branches:
+      - feat/lot-063-prospective-score-ledger
   workflow_dispatch:
     inputs:
       front_target_ids:
