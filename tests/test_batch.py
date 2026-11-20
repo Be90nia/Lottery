@@ -1,5 +1,4 @@
 from contextlib import contextmanager
-from contextlib import contextmanager
 import hashlib
 import tempfile
 import unittest
@@ -181,7 +180,7 @@ class ThreeSlotBatchPublisherTests(unittest.TestCase):
 
     def test_rng_streams_are_slot_and_zone_specific_and_reproducible(self):
         first = self.publish(key="rng-first", n=1)
-        second = self.publish(key="rng-second", n=1)
+        second = self.publish(key="rng-second", n=1, generation=1)
         first_streams = [
             (slot["rng_streams"]["front"]["stream_id"], slot["rng_streams"]["back"]["stream_id"])
             for slot in first["manifest"]["slots"]
