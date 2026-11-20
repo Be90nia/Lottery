@@ -33,7 +33,8 @@ as a production durable-storage deployment.
 1. Add a separately authenticated/versioned object-store backend and distinct
    staging/commit/pointer identities.
 2. Bind fencing tokens to every mutable pointer operation.
-3. Add crash-recovery for the pointer-write / publication-receipt boundary.
+3. Extend crash-recovery testing to concurrent writers and interrupted
+   operations that are superseded before receipt reconciliation.
 4. Add backup manifests, independent-domain backup, key recovery and isolated
    restore drills before assigning RPO/RTO.
 5. Exercise crash, concurrency, corruption, duplicate-delivery, and stale-worker
