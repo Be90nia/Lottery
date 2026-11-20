@@ -578,6 +578,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "front": front, "back": back,
         "descriptive_ci_pass": bool(descriptive_ci_pass),
         "confirmatory_family": {
+            "status": "descriptive_only_post_outcome_child_experiment",
             "hypotheses": ["candidate_vs_uniform_front", "candidate_vs_uniform_back"],
             "family_size": 2,
             "method": "Holm step-down",
@@ -602,6 +603,7 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
         "experiment_id": "LOT055-OPT-DIAG-20261120",
         "experiment_class": "exploratory_diagnostic",
         "confirmatory_eligible": False,
+        "experiment_registration_approved": False,
         "confirmatory_ineligibility_reason": "post-outcome optimizer repair; see Issue #27 child registration",
         "confirmatory_candidate_pass": bool(passed),
         "production_ready": False,
