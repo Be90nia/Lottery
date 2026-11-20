@@ -248,7 +248,7 @@ class ChampionLifecycleTests(unittest.TestCase):
             zone="front",
             artifact_id=artifact_id,
             expected_champion_artifact_id=None,
-            expected_generation=shadow["generation"],
+            expected_generation=validated["generation"],
             approval=approval,
             approval_verifier=self.verifier,
             actor="test-suite",
