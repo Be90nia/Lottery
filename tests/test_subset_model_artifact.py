@@ -1,5 +1,6 @@
 import hashlib
 import json
+import struct
 import sys
 import unittest
 from pathlib import Path
@@ -59,6 +60,27 @@ class JCSCanonicalizationTests(unittest.TestCase):
         )
         self.assertEqual(canonicalize(value), expected)
 
+    def test_rfc8785_appendix_b_binary64_number_vectors(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "jcs-golden-v1.json"
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        for vector in fixture["binary64_vectors"]:
+            value = struct.unpack(">d", bytes.fromhex(vector["hex"]))[0]
+            with self.subTest(hex=vector["hex"]):
+                self.assertEqual(canonicalize(value).decode("ascii"), vector["expected"])
+        for hex_value in fixture["invalid_binary64_vectors"]:
+            value = struct.unpack(">d", bytes.fromhex(hex_value))[0]
+            with self.subTest(invalid_hex=hex_value):
+                with self.assertRaises(ArtifactValidationError):
+                    canonicalize(value)
+
+    def test_exactly_representable_large_integers_follow_binary64_serialization(self):
+        self.assertEqual(
+            canonicalize({"value": 2**68}),
+            b'{"value":295147905179352830000}',
+        )
+        with self.assertRaises(ArtifactValidationError):
+            canonicalize({"value": 2**53 + 1})
+
     def test_object_keys_sort_by_utf16_code_units(self):
         value = {"\ue000": 2, "😀": 1}
         self.assertEqual(canonicalize(value), '{"😀":1,"":2}'.encode("utf-8"))
@@ -71,7 +93,7 @@ class JCSCanonicalizationTests(unittest.TestCase):
         )
 
     def test_nonfinite_unsafe_or_unsupported_values_rejected(self):
-        for value in (float("nan"), float("inf"), -float("inf"), 2**53, object()):
+        for value in (float("nan"), float("inf"), -float("inf"), 2**53 + 1, object()):
             with self.subTest(value=value):
                 with self.assertRaises(ArtifactValidationError):
                     canonicalize({"value": value})
