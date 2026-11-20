@@ -45,6 +45,8 @@ def _digest(data: bytes) -> str:
 def _safe_evidence(root: Path, item: Any) -> tuple[bool, str]:
     if not isinstance(item, dict):
         return False, "evidence_entry_not_object"
+    if set(item) != {"path", "sha256"}:
+        return False, "evidence_entry_shape_invalid"
     rel = item.get("path")
     expected = item.get("sha256")
     if not isinstance(rel, str) or not rel or Path(rel).is_absolute():
@@ -78,6 +80,12 @@ def _safe_evidence(root: Path, item: Any) -> tuple[bool, str]:
 def _validate_manifest(manifest: Any) -> list[str]:
     if not isinstance(manifest, dict) or manifest.get("schema") != "lottery.release-manifest/v1":
         raise ReadinessError("release manifest schema must be lottery.release-manifest/v1")
+    if set(manifest) != {
+        "schema", "release_id", "release_ref", "source_commit",
+        "workflow_policy_sha256", "dependency_lock_sha256",
+        "snapshot_sha256", "lot042_accessed",
+    }:
+        raise ReadinessError("release manifest has missing or unknown fields")
     for field in ("release_id", "release_ref", "source_commit"):
         if not isinstance(manifest.get(field), str) or not manifest[field]:
             raise ReadinessError(f"manifest {field} must be non-empty")
@@ -101,7 +109,7 @@ def _index_records(records: Any, required: tuple[str, ...], label: str) -> dict[
         if not isinstance(record, dict):
             raise ReadinessError(f"{label} entries must be objects")
         key = record.get("gate_id" if label == "gate_results" else "fault_id")
-        if key not in required:
+        if not isinstance(key, str) or key not in required:
             raise ReadinessError(f"unknown {label} identifier: {key}")
         if key in indexed:
             raise ReadinessError(f"duplicate {label} identifier: {key}")
@@ -133,6 +141,10 @@ def evaluate_readiness(
             gate_states[gate_id] = "UNKNOWN"
             blockers.append(f"{gate_id}:missing_gate_result")
             continue
+        if set(record) - {"gate_id", "status", "evidence", "note"} or not {"gate_id", "status", "evidence"} <= set(record):
+            raise ReadinessError(f"{gate_id}: gate result has missing or unknown fields")
+        if "note" in record and not isinstance(record["note"], str):
+            raise ReadinessError(f"{gate_id}: note must be a string")
         declared = record.get("status")
         if declared not in STATUSES:
             raise ReadinessError(f"{gate_id}: invalid gate status")
@@ -163,6 +175,15 @@ def evaluate_readiness(
             fault_states[fault_id] = "UNKNOWN"
             blockers.append(f"{fault_id}:missing_fault_result")
             continue
+        if set(record) != {
+            "fault_id", "status", "injected", "expected_state",
+            "observed_state", "evidence",
+        }:
+            raise ReadinessError(f"{fault_id}: fault result has missing or unknown fields")
+        if type(record.get("injected")) is not bool:
+            raise ReadinessError(f"{fault_id}: injected must be an explicit boolean")
+        if not isinstance(record.get("expected_state"), str) or not isinstance(record.get("observed_state"), str):
+            raise ReadinessError(f"{fault_id}: expected and observed states must be strings")
         declared = record.get("status")
         if declared not in STATUSES:
             raise ReadinessError(f"{fault_id}: invalid fault status")
