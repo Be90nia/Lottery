@@ -529,14 +529,19 @@ class ProspectiveLedger:
                 "target_draw_id", "target_draw_at_utc", "target_cutoff_utc",
                 "target_cutoff_timezone_source", "front_artifact_sha256",
                 "back_artifact_sha256", "active_registry_snapshot_id", "lifecycle_state",
-                "model_spec_sha256", "zone", "population_key", "training_snapshot_sha256",
-                "training_first_draw_id", "training_last_draw_id", "training_row_count",
-                "training_last_draw_date", "registry_generation", "forecast_policy_version",
-                "scoring_policy_version", "model_family", "code_commit", "runtime",
-                "source_evidence_manifest_sha256",
+                "model_spec_sha256", "zone", "population_key", "registry_generation",
+                "forecast_policy_version", "scoring_policy_version", "model_family",
+                "code_commit", "runtime", "source_evidence_manifest_sha256",
             )
             if any(record[field] != expected[field] for field in bound_fields):
                 raise ProspectiveLedgerError("issued forecast does not match its pre-registered expectation")
+            training_fields = (
+                "training_snapshot_sha256", "training_first_draw_id", "training_last_draw_id",
+                "training_row_count", "training_last_draw_date",
+            )
+            if any(record[field] != expected[field] for field in training_fields):
+                record["reason_codes"].append("forecast_training_lineage_mismatch")
+                record["status"] = "ineligible"
             record["expected_forecast_id"] = expected_id
             record["forecast_id"] = _sha(canonicalize(record))
             existing_id = snapshot["forecast_keys"].get(key)
