@@ -501,7 +501,7 @@ class ChampionLifecycleTests(unittest.TestCase):
         recovered = ChampionLifecycle(root)
         snapshot = recovered.snapshot()
         self.assertEqual(snapshot["generation"], 0)
-        self.assertIsNone(snapshot["slots"]["pooled_equipment_blind|front"]["challenger_artifact_id"])
+        self.assertNotIn("pooled_equipment_blind|front", snapshot["slots"])
         event = recovered._read_events()[0]
         self.assertEqual(event["event_type"], "operation_aborted")
         self.assertEqual(event["registry_generation"], 0)
@@ -531,9 +531,8 @@ class ChampionLifecycleTests(unittest.TestCase):
                 )
         journal_path = next(store.journals.glob("*.json"))
         journal_path.write_bytes(b'{"operation_id":null}')
-        recovered = ChampionLifecycle(root)
         with self.assertRaisesRegex(LifecycleError, "invalid canonical schema"):
-            recovered.snapshot()
+            ChampionLifecycle(root)
         self.assertTrue(journal_path.exists())
 
     def test_three_slot_generation_requires_three_verified_distinct_populations(self):
@@ -691,7 +690,7 @@ class ChampionLifecycleTests(unittest.TestCase):
         artifact_id, _, _ = self.register_and_validate()
         raw = self.store.events_path.read_bytes()
         self.store.events_path.write_bytes(raw.replace(artifact_id.encode("ascii"), b"sha256:" + b"0" * 64, 1))
-        with self.assertRaisesRegex(LifecycleError, "event hash chain failed"):
+        with self.assertRaisesRegex(LifecycleError, "event hash chain or identity failed"):
             self.store.snapshot()
 
     def test_three_slot_resolution_is_all_or_none_and_reverifies_approval(self):
