@@ -183,6 +183,11 @@ class ProspectiveLedger:
                     key: value for key, value in record.items() if key != "expected_forecast_id"
                 })) != record.get("expected_forecast_id"):
                     raise ProspectiveLedgerError("forecast expectation content hash mismatch")
+                event_time = _timestamp(event["occurred_at_utc"], "event occurred_at_utc")
+                expectation_cutoff = _timestamp(record["target_cutoff_utc"], "target_cutoff_utc")
+                expected_at = _timestamp(record["expected_at_utc"], "expected_at_utc")
+                if event_time >= expectation_cutoff or expected_at > event_time:
+                    raise ProspectiveLedgerError("forecast expectation was not durably recorded before cutoff")
                 expected_id = record["expected_forecast_id"]
                 key = (
                     record["front_artifact_sha256"], record["back_artifact_sha256"],
@@ -203,6 +208,23 @@ class ProspectiveLedger:
                 if (expected_status is not None and record.get("status") != expected_status
                         or expected_status is None and record.get("status") not in ("eligible", "ineligible")):
                     raise ProspectiveLedgerError("forecast event type and terminal status disagree")
+                event_time = _timestamp(event["occurred_at_utc"], "event occurred_at_utc")
+                forecast_cutoff = _timestamp(record["target_cutoff_utc"], "target_cutoff_utc")
+                if event["event_type"] == "forecast_missing":
+                    checked_at = _timestamp(record["checked_at_utc"], "checked_at_utc")
+                    if event_time < forecast_cutoff or checked_at > event_time:
+                        raise ProspectiveLedgerError("missing forecast was not finalized at/after cutoff")
+                else:
+                    issued_at = _timestamp(record["issued_at_utc"], "issued_at_utc")
+                    reasons = record.get("reason_codes", [])
+                    if (event_time >= forecast_cutoff
+                            and (record.get("status") != "ineligible"
+                                 or "forecast_recorded_after_cutoff" not in reasons)):
+                        raise ProspectiveLedgerError("forecast recorded after cutoff must be retained as ineligible")
+                    if (issued_at > event_time
+                            and (record.get("status") != "ineligible"
+                                 or "forecast_timestamp_after_ledger_time" not in reasons)):
+                        raise ProspectiveLedgerError("future-dated forecast issue time must be retained as ineligible")
                 forecast_id = record["forecast_id"]
                 key = (
                     record["front_artifact_sha256"], record["back_artifact_sha256"],
