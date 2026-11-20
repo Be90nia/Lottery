@@ -342,6 +342,7 @@ class ModelArtifactTests(unittest.TestCase):
             "training_last_draw_id": "26130", "code_revision": "a" * 40,
             "runtime": runtime, "fit_diagnostics": {"terminal_status": "converged"},
             "forecast_ready": False, "centered_log_weights": [0.0] * 12,
+            "baseline": "expanding", "alpha": 100.0, "half_life": None,
             "target_marginals": [p] * 12, "achieved_marginals": [p] * 12,
             "solver_status": "converged", "calibration_residual": 0.0,
         }
