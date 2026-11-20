@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from lottery.subset_model.artifact import canonicalize
 from lottery.readiness import (
     FAULTS,
     GATES,
@@ -30,6 +31,8 @@ class ReadinessTests(unittest.TestCase):
         self.proof = self.evidence / "receipt.txt"
         self.proof.write_text("verified evidence\n", encoding="utf-8")
         self.proof_hash = sha(self.proof.read_bytes())
+        policy_path = Path(__file__).resolve().parents[1] / "policies" / "readiness-policy-v1.json"
+        self.policy = json.loads(policy_path.read_text(encoding="utf-8"))
         self.manifest = {
             "schema": "lottery.release-manifest/v1",
             "release_id": "release-test-001",
@@ -37,6 +40,7 @@ class ReadinessTests(unittest.TestCase):
             "source_commit": "a" * 40,
             "workflow_policy_sha256": "1" * 64,
             "dependency_lock_sha256": "2" * 64,
+            "readiness_policy_sha256": sha(canonicalize(self.policy)),
             "snapshot_sha256": "3" * 64,
             "lot042_accessed": False,
         }
@@ -61,8 +65,11 @@ class ReadinessTests(unittest.TestCase):
             for fault in FAULTS
         ]
 
+    def evaluate(self, manifest, gates, faults, evidence):
+        return evaluate_readiness(manifest, gates, faults, evidence, policy=self.policy)
+
     def test_offline_validation_requires_g0_to_g3_and_core_faults(self):
-        report = evaluate_readiness(self.manifest, self.gates, self.faults, self.evidence)
+        report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         self.assertEqual(report["readiness"], "READY_FOR_OFFLINE_VALIDATION")
         self.assertFalse(report["production_ready"])
         self.assertEqual(report["release_manifest_sha256"][:7], "sha256:")
@@ -169,6 +176,11 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(tuple(policy["faults"]), FAULTS)
         self.assertEqual(tuple(policy["offline"]["required_gates"]), ("G0", "G1", "G2", "G3"))
         self.assertFalse(policy["production"]["enabled"])
+
+    def test_manifest_cannot_substitute_a_different_readiness_policy(self):
+        self.manifest["readiness_policy_sha256"] = "f" * 64
+        with self.assertRaisesRegex(ReadinessError, "does not match the supplied policy"):
+            self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
 
     def test_strict_json_rejects_duplicate_keys(self):
         path = self.root / "duplicate.json"
