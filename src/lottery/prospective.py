@@ -424,6 +424,11 @@ class ProspectiveLedger:
             raise ProspectiveLedgerError("forecast_id and outcome_id must be lowercase SHA-256 values")
         if not isinstance(scorer_version, str) or not scorer_version:
             raise ProspectiveLedgerError("scorer_version must be a non-empty string")
+        if attempt_id is not None and (
+            not isinstance(attempt_id, str)
+            or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", attempt_id) is None
+        ):
+            raise ProspectiveLedgerError("score attempt_id is malformed")
         if not callable(log_probability):
             raise ProspectiveLedgerError("exact artifact log-probability scorer is required")
         with ledger_lock(self.path):
