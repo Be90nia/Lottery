@@ -806,6 +806,10 @@ class ChampionLifecycle:
         manifests: set[str] = set()
         target_lists: set[str] = set()
         target_counts: set[int] = set()
+        shadow_manifests: set[str] = set()
+        shadow_target_lists: set[str] = set()
+        shadow_source_evidence: set[str] = set()
+        shadow_target_counts: set[int] = set()
         training_by_population: dict[str, str] = {}
         artifact_ids_by_zone: dict[str, set[str]] = {"front": set(), "back": set()}
         verified: list[dict[str, Any]] = []
@@ -882,6 +886,10 @@ class ChampionLifecycle:
                     champion_artifact_id=expected_champion,
                 ):
                     raise LifecycleError("three-slot shadow receipt no longer passes its gates")
+                shadow_manifests.add(shadow_receipt["shadow_manifest_sha256"])
+                shadow_target_lists.add(shadow_receipt["target_list_sha256"])
+                shadow_source_evidence.add(shadow_receipt["source_evidence_sha256"])
+                shadow_target_counts.add(shadow_receipt["target_count"])
             _, approval_hash = self._verified_approval(
                 transition["approval"], approval_verifier=approval_verifier,
                 action="promote", artifact_id=artifact_id,
@@ -915,6 +923,14 @@ class ChampionLifecycle:
             raise LifecycleError("atomic promotion must cover indices 1/2/3 and both zones in one regime")
         if len(evidence_hashes) != 1 or len(manifests) != 1 or len(target_lists) != 1 or len(target_counts) != 1:
             raise LifecycleError("three-slot candidates must share one evidence, evaluation and target manifest")
+        has_existing_champions = any(
+            item["expected_champion_artifact_id"] is not None for item in normalized.values()
+        )
+        if has_existing_champions and (
+            len(shadow_manifests) != 1 or len(shadow_target_lists) != 1
+            or len(shadow_source_evidence) != 1 or len(shadow_target_counts) != 1
+        ):
+            raise LifecycleError("replacement three-slot candidates must share one complete shadow evaluation window")
         if len(set(training_by_population.values())) != 3:
             raise LifecycleError("three reported-index slots must use three distinct training populations")
 
