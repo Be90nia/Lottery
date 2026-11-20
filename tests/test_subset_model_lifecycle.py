@@ -394,9 +394,23 @@ class ChampionLifecycleTests(unittest.TestCase):
     def test_three_slot_resolution_is_all_or_none_and_reverifies_approval(self):
         with self.assertRaisesRegex(LifecycleError, "exactly three distinct"):
             self.store.resolve_three_slot_generation(["only-one"], approval_verifier=self.verifier)
+        with self.assertRaisesRegex(LifecycleError, "reported indices 1/2/3"):
+            self.store.resolve_three_slot_generation(
+                [
+                    "regime-a|reported_set_index=1",
+                    "regime-a|reported_set_index=2",
+                    "regime-b|reported_set_index=3",
+                ],
+                approval_verifier=self.verifier,
+            )
         with self.assertRaisesRegex(LifecycleError, "protected approval verifier"):
             self.store.resolve_three_slot_generation(
-                ["set-a", "set-b", "set-c"], approval_verifier=None
+                [
+                    "regime-a|reported_set_index=1",
+                    "regime-a|reported_set_index=2",
+                    "regime-a|reported_set_index=3",
+                ],
+                approval_verifier=None,
             )
 
 
