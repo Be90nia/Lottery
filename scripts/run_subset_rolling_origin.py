@@ -481,6 +481,21 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                     rng_algorithm="injected_rng.random_v1",
                 )
             for baseline in ("expanding", "ewma"):
+                baseline_schema = {
+                    "version": "lottery-item-inclusion/v1",
+                    "names": [f"item_{item}" for item in range(1, m + 1)],
+                    "uniform_means": [k / m] * m,
+                    "uniform_population_stds": [math.sqrt((k / m) * (1.0 - k / m))] * m,
+                    "zero_variance_policy": "not_applicable_item_indicator_schema",
+                }
+                baseline_config = {
+                    "model_family": "conditional_poisson", "baseline": baseline,
+                    "zone": zone, "population_size": m, "selection_size": k,
+                    "alpha": 100.0,
+                    "half_life": 100.0 if baseline == "ewma" else None,
+                    "weighting": "expanding" if baseline == "expanding" else "2^(-lag/100)",
+                    "feature_schema_hash": _jcs_hash(baseline_schema),
+                }
                 try:
                     marginals = _probabilities(training, field, m, k, model=baseline,
                                                alpha=100.0, half_life=100.0)
@@ -490,23 +505,11 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                     if calibration.converged:
                         conditional = ConditionalPoisson(calibration.centered_log_weights, k)
                         scores[baseline] = -conditional.log_probability(target)
-                        baseline_config = {
-                            "model_family": "conditional_poisson", "baseline": baseline,
-                            "zone": zone, "population_size": m, "selection_size": k,
-                            "alpha": 100.0,
-                            "half_life": 100.0 if baseline == "ewma" else None,
-                            "weighting": "expanding" if baseline == "expanding" else "2^(-lag/100)",
-                        }
-                        baseline_schema = {
-                            "version": "lottery-item-inclusion/v1",
-                            "names": [f"item_{item}" for item in range(1, m + 1)],
-                            "uniform_means": [k / m] * m,
-                            "uniform_population_stds": [math.sqrt((k / m) * (1.0 - k / m))] * m,
-                            "zero_variance_policy": "not_applicable_item_indicator_schema",
-                        }
-                        baseline_config["feature_schema_hash"] = _jcs_hash(baseline_schema)
                         baseline_payload = {
-                            "schema_version": 1, "model_family": "conditional_poisson",
+                            "schema_version": 1,
+                            "artifact_schema": "lottery.subset-probability-model/v1",
+                            "artifact_type": "fitted_model",
+                            "model_family": "conditional_poisson",
                             "zone": zone, "population_size": m, "selection_size": k,
                             "training_snapshot_sha256": snapshot_digest,
                             "training_first_draw_id": rows[0]["draw_id"],
@@ -520,13 +523,11 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                                 "converged": calibration.converged,
                                 "message": calibration.message,
                                 "iterations": calibration.iterations,
-                                "gradient_infinity_norm": calibration.gradient_infinity_norm,
+                                "gradient_infinity_norm": calibration.gradient_inf_norm,
                                 "calibration_residual": calibration.maximum_absolute_residual,
                                 "objective": calibration.objective,
                             },
                             "forecast_ready": False,
-                            "artifact_schema": "lottery.subset-probability-model/v1",
-                    "artifact_type": "fitted_model",
                             "support": {"population_size": m, "selection_size": k,
                                         "support_count": math.comb(m, k),
                                         "subset_order": "lexicographic_ascending"},
@@ -535,11 +536,12 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                                 "centered_log_weights": list(calibration.centered_log_weights),
                                 "parameter_order": "feature_schema.names",
                             },
+                            "model_configuration": baseline_config,
                             "fit": {
                                 "status": calibration.terminal_status,
                                 "termination_reason": calibration.message,
                                 "objective": calibration.objective,
-                                "gradient_inf_norm": calibration.gradient_infinity_norm,
+                                "gradient_inf_norm": calibration.gradient_inf_norm,
                                 "iterations": calibration.iterations,
                                 "optimizer": "conditional_poisson_calibration_lbfgs_v1",
                                 "lambda": None,
@@ -567,7 +569,6 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                             "calibration_residual": calibration.maximum_absolute_residual,
                             "feature_schema_hash": _jcs_hash(baseline_schema),
                             "model_configuration_hash": _jcs_hash(baseline_config),
-                            "model_configuration": baseline_config,
                             "normalization": {
                                 "method": "exact_conditional_poisson_log_space_dp",
                                 "log_partition": conditional.log_normalizer,
@@ -577,10 +578,34 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                         artifact_bytes, artifact_id = create_artifact(baseline_payload)
                         model_artifacts[baseline] = {
                             "artifact_id": artifact_id, "payload": verify_artifact(artifact_bytes)}
+                    else:
+                        model_artifacts[baseline] = _create_fit_failure_artifact(
+                            model_family="conditional_poisson", zone=zone,
+                            population_size=m, selection_size=k, snapshot_digest=snapshot_digest,
+                            training_rows=training, code_revision=header["code_commit"],
+                            feature_schema=baseline_schema, model_configuration=baseline_config,
+                            status=calibration.terminal_status, reason=calibration.message,
+                            objective=calibration.objective,
+                            gradient_inf_norm=calibration.gradient_inf_norm,
+                            iterations=calibration.iterations,
+                            optimizer="conditional_poisson_calibration_lbfgs_v1",
+                            regularization_lambda=None,
+                            rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
+                        )
                 except (ValueError, ArithmeticError, OverflowError) as exc:
                     statuses[baseline] = "failed:" + type(exc).__name__
                     scores[baseline] = None
-                    model_artifacts[baseline] = None
+                    model_artifacts[baseline] = _create_fit_failure_artifact(
+                        model_family="conditional_poisson", zone=zone,
+                        population_size=m, selection_size=k, snapshot_digest=snapshot_digest,
+                        training_rows=training, code_revision=header["code_commit"],
+                        feature_schema=baseline_schema, model_configuration=baseline_config,
+                        status=statuses[baseline], reason=str(exc),
+                        objective=None, gradient_inf_norm=None, iterations=0,
+                        optimizer="conditional_poisson_calibration_lbfgs_v1",
+                        regularization_lambda=None,
+                        rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
+                    )
             scores["exponential_family"] = candidate
             training_dates_strict = all(item["draw_date"] < rows[idx]["draw_date"] for item in training)
             if not training_dates_strict:
