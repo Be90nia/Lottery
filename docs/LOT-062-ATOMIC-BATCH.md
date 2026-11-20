@@ -12,10 +12,19 @@ verified Champion resolver with the LOT-065 immutable object store.
 - Retains duplicate tickets and reports within-slot and cross-slot duplicate
   counts; it never silently deduplicates.
 - Binds the batch manifest to the exact registry/Champion generation, six
-  artifact IDs, seed commitment, RNG algorithm, sampler version and producer
-  runtime/commit.
+  artifact IDs, protected master-seed reference and commitment, RNG algorithm,
+  sampler version and producer runtime/commit.
+- Derives separate deterministic front/back slot seeds with domain-separated
+  HMAC-SHA256 over population key, zone and exact artifact ID. The sampler
+  receives only derived seed bytes; the manifest stores stream IDs and the
+  protected seed reference, never the raw master seed.
+- Holds the Champion registry CAS lock through the batch-pointer publication.
+  A registry change after object commit but before pointer publication leaves
+  only an unreferenced immutable object for reconciliation; it cannot publish
+  a stale-generation batch.
 - Re-resolves the Champion generation after sampling and blocks publication
-  if the registry changed during generation.
+  if the registry changed during generation; a final generation guard closes
+  the check-to-publish race.
 - Stages, validates, commits and publishes one immutable batch manifest via a
   single CAS pointer. A failure before the pointer commit exposes no partial
   batch.
@@ -24,8 +33,12 @@ verified Champion resolver with the LOT-065 immutable object store.
 
 ## Deliberate limits
 
-- The sampler is injected; this PR does not claim three statistically
-  independent ball populations or infer physical set identity.
+- The sampler is injected; this PR verifies the per-slot seed inputs and
+  provenance but cannot prove an injected callback actually uses those seeds
+  or samples from the bound artifacts. The production sampler must be a
+  separately verified adapter over the exact model artifacts.
+- This PR does not claim three statistically independent ball populations
+  or infer physical set identity.
 - The protected seed itself is not stored in the manifest; only its commitment
   digest and RNG algorithm are recorded.
 - This is a local offline publication adapter, not production serving.
