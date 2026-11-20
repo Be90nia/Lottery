@@ -119,6 +119,8 @@ def evaluation_receipt(artifact_id, population_key, zone, *, passed=True):
         "evaluation_manifest_sha256": "b" * 64,
         "target_list_sha256": "c" * 64,
         "target_count": 100,
+        "population_eligibility": "pooled_equipment_blind",
+        "population_evidence_sha256": None,
         "full_coverage": passed,
         "preregistered": True,
         "holdout_accessed": False,
