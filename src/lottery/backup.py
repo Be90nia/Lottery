@@ -66,7 +66,9 @@ def _inventory(root: Path) -> list[dict[str, Any]]:
             if _excluded(filename):
                 continue
             path = base / filename
-            if path.is_symlink() or not path.is_file():
+            if path.is_symlink():
+                raise BackupError(f"symlink file is forbidden in storage root: {path}")
+            if not path.is_file():
                 raise BackupError(f"non-regular storage entry is forbidden: {path}")
             before = path.stat()
             raw = path.read_bytes()
@@ -302,7 +304,7 @@ def restore_backup(backup_dir: str | Path, restore_root: str | Path) -> dict[str
     backup = Path(backup_dir).resolve(strict=True)
     destination_input = Path(restore_root)
     if destination_input.exists() or destination_input.is_symlink():
-        raise BackupError("restore_root must not already exist; partial/overwriting restore is forbidden")
+        raise BackupError("restore_root must be empty/nonexistent; partial or overwriting restore is forbidden")
     destination = destination_input.resolve(strict=False)
     try:
         destination.relative_to(backup)
