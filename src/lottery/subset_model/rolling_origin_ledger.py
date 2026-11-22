@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from lottery.subset_model.artifact import canonicalize, verify_artifact
+from lottery.subset_model.conditional_poisson import CALIBRATION_SOLVER
 
 
 MODEL_ORDER = ("uniform", "expanding", "ewma", "exponential_family")
@@ -43,6 +44,8 @@ def _model_identity(zone: str, name: str, m: int, k: int,
                   "population_size": m, "selection_size": k, "alpha": 100.0,
                   "half_life": 100.0 if name == "ewma" else None,
                   "weighting": "expanding" if name == "expanding" else "2^(-lag/100)",
+                  "solver": CALIBRATION_SOLVER, "max_iterations": 5000,
+                  "gradient_tolerance": 1e-8, "history_size": 10,
                   "feature_schema_hash": _hash_object(schema)}
     else:
         family = "complete_subset_exponential"
