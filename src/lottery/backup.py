@@ -304,7 +304,7 @@ def restore_backup(backup_dir: str | Path, restore_root: str | Path) -> dict[str
     backup = Path(backup_dir).resolve(strict=True)
     destination_input = Path(restore_root)
     if destination_input.exists() or destination_input.is_symlink():
-        raise BackupError("restore_root must be empty/nonexistent; partial or overwriting restore is forbidden")
+        raise BackupError("restore_root must not already exist (it must be empty/nonexistent); partial or overwriting restore is forbidden")
     destination = destination_input.resolve(strict=False)
     try:
         destination.relative_to(backup)
