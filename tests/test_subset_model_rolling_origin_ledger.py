@@ -130,6 +130,8 @@ def _fixture(fail_candidate=False):
                 "zone": zone, "population_size": m, "selection_size": k,
                 "alpha": 100.0, "half_life": 100.0 if baseline == "ewma" else None,
                 "weighting": "expanding" if baseline == "expanding" else "2^(-lag/100)",
+                "solver": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+                "max_iterations": 5000, "gradient_tolerance": 1e-8, "history_size": 10,
                 "feature_schema_hash": _hash_object(schema),
             }
             baseline_payload = {
@@ -145,7 +147,7 @@ def _fixture(fail_candidate=False):
                                   "log_partition": 0.0, "numeric_dtype": "float64"},
                 "fit": {"status": "converged", "termination_reason": "gradient_tolerance",
                         "objective": 0.0, "gradient_inf_norm": 0.0, "iterations": 1,
-                        "optimizer": "conditional_poisson_calibration_lbfgs_v1", "lambda": None},
+                        "optimizer": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2", "lambda": None},
                 "training": training,
                 "implementation": {
                     "code_revision": "abc123", "runtime": runtime, "library_versions": {},
