@@ -1,5 +1,6 @@
 import hashlib
 import json
+import struct
 import sys
 import unittest
 from pathlib import Path
@@ -10,8 +11,10 @@ from lottery.subset_model.artifact import (
     ArtifactValidationError,
     canonicalize,
     create_artifact,
+    create_derived_cache,
     parse_json_strict,
     verify_artifact,
+    verify_derived_cache,
 )
 
 
@@ -55,7 +58,7 @@ def exponential_payload():
                 "objective": 1.0, "gradient_inf_norm": 1e-9, "iterations": 10,
                 "optimizer": "L-BFGS-B", "lambda": 1.0},
         "training": training,
-        "implementation": {"code_revision": "abc123", "runtime": runtime,
+        "implementation": {"code_revision": "a" * 40, "runtime": runtime,
                            "library_versions": {}, "rng_algorithm": "injected_rng.random_v1"},
         "training_snapshot_sha256": "a" * 64,
         "training_cutoff_draw_id": "26130", "training_row_count": 2948,
@@ -63,7 +66,7 @@ def exponential_payload():
         "model_configuration_hash": model_configuration_hash,
         "model_configuration": model_configuration,
         "training_first_draw_id": "07001", "training_last_draw_id": "26130",
-        "code_revision": "abc123", "runtime": runtime,
+        "code_revision": "a" * 40, "runtime": runtime,
         "fit_diagnostics": {"terminal_status": "converged", "gradient_infinity_norm": 1e-9},
         "forecast_ready": False,
         "feature_schema_version": "lot-051-symmetric-v1",
@@ -74,6 +77,35 @@ def exponential_payload():
 
 
 class JCSCanonicalizationTests(unittest.TestCase):
+    def test_shared_cross_language_golden_fixture(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "jcs-golden-v1.json"
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        canonical = canonicalize(fixture["input"])
+        expected = fixture["canonical_utf8"].encode("utf-8")
+        self.assertEqual(canonical, expected)
+        self.assertEqual(hashlib.sha256(canonical).hexdigest(), fixture["sha256"])
+
+    def test_rfc8785_appendix_b_binary64_number_vectors(self):
+        fixture_path = Path(__file__).parent / "fixtures" / "jcs-golden-v1.json"
+        fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        for vector in fixture["binary64_vectors"]:
+            value = struct.unpack(">d", bytes.fromhex(vector["hex"]))[0]
+            with self.subTest(hex=vector["hex"]):
+                self.assertEqual(canonicalize(value).decode("ascii"), vector["expected"])
+        for hex_value in fixture["invalid_binary64_vectors"]:
+            value = struct.unpack(">d", bytes.fromhex(hex_value))[0]
+            with self.subTest(invalid_hex=hex_value):
+                with self.assertRaises(ArtifactValidationError):
+                    canonicalize(value)
+
+    def test_exactly_representable_large_integers_follow_binary64_serialization(self):
+        self.assertEqual(
+            canonicalize({"value": 2**68}),
+            b'{"value":295147905179352830000}',
+        )
+        with self.assertRaises(ArtifactValidationError):
+            canonicalize({"value": 2**53 + 1})
+
     def test_ecmascript_number_formatting_vectors(self):
         value = {
             "numbers": [
@@ -99,7 +131,7 @@ class JCSCanonicalizationTests(unittest.TestCase):
         )
 
     def test_nonfinite_unsafe_or_unsupported_values_rejected(self):
-        for value in (float("nan"), float("inf"), -float("inf"), 2**53, object()):
+        for value in (float("nan"), float("inf"), -float("inf"), 2**53 + 1, object()):
             with self.subTest(value=value):
                 with self.assertRaises(ArtifactValidationError):
                     canonicalize({"value": value})
@@ -110,6 +142,12 @@ class JCSCanonicalizationTests(unittest.TestCase):
 
 
 class ModelArtifactTests(unittest.TestCase):
+    def test_unknown_top_level_schema_fields_are_rejected(self):
+        payload = exponential_payload()
+        payload["unregistered_debug_field"] = "must not be silently hashed"
+        with self.assertRaisesRegex(ArtifactValidationError, "unknown artifact fields"):
+            create_artifact(payload)
+
     def test_create_verify_and_content_address(self):
         raw, artifact_id = create_artifact(exponential_payload())
         parsed = verify_artifact(raw)
@@ -164,6 +202,35 @@ class ModelArtifactTests(unittest.TestCase):
         with self.assertRaises(ArtifactValidationError):
             create_artifact(payload)
 
+    def test_model_artifact_rejects_non_numeric_parameters_and_cutoff_mismatch(self):
+        payload = exponential_payload()
+        payload["theta"][0] = "0.1"
+        payload["parameters"]["theta"][0] = "0.1"
+        with self.assertRaisesRegex(ArtifactValidationError, "theta/schema"):
+            create_artifact(payload)
+
+        payload = exponential_payload()
+        payload["training"]["last_draw_id"] = "26129"
+        with self.assertRaisesRegex(ArtifactValidationError, "training provenance"):
+            create_artifact(payload)
+
+        payload = exponential_payload()
+        payload["code_revision"] = "abc123"
+        payload["implementation"]["code_revision"] = "abc123"
+        with self.assertRaisesRegex(ArtifactValidationError, "full lowercase 40-character"):
+            create_artifact(payload)
+
+    def test_nested_closed_schema_rejects_unknown_support_and_feature_fields(self):
+        payload = exponential_payload()
+        payload["support"]["surprise"] = 1
+        with self.assertRaisesRegex(ArtifactValidationError, "support descriptor"):
+            create_artifact(payload)
+
+        payload = exponential_payload()
+        payload["feature_schema"]["surprise"] = 1
+        with self.assertRaisesRegex(ArtifactValidationError, "feature_schema"):
+            create_artifact(payload)
+
     def test_failed_fit_has_content_addressed_diagnostic_artifact(self):
         payload = exponential_payload()
         payload["artifact_type"] = "fit_failure"
@@ -189,6 +256,51 @@ class ModelArtifactTests(unittest.TestCase):
         self.assertEqual(verified["artifact_id"], artifact_id)
         self.assertEqual(verified["artifact_type"], "fit_failure")
         self.assertFalse(verified["forecast_ready"])
+
+    def test_derived_cache_is_content_addressed_and_bound_to_parent(self):
+        _, parent_id = create_artifact(exponential_payload())
+        cache_payload = {
+            "schema_version": 1,
+            "artifact_schema": "lottery.derived-cache/v1",
+            "cache_type": "log-partition-fixture",
+            "parent_artifact_id": parent_id,
+            "cache_payload": {"support_count": 324632, "log_partition": 12.0},
+            "code_revision": "b" * 40,
+            "runtime": {"python": "3.12"},
+        }
+        raw, cache_id = create_derived_cache(cache_payload)
+        verified = verify_derived_cache(raw, expected_parent_artifact_id=parent_id)
+        self.assertEqual(verified["artifact_id"], cache_id)
+        self.assertEqual(verified["parent_artifact_id"], parent_id)
+
+        other_payload = exponential_payload()
+        other_payload["theta"] = [0.2, -0.2, 0.3, 0.0, 0.05]
+        other_payload["parameters"] = dict(other_payload["parameters"], theta=other_payload["theta"])
+        _, other_parent_id = create_artifact(other_payload)
+        with self.assertRaisesRegex(ArtifactValidationError, "parent artifact ID mismatch"):
+            verify_derived_cache(raw, expected_parent_artifact_id=other_parent_id)
+
+    def test_derived_cache_rejects_unknown_fields_and_tampering(self):
+        _, parent_id = create_artifact(exponential_payload())
+        cache_payload = {
+            "schema_version": 1,
+            "artifact_schema": "lottery.derived-cache/v1",
+            "cache_type": "test",
+            "parent_artifact_id": parent_id,
+            "cache_payload": {"value": 1},
+            "code_revision": "b" * 40,
+            "runtime": {},
+            "mutable_latest": True,
+        }
+        with self.assertRaisesRegex(ArtifactValidationError, "registered schema"):
+            create_derived_cache(cache_payload)
+
+        cache_payload.pop("mutable_latest")
+        raw, _ = create_derived_cache(cache_payload)
+        altered = json.loads(raw)
+        altered["cache_payload"]["value"] = 2
+        with self.assertRaises(ArtifactValidationError):
+            verify_derived_cache(canonicalize(altered), expected_parent_artifact_id=parent_id)
 
     def test_conditional_poisson_family_requires_centered_weights(self):
         p = 2 / 12
@@ -220,22 +332,23 @@ class ModelArtifactTests(unittest.TestCase):
                     "objective": 0.0, "gradient_inf_norm": 0.0, "iterations": 1,
                     "optimizer": "conditional_poisson_calibration_lbfgs_v1", "lambda": None},
             "training": training,
-            "implementation": {"code_revision": "abc123", "runtime": runtime,
+            "implementation": {"code_revision": "a" * 40, "runtime": runtime,
                                "library_versions": {},
                                "rng_algorithm": "conditional_poisson_backward_dp_with_injected_rng_v1"},
             "training_snapshot_sha256": "b" * 64, "training_cutoff_draw_id": "26130",
             "training_row_count": 2948, "feature_schema_hash": "sha256:" + "c" * 64,
             "model_configuration_hash": "sha256:" + "d" * 64,
             "training_first_draw_id": "07001",
-            "training_last_draw_id": "26130", "code_revision": "abc123",
+            "training_last_draw_id": "26130", "code_revision": "a" * 40,
             "runtime": runtime, "fit_diagnostics": {"terminal_status": "converged"},
             "forecast_ready": False, "centered_log_weights": [0.0] * 12,
+            "baseline": "expanding", "alpha": 100.0, "half_life": None,
             "target_marginals": [p] * 12, "achieved_marginals": [p] * 12,
             "solver_status": "converged", "calibration_residual": 0.0,
         }
         payload["feature_schema_hash"] = "sha256:" + hashlib.sha256(canonicalize(payload["feature_schema"])).hexdigest()
         model_configuration = {
-            "model_family": "conditional_poisson", "zone": "back",
+            "model_family": "conditional_poisson", "baseline": "expanding", "zone": "back",
             "population_size": 12, "selection_size": 2, "alpha": 100.0,
             "half_life": None, "weighting": "expanding",
             "feature_schema_hash": payload["feature_schema_hash"],
@@ -246,6 +359,10 @@ class ModelArtifactTests(unittest.TestCase):
         self.assertEqual(verify_artifact(raw)["artifact_id"], artifact_id)
         payload["centered_log_weights"] = [1.0] * 12
         with self.assertRaises(ArtifactValidationError):
+            create_artifact(payload)
+        payload["centered_log_weights"] = ["0.0"] * 12
+        payload["parameters"]["centered_log_weights"] = ["0.0"] * 12
+        with self.assertRaisesRegex(ArtifactValidationError, "finite numeric"):
             create_artifact(payload)
 
 
