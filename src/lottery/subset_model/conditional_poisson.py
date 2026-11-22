@@ -12,6 +12,10 @@ from itertools import combinations
 from math import exp, fsum, isfinite, log
 from typing import Sequence
 
+from .exponential import _dot, _strong_wolfe_search
+
+
+CALIBRATION_SOLVER = "conditional_poisson_calibration_lbfgs_strong_wolfe_v2"
 
 _NEG_INF = float("-inf")
 
@@ -45,8 +49,18 @@ def _validate_log_weights(log_weights: Sequence[float], k: int) -> tuple[tuple[f
         raise ValueError("log_weights must contain only finite values")
     if type(k) is not int or not 1 <= k <= len(values):
         raise ValueError("k must be an integer in 1..len(log_weights)")
-    center = fsum(values) / len(values)
-    return tuple(value - center for value in values), center
+    # Shift before summing so a large common offset does not overflow.
+    # A spread that cannot be represented after centering is rejected rather
+    # than allowed to poison the DP with infinities.
+    offset = max(values)
+    try:
+        center = offset + fsum(value - offset for value in values) / len(values)
+    except OverflowError as exc:
+        raise ValueError("log_weights cannot be centered in float64") from exc
+    centered = tuple(value - center for value in values)
+    if not isfinite(center) or any(not isfinite(value) for value in centered):
+        raise ValueError("centered log_weights must remain finite in float64")
+    return centered, center
 
 
 def _forward_dp(log_weights: tuple[float, ...], k: int) -> list[list[float]]:
@@ -91,6 +105,7 @@ class CalibrationResult:
     gradient_infinity_norm: float
     iterations: int
     message: str
+    solver: str
 
 
 class ConditionalPoisson:
@@ -141,7 +156,13 @@ class ConditionalPoisson:
             marginal = exp(log_marginal)
             if not isfinite(marginal) or not 0.0 <= marginal <= 1.0:
                 raise ArithmeticError("computed inclusion marginal is invalid")
+            if 0 < self.k < self.m and not 0.0 < marginal < 1.0:
+                raise ArithmeticError(
+                    "finite non-degenerate inclusion marginal is outside the representable open interval"
+                )
             result.append(marginal)
+        if abs(fsum(result) - self.k) > 1e-10:
+            raise ArithmeticError("inclusion marginals do not sum to the fixed subset size")
         return tuple(result)
 
     def probability_sum(self) -> float:
@@ -202,20 +223,19 @@ class ConditionalPoisson:
             raise ValueError("tolerance must be finite and positive")
         if type(max_iterations) is not int or max_iterations < 1:
             raise ValueError("max_iterations must be a positive integer")
+        if type(history_size) is not int or history_size < 1:
+            raise ValueError("history_size must be a positive integer")
 
         def evaluate(eta: tuple[float, ...]):
             model = cls(eta, k)
             achieved = model.inclusion_marginals()
-            objective = model.log_normalizer - sum(a * b for a, b in zip(eta, target))
+            objective = model.log_normalizer - fsum(a * b for a, b in zip(eta, target))
             gradient = tuple(a - b for a, b in zip(achieved, target))
             # Project the gauge direction; the objective is invariant to a
             # common additive constant when both marginal sums equal k.
-            mean_gradient = sum(gradient) / m
+            mean_gradient = fsum(gradient) / m
             gradient = tuple(value - mean_gradient for value in gradient)
             return objective, gradient, achieved
-
-        def dot(a, b):
-            return sum(x * y for x, y in zip(a, b))
 
         eta = tuple(0.0 for _ in range(m))
         objective, gradient, achieved = evaluate(eta)
@@ -239,44 +259,41 @@ class ConditionalPoisson:
             q = list(gradient)
             alphas = []
             for s_vec, y_vec, rho in zip(reversed(s_hist), reversed(y_hist), reversed(rho_hist)):
-                alpha = rho * dot(s_vec, q)
+                alpha = rho * _dot(s_vec, q)
                 alphas.append(alpha)
                 q = [q[i] - alpha * y_vec[i] for i in range(m)]
-            scale = (dot(s_hist[-1], y_hist[-1]) / dot(y_hist[-1], y_hist[-1])) if s_hist else 1.0
+            scale = (_dot(s_hist[-1], y_hist[-1]) / _dot(y_hist[-1], y_hist[-1])) if s_hist else 1.0
             direction_seed = [scale * value for value in q]
             for (s_vec, y_vec, rho), alpha in zip(zip(s_hist, y_hist, rho_hist), reversed(alphas)):
-                beta = rho * dot(y_vec, direction_seed)
+                beta = rho * _dot(y_vec, direction_seed)
                 direction_seed = [
                     direction_seed[i] + s_vec[i] * (alpha - beta) for i in range(m)
                 ]
             direction = tuple(-value for value in direction_seed)
             # Project direction into the zero-sum gauge.
-            mean_direction = sum(direction) / m
+            mean_direction = fsum(direction) / m
             direction = tuple(value - mean_direction for value in direction)
-            directional_derivative = dot(gradient, direction)
+            directional_derivative = _dot(gradient, direction)
             if directional_derivative >= 0:
                 direction = tuple(-value for value in gradient)
-                directional_derivative = -dot(gradient, gradient)
+                directional_derivative = -_dot(gradient, gradient)
                 s_hist.clear(); y_hist.clear(); rho_hist.clear()
 
-            step = 1.0
-            accepted = None
-            for _ in range(60):
-                trial_raw = tuple(eta[i] + step * direction[i] for i in range(m))
-                center = sum(trial_raw) / m
-                trial = tuple(value - center for value in trial_raw)
-                trial_objective, trial_gradient, trial_achieved = evaluate(trial)
-                if trial_objective <= objective + 1e-4 * step * directional_derivative:
-                    accepted = (trial, trial_objective, trial_gradient, trial_achieved)
-                    break
-                step *= 0.5
+            def line_evaluate(point):
+                trial_objective, trial_gradient, _ = evaluate(point)
+                return trial_objective, trial_gradient, trial_objective
+
+            accepted = _strong_wolfe_search(
+                line_evaluate, eta, direction, objective, gradient,
+            )
             if accepted is None:
-                status, message, iterations = "line_search_failed", "Armijo search failed", iteration
+                status, message, iterations = "line_search_failed", "strong-Wolfe search failed", iteration
                 break
-            new_eta, new_objective, new_gradient, new_achieved = accepted
+            new_eta = accepted[0]
+            new_objective, new_gradient, new_achieved = evaluate(new_eta)
             s_vec = tuple(new_eta[i] - eta[i] for i in range(m))
             y_vec = tuple(new_gradient[i] - gradient[i] for i in range(m))
-            curvature = dot(s_vec, y_vec)
+            curvature = _dot(s_vec, y_vec)
             if curvature > 1e-14:
                 s_hist.append(s_vec); y_hist.append(y_vec); rho_hist.append(1.0 / curvature)
                 if len(s_hist) > history_size:
@@ -285,12 +302,12 @@ class ConditionalPoisson:
             iterations = iteration + 1
 
         # Recompute from the final canonical centered weights.
-        center = sum(eta) / m
+        center = fsum(eta) / m
         eta = tuple(value - center for value in eta)
         final_model = cls(eta, k)
         final_achieved = final_model.inclusion_marginals()
         residual = max(abs(a - b) for a, b in zip(final_achieved, target))
-        final_objective = final_model.log_normalizer - sum(a * b for a, b in zip(eta, target))
+        final_objective = final_model.log_normalizer - fsum(a * b for a, b in zip(eta, target))
         final_gradient = tuple(a - b for a, b in zip(final_achieved, target))
         gradient_inf = max(abs(value) for value in final_gradient)
         converged = status == "converged" and residual <= tolerance and gradient_inf <= tolerance
@@ -307,4 +324,5 @@ class ConditionalPoisson:
             gradient_infinity_norm=gradient_inf,
             iterations=iterations,
             message=message,
+            solver=CALIBRATION_SOLVER,
         )

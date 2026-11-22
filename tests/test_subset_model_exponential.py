@@ -58,6 +58,58 @@ class ExponentialFamilyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.model.log_partition((float("nan"),) * self.model.dimension)
 
+    def test_unbounded_lbfgsb_strong_wolfe_search_satisfies_both_conditions(self):
+        from lottery.subset_model.exponential import _strong_wolfe_search
+
+        def quadratic(point):
+            objective = 0.5 * sum(value * value for value in point)
+            gradient = tuple(point)
+            return objective, gradient, objective
+
+        point = (1.0, 2.0)
+        gradient = (1.0, 2.0)
+        direction = (-1.0, -2.0)
+        initial_objective = 2.5
+        accepted = _strong_wolfe_search(
+            quadratic, point, direction, initial_objective, gradient
+        )
+        self.assertIsNotNone(accepted)
+        trial, objective, trial_gradient, _ = accepted
+        derivative_zero = sum(a * b for a, b in zip(gradient, direction))
+        derivative_trial = sum(a * b for a, b in zip(trial_gradient, direction))
+        step = 1.0
+        self.assertLessEqual(objective, initial_objective + 1e-4 * step * derivative_zero)
+        self.assertLessEqual(abs(derivative_trial), -0.9 * derivative_zero)
+        self.assertTrue(all(math.isfinite(value) for value in trial))
+
+    def test_optimizer_dot_uses_compensated_float64_accumulation(self):
+        from lottery.subset_model.exponential import _dot
+
+        self.assertEqual(_dot((1e16, 1.0, -1e16), (1.0, 1.0, 1.0)), 1.0)
+
+    def test_strong_wolfe_search_handles_sub_ulp_armijo_decrease(self):
+        from lottery.subset_model.exponential import _strong_wolfe_search
+
+        def near_stationary(point):
+            value = point[0]
+            objective = 1e6 + 0.5 * value * value
+            return objective, (value,), objective
+
+        accepted = _strong_wolfe_search(
+            near_stationary, (1e-8,), (-1e-8,), 1e6, (1e-8,)
+        )
+        self.assertIsNotNone(accepted)
+        self.assertLessEqual(abs(accepted[2][0]), 1e-16)
+
+    def test_strong_wolfe_search_rejects_non_descent_direction(self):
+        from lottery.subset_model.exponential import _strong_wolfe_search
+
+        accepted = _strong_wolfe_search(
+            lambda point: (sum(value * value for value in point), tuple(2 * value for value in point), 0.0),
+            (1.0,), (1.0,), 1.0, (2.0,),
+        )
+        self.assertIsNone(accepted)
+
     def test_fit_returns_recomputed_converged_diagnostics(self):
         observations = [
             (1, 2, 3), (1, 2, 4), (1, 3, 5), (2, 4, 6),
@@ -100,7 +152,7 @@ class ExponentialFamilyTests(unittest.TestCase):
         )
         self.assertFalse(result.converged)
         self.assertIn(result.terminal_status, ("max_iterations", "line_search_failed"))
-        self.assertEqual(result.solver, "deterministic_unbounded_lbfgs_armijo_v1")
+        self.assertEqual(result.solver, "deterministic_unbounded_lbfgsb_strong_wolfe_v1")
 
     def test_repeating_full_training_multiset_preserves_objective(self):
         observations = [(1, 2, 3), (1, 2, 4), (2, 4, 6), (3, 6, 8)]
