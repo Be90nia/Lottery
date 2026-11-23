@@ -65,3 +65,25 @@ Run the focused tests with:
 ```sh
 python -m unittest tests.test_readiness_receipts -v
 ```
+
+
+## CLI integration
+
+The existing readiness CLI exposes the typed receipt path without changing the
+legacy structural v1 mode:
+
+```sh
+python scripts/evaluate_release_readiness.py \
+  --manifest release-manifest-v2.json \
+  --gate-results typed-gate-index.json \
+  --fault-results typed-fault-index.json \
+  --evidence-root ./release-evidence \
+  --output receipt-completeness.json \
+  --typed-receipts
+```
+
+Exit code 0 means the typed receipt inventory and referenced bytes are complete.
+It does **not** mean the release is ready: the report still says
+`readiness=NOT_READY`, `shadow_authorized=false` and
+`production_ready=false`. Exit code 2 means missing, invalid or blocked
+receipt evidence.
