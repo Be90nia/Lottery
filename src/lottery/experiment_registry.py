@@ -358,6 +358,7 @@ class ExperimentRegistry:
                             execution_context,
                             expected_repository=execution_context.get("repository"),
                             expected_repository_id=execution_context.get("repository_id"),
+                            expected_workflow_id=execution_context.get("workflow_id"),
                             expected_workflow_path=execution_context.get("workflow_path"),
                         )
                     except (ExecutionContextError, AttributeError) as exc:
