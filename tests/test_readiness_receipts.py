@@ -87,6 +87,11 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         self.assertFalse(report["production_ready"])
         self.assertIn("integrity only", report["authenticity_note"])
 
+    def test_mutable_release_ref_is_rejected_before_receipt_evaluation(self):
+        self.manifest["release_ref"] = "main"
+        with self.assertRaisesRegex(ReceiptVerificationError, "invalid or mutable"):
+            self.verify()
+
     def test_one_generic_receipt_cannot_be_reused_for_all_gates(self):
         for index in range(1, len(self.gates)):
             self.gates[index]["receipt"] = dict(self.gates[0]["receipt"])
