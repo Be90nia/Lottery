@@ -69,7 +69,8 @@
         "additionalProperties": false,
         "required": [
           "check_id",
-          "status"
+          "status",
+          "evidence"
         ],
         "properties": {
           "check_id": {
@@ -78,6 +79,24 @@
           },
           "status": {
             "const": "PASS"
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "sha256"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
           }
         }
       }
