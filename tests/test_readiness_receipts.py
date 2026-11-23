@@ -24,7 +24,7 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
     ]
     cutoffs = [f"{int(targets[0]) - 1:05d}", *targets[:-1]]
     from datetime import date, timedelta
-    target_dates = [(date(2000, 1, 1) + timedelta(days=i)).isoformat() for i in range(count)]
+    target_dates = [(date(2000, 1, 1) + timedelta(days=i)).isoformat() for i in range(2649)]
     cutoff_dates = [date(1999, 12, 31).isoformat(), *target_dates[:-1]]
     target_hash = hashlib.sha256(canonicalize(targets)).hexdigest()
     snapshot_hash = "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
