@@ -356,6 +356,7 @@ def verify_receipt_set(
         ),
         "shadow_authorized": False,
         "production_ready": False,
+        "release_manifest_evidence": manifest_evidence,
         "gate_receipts": verified_gates,
         "fault_receipts": verified_faults,
         "lot042_accessed": manifest["lot042_accessed"],
