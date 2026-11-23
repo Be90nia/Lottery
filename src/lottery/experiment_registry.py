@@ -669,6 +669,14 @@ class ExperimentRegistry:
         if verified_at.tzinfo is None or verified_at.utcoffset() is None:
             raise ExperimentRegistryError("GitHub verification receipt timestamp must be timezone-aware")
         verification_receipt_sha256 = _sha(canonicalize(verification))
+        _write_once(
+            self.root / "historical-source-metadata" / f"{source_metadata_sha256}.json",
+            canonicalize(source_metadata),
+        )
+        _write_once(
+            self.root / "github-actions-verification" / f"{verification_receipt_sha256}.json",
+            canonicalize(verification),
+        )
         config_sha256 = _sha(canonicalize(config))
         with ledger_lock(self.events_path):
             snapshot = self._snapshot_unlocked()
