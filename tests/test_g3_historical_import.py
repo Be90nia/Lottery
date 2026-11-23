@@ -40,6 +40,7 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
             "artifact": {"size_in_bytes": len(zip_raw), "digest": "sha256:" + sha(zip_raw)},
             "artifact_contents": {
                 "run_manifest_sha256": manifest["manifest_sha256"].removeprefix("sha256:"),
+                "run_manifest_file": {"sha256": sha(manifest_raw), "byte_length": len(manifest_raw)},
                 "target_score_ledger": {
                     "sha256": sha(ledger_raw), "byte_length": len(ledger_raw), "record_count": 1,
                 },
