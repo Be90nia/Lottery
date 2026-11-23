@@ -65,6 +65,8 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
                 "status": "complete_with_explicit_failures",
                 "snapshot_sha256": manifest["snapshot"]["sha256"],
                 "target_count_per_zone": 1,
+                "first_target_draw_id": "26131",
+                "last_target_draw_id": "26131",
                 "zones": ["front"],
                 "terminal_counts": manifest["terminal_status_counts"],
             },
