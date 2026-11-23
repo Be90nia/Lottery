@@ -108,7 +108,7 @@ def _holm(p_values: dict[str, float]) -> dict[str, float]:
 
 def build_g3_evidence_bundle(
     *, snapshot_path: Path, run_manifest_path: Path, ledger_path: Path,
-    registration_path: Path, output_dir: Path, expected_snapshot_sha256: str,
+    model_artifacts_path: Path, registration_path: Path, output_dir: Path, expected_snapshot_sha256: str,
     expected_run_manifest_sha256: str, calibration_path: Path | None = None,
 ) -> dict[str, Any]:
     """Create six G3 evidence files and an explicit non-authorizing build summary."""
@@ -156,6 +156,14 @@ def build_g3_evidence_bundle(
 
     ledger_raw = ledger_path.read_bytes()
     ledger_digest = _sha256(ledger_raw)
+    model_artifacts_raw = model_artifacts_path.read_bytes()
+    model_artifacts_digest = _sha256(model_artifacts_raw)
+    declared_artifacts = run_manifest.get("output_files", {}).get("model-artifacts.jsonl", {})
+    if (declared_artifacts.get("sha256") != model_artifacts_digest
+            or declared_artifacts.get("bytes") != len(model_artifacts_raw)
+            or run_manifest.get("model_artifact_count") != len(model_artifacts_raw.splitlines())
+            or run_manifest.get("model_artifact_count") != 2649 * 2 * 3):
+        raise G3EvidenceBuildError("model-artifact bytes/count do not match immutable run manifest")
     declared_ledger = run_manifest.get("output_files", {}).get("target-score-ledger.jsonl", {})
     if declared_ledger.get("sha256") != ledger_digest or declared_ledger.get("bytes") != len(ledger_raw):
         raise G3EvidenceBuildError("terminal ledger bytes do not match immutable run manifest")
@@ -212,8 +220,10 @@ def build_g3_evidence_bundle(
     output_dir.mkdir(parents=True, exist_ok=True)
     staged_ledger = output_dir / "target-score-ledger.jsonl"
     staged_manifest = output_dir / "run_manifest.json"
+    staged_artifacts = output_dir / "model-artifacts.jsonl"
     shutil.copyfile(ledger_path, staged_ledger)
     shutil.copyfile(run_manifest_path, staged_manifest)
+    shutil.copyfile(model_artifacts_path, staged_artifacts)
     denominator = {
         "schema": "lottery.g3-terminal-ledger-index/v1",
         "target_ids_sha256": target_ids_hash,
@@ -225,6 +235,7 @@ def build_g3_evidence_bundle(
         "status_counts": {key: value for key, value in status_counts.items() if value},
         "ledger": {"path": staged_ledger.name, "sha256": ledger_digest},
         "run_manifest": {"path": staged_manifest.name, "sha256": _sha256(staged_manifest.read_bytes())},
+        "model_artifacts": {"path": staged_artifacts.name, "sha256": _sha256(staged_artifacts.read_bytes())},
     }
 
     bootstrap = run_manifest.get("bootstrap", {})
@@ -355,6 +366,8 @@ def build_g3_evidence_bundle(
         "snapshot_sha256": expected_snapshot_sha256,
         "target_count_per_zone": TARGET_COUNT,
         "terminal_record_count": len(ledger),
+        "model_artifact_count": run_manifest.get("model_artifact_count"),
+        "model_artifacts_sha256": model_artifacts_digest,
         "terminal_status_counts": status_counts,
         "candidate_minus_uniform": {
             zone: baseline_zones[zone]["candidate_vs_uniform_mean_delta"] for zone in ZONES
@@ -376,6 +389,7 @@ def main() -> int:
     parser.add_argument("--run-manifest", type=Path, required=True)
     parser.add_argument("--expected-run-manifest-sha256", required=True)
     parser.add_argument("--ledger", type=Path, required=True)
+    parser.add_argument("--model-artifacts", type=Path, required=True)
     parser.add_argument("--registration", type=Path, required=True)
     parser.add_argument("--calibration", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -385,8 +399,9 @@ def main() -> int:
             snapshot_path=args.snapshot, expected_snapshot_sha256=args.expected_snapshot_sha256,
             run_manifest_path=args.run_manifest,
             expected_run_manifest_sha256=args.expected_run_manifest_sha256,
-            ledger_path=args.ledger, registration_path=args.registration,
-            calibration_path=args.calibration, output_dir=args.output_dir,
+            ledger_path=args.ledger, model_artifacts_path=args.model_artifacts,
+            registration_path=args.registration, calibration_path=args.calibration,
+            output_dir=args.output_dir,
         )
     except (OSError, G3EvidenceBuildError, ValueError, KeyError, TypeError) as exc:
         print(f"G3_EVIDENCE_BUILD_FAILED: {exc}", file=sys.stderr)
