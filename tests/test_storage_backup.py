@@ -156,6 +156,32 @@ class StorageBackupTests(unittest.TestCase):
                 runtime="CPython 3.12",
             )
 
+    def test_backup_paths_must_use_canonical_posix_spelling(self):
+        for value in ("payload//object.json", "payload/./object.json", "payload/x/../object.json"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(BackupError, "canonical and traversal-free"):
+                    backup_module._safe_relative(value)
+
+    def test_restore_rechecks_package_identity_after_copy_before_publish(self):
+        self.create_committed_pointer()
+        created = self.create()
+        destination = self.root / "restore-race"
+        original_read = backup_module._read_canonical
+
+        def replace_manifest_after_initial_verification(path):
+            manifest = original_read(path)
+            if Path(path).name == "manifest.json":
+                body = {key: value for key, value in manifest.items() if key != "manifest_sha256"}
+                body["runtime"] = "tampered-after-verification"
+                manifest = {**body, "manifest_sha256": backup_module._sha(backup_module.canonicalize(body))}
+                Path(path).write_bytes(backup_module.canonicalize(manifest))
+            return manifest
+
+        with patch("lottery.backup._read_canonical", side_effect=replace_manifest_after_initial_verification):
+            with self.assertRaisesRegex(BackupError, "changed during restore"):
+                restore_backup(created["backup_path"], destination)
+        self.assertFalse(destination.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
