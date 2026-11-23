@@ -274,6 +274,45 @@ class FileSystemObjectStore:
                 raise StorageError("commit receipt conflicts with prior immutable result")
             return existing
 
+    def verify_commit(
+        self, *, operation_id: str, expected_content_sha256: str | None = None,
+    ) -> dict[str, Any]:
+        """Independently resolve a commit receipt to validated bytes and read-back object."""
+        operation_id = _safe_name(operation_id, "operation_id")
+        operation_path = self._operation_path(operation_id)
+        validation_path = self._validation_path(operation_id)
+        commit_path = self._commit_path(operation_id)
+        operation = _read_canonical(operation_path)
+        validation = _read_canonical(validation_path)
+        commit = _read_canonical(commit_path)
+        digest = operation.get("content_sha256")
+        byte_length = operation.get("byte_length")
+        if expected_content_sha256 is not None and digest != expected_content_sha256:
+            raise StorageError("commit receipt content digest differs from the expected output")
+        if (operation.get("schema") != STAGE_SCHEMA
+                or operation.get("operation_id") != operation_id
+                or type(byte_length) is not int or byte_length < 0
+                or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)):
+            raise StorageError("stage manifest schema or content identity is invalid")
+        if (validation.get("schema") != VALIDATION_SCHEMA
+                or validation.get("operation_id") != operation_id
+                or validation.get("content_sha256") != digest
+                or validation.get("byte_length") != byte_length
+                or validation.get("validated") is not True):
+            raise StorageError("validation receipt does not bind the staged output")
+        if (commit.get("schema") != COMMIT_SCHEMA
+                or commit.get("operation_id") != operation_id
+                or commit.get("content_sha256") != digest
+                or commit.get("byte_length") != byte_length
+                or commit.get("object_key") != str(self._object_path(digest).relative_to(self.root))
+                or commit.get("stage_manifest_sha256") != _sha(operation_path.read_bytes())
+                or commit.get("validation_receipt_sha256") != _sha(validation_path.read_bytes())
+                or commit.get("committed") is not True):
+            raise StorageError("commit receipt cross-links do not match stage and validation records")
+        self._verify_bytes(self._stage_path(operation_id), digest, byte_length)
+        self._verify_bytes(self._object_path(digest), digest, byte_length)
+        return commit
+
     def publish_pointer(
         self,
         *,
