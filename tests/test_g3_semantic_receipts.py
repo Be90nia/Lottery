@@ -295,7 +295,6 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         lines[0] = canonicalize(row)
         changed = b"\n".join(lines) + b"\n"
         self.ledger_path.write_bytes(changed)
-        self.ledger_path.write_bytes(changed)
         self._refresh_ledger_and_manifest_bindings()
         with self.assertRaisesRegex(ReceiptVerificationError, "violates target/cutoff/model identity"):
             self.verify()
