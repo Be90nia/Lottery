@@ -20,6 +20,7 @@ from pathlib import Path
 from lottery.backtest import _probabilities
 from lottery.execution_context import execution_context_from_env
 from lottery.experiment_registry import EXPERIMENT_SCHEMA, ExperimentRegistry
+from lottery.storage import FileSystemObjectStore
 from lottery.subset_model.artifact import canonicalize, create_artifact, verify_artifact
 from lottery.subset_model.rolling_origin_ledger import write_immutable_outputs
 from lottery.subset_model import (
@@ -211,11 +212,84 @@ def _start_registered_execution(
 def _finish_registered_execution(
     registry: ExperimentRegistry, binding: dict, output_path: Path,
 ) -> dict:
+    output_files = [
+        ("run_manifest.json", "application/json", "lot-055-run-manifest-v1", "json"),
+        ("target-score-ledger.jsonl", "application/x-ndjson", "lot-055-target-score-ledger-v1", "jsonl"),
+        ("model-artifacts.jsonl", "application/x-ndjson", "lottery.subset-probability-model/v1", "artifacts"),
+        ("model-artifact-provenance.jsonl", "application/x-ndjson", "lottery.model-artifact-provenance/v1", "jsonl"),
+    ]
+    execution = binding["execution_context"]
+    store = FileSystemObjectStore(output_path.parent / "durable-store")
+    committed = []
+
+    def validate_content(raw: bytes, mode: str) -> bool:
+        try:
+            if mode == "json":
+                value = json.loads(raw)
+                return canonicalize(value) + b"\\n" == raw
+            if not raw.endswith(b"\\n"):
+                return False
+            lines = raw.splitlines()
+            if not lines:
+                return False
+            for line in lines:
+                value = json.loads(line)
+                if canonicalize(value) != line:
+                    return False
+                if mode == "artifacts":
+                    verify_artifact(line)
+            return True
+        except (ValueError, TypeError):
+            return False
+
+    for filename, media_type, schema_version, mode in output_files:
+        path = output_path.parent / filename
+        raw = path.read_bytes()
+        staged = store.stage(
+            idempotency_key=f"{execution['execution_id']}:{filename}",
+            content=raw,
+            media_type=media_type,
+            schema_version=schema_version,
+            producer_commit=execution["sha"],
+            producer_runtime=sys.version,
+        )
+        store.validate(
+            operation_id=staged["operation_id"],
+            validator=lambda content, current_mode=mode: validate_content(content, current_mode),
+            validator_id=f"{schema_version}:canonical-validation-v1",
+        )
+        commit = store.commit(operation_id=staged["operation_id"])
+        verified = store.verify_commit(
+            operation_id=staged["operation_id"],
+            expected_content_sha256=staged["content_sha256"],
+        )
+        if verified != commit:
+            raise RuntimeError(f"LOT-065 commit read-back differs for {filename}")
+        committed.append({
+            "filename": filename,
+            "operation_id": staged["operation_id"],
+            "content_sha256": staged["content_sha256"],
+            "byte_length": staged["byte_length"],
+            "commit_receipt_sha256": hashlib.sha256(canonicalize(commit)).hexdigest(),
+        })
+
     manifest_raw = (output_path.parent / "run_manifest.json").read_bytes()
     artifacts_raw = (output_path.parent / "model-artifacts.jsonl").read_bytes()
     manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
     artifacts_sha256 = hashlib.sha256(artifacts_raw).hexdigest()
-    execution = binding["execution_context"]
+    storage_receipt_bundle = {
+        "schema": "lottery.storage-commit-receipts/v1",
+        "experiment_id": binding["experiment_id"],
+        "trial_id": binding["trial_id"],
+        "attempt_id": binding["attempt_id"],
+        "execution_id": execution["execution_id"],
+        "store_root": "durable-store",
+        "receipts": committed,
+    }
+    storage_receipt_raw = canonicalize(storage_receipt_bundle) + b"\\n"
+    storage_receipt_path = output_path.parent / "storage-commit-receipts.json"
+    storage_receipt_path.write_bytes(storage_receipt_raw)
+    storage_receipts_sha256 = hashlib.sha256(storage_receipt_raw).hexdigest()
     registry.finish_trial(
         experiment_id=binding["experiment_id"],
         attempt_id=binding["attempt_id"],
@@ -223,6 +297,7 @@ def _finish_registered_execution(
         result_sha256=manifest_sha256,
         artifact_sha256=artifacts_sha256,
         execution_id=execution["execution_id"],
+        storage_commit_receipts_sha256=storage_receipts_sha256,
         actor=execution["actor"],
     )
     snapshot = registry.snapshot()
@@ -238,6 +313,7 @@ def _finish_registered_execution(
         "evaluation_run_id": json.loads(manifest_raw)["run_id"],
         "run_manifest_sha256": manifest_sha256,
         "model_artifacts_sha256": artifacts_sha256,
+        "storage_commit_receipts_sha256": storage_receipts_sha256,
         "event_count": snapshot["event_count"],
         "event_chain_head_sha256": events[-1]["event_hash"] if events else None,
         "terminal_status": "succeeded",
