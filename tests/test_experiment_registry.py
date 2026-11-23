@@ -355,6 +355,81 @@ class ExperimentRegistryTests(unittest.TestCase):
         self.assertEqual(replayed, imported)
         self.assertEqual(self.registry.snapshot()["event_count"], 3)
 
+    def test_historical_import_recovers_after_start_event_crash(self):
+        spec = experiment_spec(experiment_class="exploratory", outcomes_observed=True)
+        spec["experiment_name"] = "historical-import-crash-recovery"
+        registered = self.registry.register_experiment(spec, actor="test-suite")
+        context = execution_context()
+        source = {
+            "source_run_url": context["run_url"],
+            "source_started_at_utc": "2026-11-20T06:06:56.6324035Z",
+            "source_completed_at_utc": "2026-11-20T08:07:28.2553913Z",
+            "source_artifact_id": 12345,
+            "source_artifact_zip_sha256": digest("artifact-zip"),
+            "source_manifest_sha256": digest("manifest"),
+            "source_model_artifacts_sha256": digest("model-artifacts"),
+            "source_evidence_sha256": digest("evidence"),
+            "scientific_result_status": "complete_with_explicit_failures",
+            "confirmatory_eligible": False,
+        }
+
+        def verifier(metadata, execution):
+            return {
+                "schema": "lottery.github-actions-verification/v1",
+                "verifier_id": "test-github-actions-verifier/v1",
+                "verified": True,
+                "source_metadata_sha256": hashlib.sha256(canonicalize(metadata)).hexdigest(),
+                "artifact_zip_sha256": metadata["source_artifact_zip_sha256"],
+                "source_evidence_sha256": metadata["source_evidence_sha256"],
+                "verified_at_utc": "2026-11-23T09:00:00Z",
+            }
+
+        original_append = self.registry._append_event_locked
+        calls = 0
+
+        def crash_after_start(event):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("simulated crash before imported terminal event")
+            return original_append(event)
+
+        self.registry._append_event_locked = crash_after_start
+        with self.assertRaisesRegex(RuntimeError, "simulated crash"):
+            self.registry.import_completed_trial(
+                experiment_id=registered["experiment_id"],
+                attempt_id="imported-actions-45130000000-attempt-1",
+                config=spec["trial_plan"][0],
+                actor="historical-importer",
+                execution_context=context,
+                source_metadata=source,
+                metadata_verifier=verifier,
+                expected_repository="Be90nia/Lottery",
+                expected_repository_id="1461523125",
+                expected_workflow_path=".github/workflows/subset-research.yml",
+            )
+        self.registry._append_event_locked = original_append
+        partial = self.registry.snapshot()["experiments"][registered["experiment_id"]]["attempts"][
+            "imported-actions-45130000000-attempt-1"
+        ]
+        self.assertEqual(partial["status"], "running")
+        self.assertTrue(partial["imported"])
+
+        recovered = self.registry.import_completed_trial(
+            experiment_id=registered["experiment_id"],
+            attempt_id="imported-actions-45130000000-attempt-1",
+            config=spec["trial_plan"][0],
+            actor="historical-importer",
+            execution_context=context,
+            source_metadata=source,
+            metadata_verifier=verifier,
+            expected_repository="Be90nia/Lottery",
+            expected_repository_id="1461523125",
+            expected_workflow_path=".github/workflows/subset-research.yml",
+        )
+        self.assertEqual(recovered["status"], "completed_uncommitted")
+        self.assertEqual(self.registry.snapshot()["event_count"], 3)
+
     def test_historical_import_requires_trusted_verifier_and_exact_source_digest(self):
         spec = experiment_spec(experiment_class="exploratory", outcomes_observed=True)
         registered = self.registry.register_experiment(spec, actor="test-suite")
