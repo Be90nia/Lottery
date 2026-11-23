@@ -263,6 +263,9 @@ def _start_registered_execution(
         "trial_id": hashlib.sha256(canonicalize(trial_config)).hexdigest(),
         "trial_config": trial_config,
         "attempt_id": attempt_id,
+        "execution_id": execution["execution_id"],
+        "run_id": execution["run_id"],
+        "run_attempt": execution["run_attempt"],
         "execution_context": execution,
     }
     return registry, binding
