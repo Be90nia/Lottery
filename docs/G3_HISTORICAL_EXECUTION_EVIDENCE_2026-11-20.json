@@ -43,6 +43,10 @@
   },
   "artifact_contents": {
     "run_manifest_sha256": "03339972dc5f0d6ea8580030054aa33e2cded494366b5bb38eb1e377f0f82649",
+    "run_manifest_file": {
+      "sha256": "894bcb895c8aa1c0e2577aa34d6f7eb9994b1a2c2214bf18960f7859c45fe1c9",
+      "byte_length": 5103
+    },
     "target_score_ledger": {
       "filename": "target-score-ledger.jsonl",
       "sha256": "823d3df0dfd31b07fbc808c905ff0d8e25c60d581569f51301b68320888847f9",
