@@ -304,6 +304,7 @@ class ExperimentRegistryTests(unittest.TestCase):
             "source_artifact_zip_sha256": digest("artifact-zip"),
             "source_manifest_sha256": digest("manifest"),
             "source_model_artifacts_sha256": digest("model-artifacts"),
+            "source_evidence_sha256": digest("evidence"),
             "scientific_result_status": "complete_with_explicit_failures",
             "confirmatory_eligible": False,
         }
@@ -316,6 +317,7 @@ class ExperimentRegistryTests(unittest.TestCase):
                 "verified": True,
                 "source_metadata_sha256": hashlib.sha256(canonicalize(metadata)).hexdigest(),
                 "artifact_zip_sha256": metadata["source_artifact_zip_sha256"],
+                "source_evidence_sha256": metadata["source_evidence_sha256"],
                 "verified_at_utc": "2026-11-23T09:00:00Z",
             }
 
@@ -389,6 +391,7 @@ class ExperimentRegistryTests(unittest.TestCase):
                 "verified": True,
                 "source_metadata_sha256": digest("wrong-metadata"),
                 "artifact_zip_sha256": metadata["source_artifact_zip_sha256"],
+                "source_evidence_sha256": metadata["source_evidence_sha256"],
                 "verified_at_utc": "2026-11-23T09:00:00Z",
             }
 
