@@ -41,6 +41,8 @@ The verifier then compares all four arrays (target IDs, target dates, cutoff IDs
 
 This is a material strengthening over checking only a declared snapshot digest plus chronology fields: the actual snapshot bytes are now read and used as the chronology oracle. It remains a byte-integrity and deterministic-consistency check, not proof of official publisher authenticity or a substitute for the G1 provenance gate.
 
+Validation: PR #111 head `fac77013f2146752bbd8dc9de1cf0c487eff112e`, CI run #1422 (`45125460055`) passed **312 unit tests** (one existing long-form test skipped), Windows ledger-lock tests, workflow-security policy, and the full data/research smoke workflow. Regression tests cover snapshot-byte mutation and a self-consistent but fabricated target date/cutoff pair.
+
 ## Semantic checks
 
 The verifier currently enforces:
