@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -175,6 +176,8 @@ def _verify_registry_binding(
                 "is not proof of registry admission."
             ),
         }
+    if not isinstance(binding, dict):
+        raise G3EvidenceBuildError("run manifest experiment_binding must be an object or null")
 
     if registry_root is None or registry_run_receipt_path is None or artifact_provenance_path is None:
         return {
