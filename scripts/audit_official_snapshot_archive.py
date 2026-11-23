@@ -128,15 +128,21 @@ def audit_archive(
             sidecar = _json(archive.read(sidecar_name), sidecar_name)
             if not isinstance(sidecar, dict):
                 raise AuditError(f"page {page_no}: sidecar must be an object")
-            if (
-                sidecar.get("source") != "Sporttery public historical draw API"
-                or sidecar.get("http_status") != 200
-                or sidecar.get("sha256") != digest
-                or sidecar.get("raw_file") != name.rsplit("/", 1)[-1]
-                or sidecar.get("page_no") != page_no
-                or sidecar.get("parser_version") != PARSER_VERSION
-            ):
-                raise AuditError(f"page {page_no}: sidecar identity/hash/status mismatch")
+            expected_sidecar = {
+                "source": "Sporttery public historical draw API",
+                "http_status": 200,
+                "sha256": digest,
+                "raw_file": name.rsplit("/", 1)[-1],
+                "page_no": page_no,
+                "parser_version": PARSER_VERSION,
+            }
+            mismatches = {
+                key: {"actual": sidecar.get(key), "expected": expected}
+                for key, expected in expected_sidecar.items()
+                if sidecar.get(key) != expected
+            }
+            if mismatches:
+                raise AuditError(f"page {page_no}: sidecar identity/hash/status mismatch: {mismatches}")
             source_url = sidecar.get("url")
             parsed_url = urllib.parse.urlsplit(source_url) if isinstance(source_url, str) else None
             query = urllib.parse.parse_qs(parsed_url.query) if parsed_url else {}
