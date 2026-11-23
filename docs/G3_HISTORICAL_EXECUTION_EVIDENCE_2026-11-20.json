@@ -64,6 +64,8 @@
     "status": "complete_with_explicit_failures",
     "confirmatory_eligible": false,
     "target_count_per_zone": 2649,
+    "first_target_draw_id": "09054",
+    "last_target_draw_id": "26131",
     "zones": ["front", "back"],
     "snapshot_row_count": 2949,
     "snapshot_sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa",
