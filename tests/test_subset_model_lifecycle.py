@@ -663,6 +663,16 @@ class ChampionLifecycleTests(unittest.TestCase):
             restore_transitions, expected_generation=second_promoted["generation"],
             approval_verifier=self.verifier, actor="test-suite",
         )
+        audited = self.store.audit_three_slot_generation(population_keys)
+        self.assertEqual(len(audited["slots"]), 6)
+        self.assertEqual(audited["registry_generation"], restored["generation"])
+        self.assertEqual(audited["champion_generation"], restored["generation"])
+        self.assertFalse(audited["approval_authenticity_verified"])
+        self.assertFalse(audited["readiness_authorized"])
+        self.assertEqual(
+            {(item["population_key"], item["zone"]): item["artifact_id"] for item in audited["slots"]},
+            first_artifacts,
+        )
         resolved = self.store.resolve_three_slot_generation(
             population_keys, approval_verifier=self.verifier
         )

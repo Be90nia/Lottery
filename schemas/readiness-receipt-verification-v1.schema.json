@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://be90nia.github.io/Lottery/schemas/readiness-receipt-verification-v1.schema.json",
+  "title": "Lottery offline receipt verification report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "release_id",
+    "release_manifest_sha256",
+    "readiness",
+    "receipt_completeness",
+    "shadow_authorized",
+    "production_ready",
+    "release_manifest_evidence",
+    "gate_receipts",
+    "fault_receipts",
+    "lot042_accessed",
+    "authenticity_note"
+  ],
+  "properties": {
+    "schema": {
+      "const": "lottery.readiness-receipt-verification/v1"
+    },
+    "release_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "release_manifest_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "readiness": {
+      "const": "NOT_READY"
+    },
+    "receipt_completeness": {
+      "enum": [
+        "COMPLETE",
+        "BLOCKED_LOT042"
+      ]
+    },
+    "shadow_authorized": {
+      "const": false
+    },
+    "production_ready": {
+      "const": false
+    },
+    "gate_receipts": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9
+    },
+    "fault_receipts": {
+      "type": "array",
+      "minItems": 15,
+      "maxItems": 15
+    },
+    "lot042_accessed": {
+      "type": "boolean"
+    },
+    "authenticity_note": {
+      "type": "string",
+      "minLength": 1
+    },
+    "release_manifest_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    }
+  }
+}

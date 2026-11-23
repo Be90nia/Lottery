@@ -52,7 +52,7 @@ def main() -> int:
                             f"{path}:{child_number}: permission exceeds the read-only allowlist: {child.strip()}"
                         )
                     elif permission_match.group(2) == "actions" and not (
-                        path.name == "subset-research.yml" and indent == 4
+                        path.name in {"subset-research.yml", "g3-evidence-adapter.yml"} and indent == 4
                     ):
                         errors.append(
                             f"{path}:{child_number}: actions: read is allowed only for the subset research job"

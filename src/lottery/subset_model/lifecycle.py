@@ -1466,6 +1466,107 @@ class ChampionLifecycle:
                 event_details={"transitions": event_transitions},
             )
 
+    def audit_three_slot_generation(
+        self, population_keys: list[str],
+    ) -> dict[str, Any]:
+        """Read-only structural audit; deliberately does not verify approval signatures."""
+        if (
+            not isinstance(population_keys, list) or len(population_keys) != 3
+            or any(not isinstance(key, str) or not key for key in population_keys)
+            or len(set(population_keys)) != 3
+        ):
+            raise LifecycleError("three-slot audit requires exactly three distinct population keys")
+        parsed_keys = [_parse_regime_population_key(key) for key in population_keys]
+        if (
+            len({regime_id for regime_id, _ in parsed_keys}) != 1
+            or {index for _, index in parsed_keys} != {1, 2, 3}
+        ):
+            raise LifecycleError("three-slot audit requires reported indices 1/2/3 in one verified equipment regime")
+
+        registry = self.snapshot()
+        champion_generations: set[int] = set()
+        evidence_by_population: dict[str, str] = {}
+        training_by_population: dict[str, str] = {}
+        artifacts_by_zone: dict[str, set[str]] = {"front": set(), "back": set()}
+        audited_slots: list[dict[str, Any]] = []
+        for population_key in population_keys:
+            for zone in ZONES:
+                slot = registry["slots"].get(_slot_key(population_key, zone))
+                if not slot or slot.get("suspended") is True:
+                    raise LifecycleError("three-slot audit found an incomplete or suspended slot")
+                artifact_id = slot.get("champion_artifact_id")
+                generation = slot.get("champion_generation")
+                validation = slot.get("validation", {}).get(artifact_id)
+                approval_hash = slot.get("approval", {}).get(artifact_id)
+                if (
+                    not isinstance(artifact_id, str) or type(generation) is not int
+                    or not isinstance(validation, dict) or validation.get("eligible") is not True
+                    or not isinstance(approval_hash, str) or not _is_sha(approval_hash)
+                ):
+                    raise LifecycleError("three-slot audit found an unapproved or unvalidated Champion pointer")
+                champion_generations.add(generation)
+                artifact = self._load_artifact(artifact_id)
+                receipt = self._load_evaluation_receipt(validation["receipt_sha256"])
+                if (
+                    receipt.get("artifact_id") != artifact_id
+                    or receipt.get("population_key") != population_key
+                    or receipt.get("zone") != zone
+                    or receipt.get("population_eligibility") != "verified_regime"
+                    or not _is_sha(receipt.get("population_evidence_sha256"))
+                ):
+                    raise LifecycleError("three-slot audit requires primary-verified regime evidence")
+                evidence_hash = receipt["population_evidence_sha256"]
+                if evidence_by_population.setdefault(population_key, evidence_hash) != evidence_hash:
+                    raise LifecycleError("front/back artifacts bind different population evidence manifests")
+                training_hash = receipt["training_population_sha256"]
+                if (
+                    training_hash != artifact.get("training_snapshot_sha256")
+                    or artifact.get("training_row_count", 0) < 300
+                ):
+                    raise LifecycleError("three-slot artifact training population/cutoff is invalid")
+                if training_by_population.setdefault(population_key, training_hash) != training_hash:
+                    raise LifecycleError("front/back artifacts use different training populations")
+                if artifact_id in artifacts_by_zone[zone]:
+                    raise LifecycleError("three population slots reuse the same zone artifact")
+                artifacts_by_zone[zone].add(artifact_id)
+                approval_path = self.approvals / f"{approval_hash}.json"
+                try:
+                    approval_raw = approval_path.read_bytes()
+                    approval = parse_json_strict(approval_raw)
+                except (OSError, ArtifactValidationError) as exc:
+                    raise LifecycleError("Champion approval receipt is missing or invalid") from exc
+                if _sha(approval_raw) != approval_hash:
+                    raise LifecycleError("Champion approval receipt hash mismatch")
+                _validate_approval(
+                    approval, action=approval.get("action"), artifact_id=artifact_id,
+                    population_key=population_key, zone=zone,
+                    expected_champion_artifact_id=approval.get("expected_champion_artifact_id"),
+                    evaluation_manifest_sha256=validation["evaluation_manifest_sha256"],
+                    evaluation_receipt_sha256=validation["receipt_sha256"],
+                    shadow_receipt_sha256=approval.get("shadow_receipt_sha256"),
+                )
+                audited_slots.append({
+                    "population_key": population_key, "zone": zone,
+                    "artifact_id": artifact_id, "artifact_sha256": artifact_id[7:],
+                    "training_snapshot_sha256": training_hash,
+                    "population_evidence_sha256": evidence_hash,
+                    "training_cutoff_draw_id": artifact["training_cutoff_draw_id"],
+                    "approval_sha256": approval_hash,
+                    "approval_authenticity": "NOT_VERIFIED",
+                })
+        if len(set(training_by_population.values())) != 3:
+            raise LifecycleError("three population slots must bind three distinct training populations")
+        if len(champion_generations) != 1:
+            raise LifecycleError("three-slot Champion pointers do not share one atomic generation")
+        return {
+            "registry_generation": registry["generation"],
+            "champion_generation": next(iter(champion_generations)),
+            "population_keys": population_keys,
+            "slots": audited_slots,
+            "approval_authenticity_verified": False,
+            "readiness_authorized": False,
+        }
+
     def resolve_three_slot_generation(
         self,
         population_keys: list[str],

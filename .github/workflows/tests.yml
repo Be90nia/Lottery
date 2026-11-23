@@ -45,6 +45,15 @@ jobs:
           python scripts/verify_official_order_crosswalks.py \
             --candidate data/candidates/legacy_draws.jsonl \
             --crosswalks data/metadata_verification/official_order_crosswalks_20261118.json
+      - name: Independently audit official raw snapshot archive and processed reproducibility
+        run: |
+          python scripts/audit_official_snapshot_archive.py \
+            --archive data/incoming/dlt_official_raw.zip \
+            --processed data/processed/draws-20261118.jsonl \
+            --processed-manifest data/processed/draws-20261118.jsonl.manifest.json \
+            --crosswalks data/metadata_verification/official_order_crosswalks_20261118.json \
+            --output official-snapshot-source-audit.json
+
       - name: Audit imported legacy prize rows
         run: python scripts/validate_legacy_prizes.py --output prize-reconciliation.json
       - name: Reconcile official snapshot prizes against legacy candidate
@@ -101,6 +110,7 @@ jobs:
             prize-reconciliation.json
             official-legacy-prize-reconciliation.json
             official-legacy-promotion-audit.json
+            official-snapshot-source-audit.json
           retention-days: 30
 
   windows-ledger-locks:
