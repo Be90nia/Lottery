@@ -530,15 +530,17 @@ def _verify_g3_evidence_bundle(
         "registry receipt, artifact provenance, storage receipt, or durable store bytes are missing/tampered",
     )
     require(
-        canonicalize(registry_receipt) + b"\\n" == registry_receipt_raw
+        canonicalize(registry_receipt) + b"\n" == registry_receipt_raw
         and registry_receipt.get("schema") == "lottery.experiment-run-receipt/v1"
         and registry_receipt.get("experiment_id") == registry_binding["registry_experiment_id"]
         and registry_receipt.get("trial_id") == registry_binding["trial_id"]
         and registry_receipt.get("attempt_id") == registry_binding["attempt_id"]
         and registry_receipt.get("execution_id") == registry_binding["execution_id"]
-        and registry_receipt.get("registry_event_count") == registry_snapshot["event_count"]
-        and registry_receipt.get("event_count") == registry_snapshot["event_count"]
+        and registry_receipt.get("event_count") == registry_snapshot["event_count"] == registry_binding["registry_event_count"]
+        and registry_receipt.get("event_chain_head_sha256") == registry_binding["event_chain_head_sha256"]
         and registry_receipt.get("event_chain_head_sha256") == (registry_events[-1]["event_hash"] if registry_events else None)
+        and registry_receipt.get("run_manifest_sha256") == hashlib.sha256(run_manifest_raw).hexdigest()
+        and registry_receipt.get("model_artifacts_sha256") == hashlib.sha256(model_artifacts_raw).hexdigest()
         and registry_receipt.get("storage_commit_receipts_sha256") == registry_binding["storage_commit_receipts_sha256"],
         "registry run receipt does not match the verified event chain",
     )
@@ -552,11 +554,13 @@ def _verify_g3_evidence_bundle(
         and registry_attempt.get("status") == "succeeded"
         and registry_attempt.get("trial_id") == registry_binding["trial_id"]
         and registry_attempt.get("execution_id") == registry_binding["execution_id"]
-        and registry_attempt.get("storage_commit_receipts_sha256") == registry_binding["storage_commit_receipts_sha256"],
+        and registry_attempt.get("storage_commit_receipts_sha256") == registry_binding["storage_commit_receipts_sha256"]
+        and registry_attempt.get("result_sha256") == registry_receipt.get("run_manifest_sha256")
+        and registry_attempt.get("artifact_sha256") == registry_receipt.get("model_artifacts_sha256"),
         "registry trial terminal event does not match the bound run identity",
     )
     require(
-        canonicalize(storage_bundle) + b"\\n" == storage_receipt_raw
+        canonicalize(storage_bundle) + b"\n" == storage_receipt_raw
         and storage_bundle.get("schema") == "lottery.storage-commit-receipts/v1"
         and storage_bundle.get("experiment_id") == registry_binding["registry_experiment_id"]
         and storage_bundle.get("trial_id") == registry_binding["trial_id"]
