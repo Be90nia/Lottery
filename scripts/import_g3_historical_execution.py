@@ -9,6 +9,7 @@ completed_uncommitted until LOT-065 durable receipts exist.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import hashlib
 import io
 import json
@@ -151,15 +152,46 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
     for line in artifact_lines:
         artifact = verify_artifact(line)
         artifact_ids.add(artifact["artifact_id"])
+    expected_models = {item["model_name"] for item in manifest.get("models", [])}
+    expected_zones = {item["zone"] for item in manifest.get("models", [])}
+    if not expected_models or not expected_zones:
+        raise ValueError("historical manifest omitted its fixed model/zone family")
+    zone_targets = Counter()
+    target_model_counts = Counter()
+    terminal_counts = Counter()
+    seen_rows = set()
     for line in ledger_lines:
         row = json.loads(line)
         record_hash = row.pop("record_sha256", None)
         if record_hash not in (_digest(canonicalize(row)), "sha256:" + _digest(canonicalize(row))):
             raise ValueError("historical score-ledger record hash mismatch")
-        for key in ("artifact_id", "diagnostic_ref"):
-            artifact_id = row.get(key)
+        zone = row.get("zone")
+        target_id = row.get("target_draw_id")
+        model_name = row.get("model_name")
+        key = (zone, target_id, model_name)
+        if key in seen_rows or zone not in expected_zones or model_name not in expected_models:
+            raise ValueError("historical score ledger contains duplicate or undeclared model/target rows")
+        seen_rows.add(key)
+        zone_targets[(zone, target_id)] += 1
+        target_model_counts[(zone, target_id)] += 1
+        terminal_counts[row["terminal_status"]] += 1
+        if (row.get("training_dates_strictly_before_target") is not True
+                or not isinstance(row.get("training_last_draw_id"), str)
+                or row["training_last_draw_id"] >= target_id
+                or type(row.get("training_row_count")) is not int
+                or row["training_row_count"] <= 0):
+            raise ValueError("historical score ledger contains a non-chronological training cutoff")
+        for key_name in ("artifact_id", "diagnostic_ref"):
+            artifact_id = row.get(key_name)
             if artifact_id is not None and artifact_id not in artifact_ids:
-                raise ValueError(f"historical score ledger {key} references an absent model artifact")
+                raise ValueError(f"historical score ledger {key_name} references an absent model artifact")
+    target_count = manifest["target_manifest"]["target_count_per_zone"]
+    if (set(zone for zone, _ in zone_targets) != expected_zones
+            or any(sum(1 for z, _ in zone_targets if z == zone) != target_count for zone in expected_zones)
+            or any(count != len(expected_models) for count in target_model_counts.values())
+            or sum(terminal_counts.values()) != len(ledger_lines)
+            or dict(terminal_counts) != manifest["terminal_status_counts"]):
+        raise ValueError("historical score ledger model/zone denominators or terminal counts mismatch")
 
     return manifest, ledger_raw, artifacts_raw
 
