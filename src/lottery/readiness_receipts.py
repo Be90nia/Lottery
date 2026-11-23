@@ -116,8 +116,10 @@ def verify_gate_receipt(
     manifest: dict[str, Any], gate_result: dict[str, Any], evidence_root: str | Path,
 ) -> dict[str, str]:
     """Verify one gate's typed receipt; gate status is derived, never caller-supplied."""
+    if not isinstance(gate_result, dict):
+        raise ReceiptVerificationError("gate result must be an object")
     gate_id = gate_result.get("gate_id")
-    if gate_id not in GATE_TYPES or set(gate_result) != {"gate_id", "receipt"}:
+    if not isinstance(gate_id, str) or gate_id not in GATE_TYPES or set(gate_result) != {"gate_id", "receipt"}:
         raise ReceiptVerificationError("gate result must contain only gate_id and receipt")
     root = Path(evidence_root).resolve(strict=True)
     raw, digest = _safe_file(root, gate_result["receipt"], gate_id)
@@ -150,8 +152,10 @@ def verify_fault_receipt(
     manifest: dict[str, Any], fault_result: dict[str, Any], evidence_root: str | Path,
 ) -> dict[str, str]:
     """Verify a fault-specific recovery receipt, including no partial output."""
+    if not isinstance(fault_result, dict):
+        raise ReceiptVerificationError("fault result must be an object")
     fault_id = fault_result.get("fault_id")
-    if fault_id not in FAULTS or set(fault_result) != {"fault_id", "receipt"}:
+    if not isinstance(fault_id, str) or fault_id not in FAULTS or set(fault_result) != {"fault_id", "receipt"}:
         raise ReceiptVerificationError("fault result must contain only fault_id and receipt")
     root = Path(evidence_root).resolve(strict=True)
     raw, digest = _safe_file(root, fault_result["receipt"], fault_id)
@@ -211,8 +215,14 @@ def verify_receipt_set(
             raise ReceiptVerificationError(f"manifest {field} must be a lowercase SHA-256")
     if type(manifest.get("lot042_accessed")) is not bool:
         raise ReceiptVerificationError("manifest LOT-042 isolation must be explicit")
-    gates = {item.get("gate_id"): item for item in gate_results if isinstance(item, dict)}
-    faults = {item.get("fault_id"): item for item in fault_results if isinstance(item, dict)}
+    if not isinstance(gate_results, list) or not isinstance(fault_results, list):
+        raise ReceiptVerificationError("gate and fault receipt inventories must be arrays")
+    if any(not isinstance(item, dict) or not isinstance(item.get("gate_id"), str) for item in gate_results):
+        raise ReceiptVerificationError("gate receipt inventory contains a malformed entry")
+    if any(not isinstance(item, dict) or not isinstance(item.get("fault_id"), str) for item in fault_results):
+        raise ReceiptVerificationError("fault receipt inventory contains a malformed entry")
+    gates = {item["gate_id"]: item for item in gate_results}
+    faults = {item["fault_id"]: item for item in fault_results}
     if len(gates) != len(gate_results) or set(gates) != set(GATE_TYPES):
         raise ReceiptVerificationError("gate receipt inventory must contain each G0-G8 exactly once")
     if len(faults) != len(fault_results) or set(faults) != set(FAULTS):
