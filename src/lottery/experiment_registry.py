@@ -223,7 +223,7 @@ class ExperimentRegistry:
         optional_fields = {
             "experiment_registered": set(),
             "trial_started": {"execution_context", "approval_sha256"},
-            "trial_finished": {"execution_id", "approval_sha256"},
+            "trial_finished": {"execution_id", "approval_sha256", "storage_receipts_sha256"},
         }
         event_type = body.get("event_type")
         required = required_fields.get(event_type)
@@ -341,6 +341,7 @@ class ExperimentRegistry:
                     "finished_at_utc": event["occurred_at_utc"],
                     "artifact_sha256": event["artifact_sha256"],
                     "result_sha256": event["result_sha256"],
+                    "storage_receipts_sha256": event.get("storage_receipts_sha256"),
                     "failure_code": event["failure_code"],
                 })
             else:
@@ -500,6 +501,7 @@ class ExperimentRegistry:
         result_sha256: str | None = None,
         failure_code: str | None = None,
         execution_id: str | None = None,
+        storage_receipts_sha256: str | None = None,
     ) -> dict[str, Any]:
         if terminal_status not in TERMINAL_STATUSES:
             raise ExperimentRegistryError("trial terminal_status is not in the closed status set")
@@ -509,6 +511,8 @@ class ExperimentRegistry:
             raise ExperimentRegistryError("artifact_sha256 must be null or a lowercase SHA-256")
         if result_sha256 is not None and not _is_sha(result_sha256):
             raise ExperimentRegistryError("result_sha256 must be null or a lowercase SHA-256")
+        if storage_receipts_sha256 is not None and not _is_sha(storage_receipts_sha256):
+            raise ExperimentRegistryError("storage_receipts_sha256 must be null or a lowercase SHA-256")
         if terminal_status == "succeeded":
             if result_sha256 is None:
                 raise ExperimentRegistryError("successful trial requires a result digest")
@@ -524,8 +528,11 @@ class ExperimentRegistry:
                 raise ExperimentRegistryError("trial attempt was never started")
             if attempt.get("execution_id") != execution_id:
                 raise ExperimentRegistryError("terminal execution identity does not match trial start")
-            if attempt.get("execution_context") is not None and terminal_status == "succeeded" and artifact_sha256 is None:
-                raise ExperimentRegistryError("execution-bound successful trial requires an artifact digest")
+            if attempt.get("execution_context") is not None and terminal_status == "succeeded":
+                if artifact_sha256 is None:
+                    raise ExperimentRegistryError("execution-bound successful trial requires an artifact digest")
+                if storage_receipts_sha256 is None:
+                    raise ExperimentRegistryError("execution-bound successful trial requires verified LOT-065 storage receipts")
             if attempt["status"] != "running":
                 same = (
                     attempt["status"] == terminal_status
@@ -533,6 +540,7 @@ class ExperimentRegistry:
                     and attempt["result_sha256"] == result_sha256
                     and attempt["failure_code"] == failure_code
                     and attempt.get("execution_id") == execution_id
+                    and attempt.get("storage_receipts_sha256") == storage_receipts_sha256
                 )
                 if same:
                     return attempt
@@ -552,5 +560,6 @@ class ExperimentRegistry:
                 "failure_code": failure_code,
                 "execution_id": execution_id,
                 "approval_sha256": attempt.get("approval_sha256"),
+                "storage_receipts_sha256": storage_receipts_sha256,
             })
             return self._snapshot_unlocked()["experiments"][experiment_id]["attempts"][attempt_id]
