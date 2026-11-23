@@ -369,6 +369,7 @@ class ExperimentRegistry:
                         raise ExperimentRegistryError("execution-bound success event is missing LOT-065 receipt digest")
                     self._verify_execution_storage_receipts(
                         execution_id=attempt["execution_id"],
+                        expected_producer_commit=attempt["execution_context"]["sha"],
                         result_sha256=event["result_sha256"],
                         artifact_sha256=event["artifact_sha256"],
                         expected_receipts_sha256=storage_digest,
@@ -698,8 +699,8 @@ class ExperimentRegistry:
             return self._snapshot_unlocked()["experiments"][experiment_id]["attempts"][attempt_id]
 
     def _verify_execution_storage_receipts(
-        self, *, execution_id: str, result_sha256: str, artifact_sha256: str,
-        expected_receipts_sha256: str,
+        self, *, execution_id: str, expected_producer_commit: str,
+        result_sha256: str, artifact_sha256: str, expected_receipts_sha256: str,
     ) -> None:
         """Resolve every LOT-065 receipt to committed bytes before terminal success."""
         bundle_path = self.root / "storage-receipts" / f"{execution_id}.json"
@@ -761,17 +762,27 @@ class ExperimentRegistry:
                     or validation.get("content_sha256") != entry["content_sha256"]
                     or validation.get("validated") is not True
                     or validation.get("validation_mode") != "semantic"
+                    or validation.get("validator_id") != "lottery.g3-json-object-or-jsonl/v1"
+                    or stage.get("producer_commit") != expected_producer_commit
+                    or stage.get("schema_version") != "lottery.g3-run-output/v1"
                     or commit.get("operation_id") != operation_id
                     or commit.get("content_sha256") != entry["content_sha256"]
                     or commit.get("byte_length") != entry["byte_length"]
                     or commit.get("committed") is not True
                     or commit.get("stage_manifest_sha256") != _sha(stage_raw)
                     or commit.get("validation_receipt_sha256") != _sha(validation_raw)
+                    or commit.get("object_key") != str(store._object_path(entry["content_sha256"]).relative_to(store.root))
                     or pointer.get("last_operation_id") != operation_id
                     or pointer.get("object_sha256") != entry["content_sha256"]
-                    or publication.get("operation_id") != operation_id
-                    or publication.get("pointer_name") != entry["pointer_name"]
-                    or publication.get("object_sha256") != entry["content_sha256"]):
+                    or publication != {
+                        "schema": "lottery.storage-publication/v1",
+                        "pointer_name": entry["pointer_name"],
+                        "generation": pointer["generation"],
+                        "object_sha256": entry["content_sha256"],
+                        "operation_id": operation_id,
+                        "previous_object_sha256": pointer.get("previous_object_sha256"),
+                        "published_at_utc": pointer.get("published_at_utc"),
+                    }):
                 raise ExperimentRegistryError(f"LOT-065 stage/validation/commit/read-back chain mismatch: {filename}")
             resolved[filename] = object_raw
 
@@ -839,6 +850,7 @@ class ExperimentRegistry:
                     raise ExperimentRegistryError("execution-bound successful trial requires verified LOT-065 storage receipts")
                 self._verify_execution_storage_receipts(
                     execution_id=execution_id,
+                    expected_producer_commit=attempt["execution_context"]["sha"],
                     result_sha256=result_sha256,
                     artifact_sha256=artifact_sha256,
                     expected_receipts_sha256=storage_receipts_sha256,
