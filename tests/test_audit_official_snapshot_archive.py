@@ -9,8 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.ingest import PARSER_VERSION, _parse_page
-from scripts.audit_official_snapshot_archive import AuditError, audit_archive
+from lottery.ingest import _parse_page
+from scripts.audit_official_snapshot_archive import AuditError, COLLECTOR_VERSION, audit_archive
 
 
 class OfficialSnapshotArchiveAuditTests(unittest.TestCase):
@@ -39,7 +39,7 @@ class OfficialSnapshotArchiveAuditTests(unittest.TestCase):
             "http_status": 200,
             "content_type": "application/json;charset=UTF-8",
             "sha256": digest,
-            "parser_version": PARSER_VERSION,
+            "parser_version": COLLECTOR_VERSION,
             "run_id": "fixture-run",
             "page_no": 1,
             "raw_file": page_name,
