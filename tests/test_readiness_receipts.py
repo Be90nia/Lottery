@@ -14,7 +14,15 @@ from lottery.readiness_receipts import (
 )
 
 
+_G3_FIXTURE_CACHE: tuple[dict[str, bytes], bytes] | None = None
+
+
 def _build_g3_fixture(root: Path) -> dict[str, bytes]:
+    global _G3_FIXTURE_CACHE
+    ledger_path = root / "G3-terminal-ledger.jsonl"
+    if _G3_FIXTURE_CACHE is not None:
+        ledger_path.write_bytes(_G3_FIXTURE_CACHE[1])
+        return _G3_FIXTURE_CACHE[0]
     model_ids = {
         "candidate": "exponential_family", "uniform": "uniform",
         "expanding": "expanding", "ewma": "ewma",
@@ -88,7 +96,6 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
                 row["record_sha256"] = "sha256:" + hashlib.sha256(canonicalize(row)).hexdigest()
                 rows.append(row)
     ledger_raw = b"".join(canonicalize(row) + b"\n" for row in rows)
-    ledger_path = root / "G3-terminal-ledger.jsonl"
     ledger_path.write_bytes(ledger_raw)
     denominator = {
         "schema": "lottery.g3-terminal-ledger-index/v1", "target_ids_sha256": target_hash,
@@ -146,7 +153,9 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         "complete_denominator": denominator, "baseline_comparison": baseline,
         "multiplicity_control": multiplicity, "calibration": calibration,
     }
-    return {key: canonicalize(value) for key, value in reports.items()}
+    encoded = {key: canonicalize(value) for key, value in reports.items()}
+    _G3_FIXTURE_CACHE = (encoded, ledger_raw)
+    return encoded
 
 
 class TypedReadinessReceiptTests(unittest.TestCase):
