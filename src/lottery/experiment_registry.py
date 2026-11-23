@@ -359,6 +359,13 @@ class ExperimentRegistry:
                         )
                     except (ExecutionContextError, AttributeError) as exc:
                         raise ExperimentRegistryError("trial execution context is invalid") from exc
+                if event.get("imported") is True:
+                    self._verify_historical_import_evidence(
+                        source_metadata_sha256=event.get("source_metadata_sha256"),
+                        source_verification_receipt_sha256=event.get("source_verification_receipt_sha256"),
+                        execution_context=execution_context,
+                        source_started_at_utc=event.get("source_started_at_utc"),
+                    )
                 attempts[attempt_id] = {
                     "attempt_id": attempt_id,
                     "config_sha256": event["config_sha256"],
@@ -400,6 +407,16 @@ class ExperimentRegistry:
                             or event.get("storage_receipts_sha256") is not None
                             or not isinstance(event.get("source_completed_at_utc"), str)):
                         raise ExperimentRegistryError("completed_uncommitted terminal event lacks verified retrospective-import lineage")
+                    self._verify_historical_import_evidence(
+                        source_metadata_sha256=event["source_metadata_sha256"],
+                        source_verification_receipt_sha256=event["source_verification_receipt_sha256"],
+                        execution_context=attempt["execution_context"],
+                        source_started_at_utc=event["source_started_at_utc"],
+                        source_completed_at_utc=event["source_completed_at_utc"],
+                        source_artifact_id=event["source_artifact_id"],
+                        source_artifact_zip_sha256=event["source_artifact_zip_sha256"],
+                        scientific_result_status=event["scientific_result_status"],
+                    )
                 if terminal_status == "succeeded" and attempt.get("execution_context") is not None:
                     storage_digest = event.get("storage_receipts_sha256")
                     if not _is_sha(storage_digest):
