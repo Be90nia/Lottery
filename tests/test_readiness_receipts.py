@@ -122,10 +122,10 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         },
         "method": "holm-step-down-one-sided-centered-moving-block-bootstrap", "alpha": 0.05,
         "hypotheses": [
-            {"hypothesis_id": "candidate_vs_uniform:front", "p_value": 0.001,
-             "holm_adjusted_p_value": 0.002, "ci95_lower": -0.21, "ci95_upper": -0.19},
-            {"hypothesis_id": "candidate_vs_uniform:back", "p_value": 0.002,
-             "holm_adjusted_p_value": 0.002, "ci95_lower": -0.21, "ci95_upper": -0.19},
+            {"hypothesis_id": "candidate_vs_uniform:front", "p_value": 1 / 1001,
+             "holm_adjusted_p_value": 2 / 1001, "ci95_lower": -0.2, "ci95_upper": -0.2},
+            {"hypothesis_id": "candidate_vs_uniform:back", "p_value": 1 / 1001,
+             "holm_adjusted_p_value": 2 / 1001, "ci95_lower": -0.2, "ci95_upper": -0.2},
         ],
     }
     calibration = {
