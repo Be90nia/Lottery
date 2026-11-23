@@ -26,7 +26,7 @@ class ExactInclusionMarginalTests(unittest.TestCase):
             self.assertEqual(count, math.comb(7, 2))
 
     def test_nonuniform_marginals_match_exhaustive_support_oracle(self):
-        theta = [0.17, -0.09, 0.11, 0.04, -0.13]
+        theta = [0.13 * ((-1) ** index) * (index + 1) / self.model.dimension for index in range(self.model.dimension)]
         marginals = self.model.inclusion_marginals(theta)
         support = tuple(enumerate_support(8, 3))
         probabilities = [math.exp(self.model.log_probability(subset, theta)) for subset in support]
