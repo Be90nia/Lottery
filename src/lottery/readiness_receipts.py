@@ -277,7 +277,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     chronology = reports["chronological_targets"]
     require(set(chronology) == {
         "schema", "snapshot_sha256", "target_manifest_sha256", "snapshot_row_count",
-        "target_ids", "target_ids_sha256", "minimum_training_draws",
+        "target_ids", "target_ids_sha256", "training_cutoff_ids", "minimum_training_draws",
         "strictly_before_target", "equipment_fields_used", "holdout_accessed",
     }, "chronological target fields invalid")
     target_ids = chronology["target_ids"]
@@ -296,6 +296,15 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         and chronology["equipment_fields_used"] is False
         and chronology["holdout_accessed"] is False,
         "frozen 2,649-target chronology, source identity or leakage boundary invalid",
+    )
+    cutoff_ids = chronology["training_cutoff_ids"]
+    require(
+        isinstance(cutoff_ids, list) and len(cutoff_ids) == 2649
+        and all(isinstance(value, str) and re.fullmatch(r"\\d{5}", value) for value in cutoff_ids)
+        and cutoff_ids[0] < target_ids[0]
+        and cutoff_ids[1:] == target_ids[:-1]
+        and all(cutoff_ids[index] < target_ids[index] for index in range(2649)),
+        "per-target training cutoffs do not match the frozen chronological predecessor sequence",
     )
     target_index = {target: index for index, target in enumerate(target_ids)}
 
@@ -346,7 +355,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
             and record["training_count"] == 300 + target_index[target]
             and isinstance(record["train_cutoff_draw_id"], str)
             and re.fullmatch(r"\\d{5}", record["train_cutoff_draw_id"])
-            and record["train_cutoff_draw_id"] < target
+            and record["train_cutoff_draw_id"] == cutoff_ids[target_index[target]]
             and record["strictly_before_target"] is True,
             f"terminal ledger line {line_number} violates target/cutoff pairing",
         )
