@@ -253,9 +253,10 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     )
     model_ids = prereg["model_ids"]
     require(
-        isinstance(model_ids, dict) and set(model_ids) == {"candidate", "uniform", "expanding", "ewma"}
-        and all(isinstance(value, str) and value for value in model_ids.values())
-        and len(set(model_ids.values())) == 4,
+        isinstance(model_ids, dict) and model_ids == {
+            "candidate": "exponential_family", "uniform": "uniform",
+            "expanding": "expanding", "ewma": "ewma",
+        },
         "the single candidate and three fixed comparators must have unique identities",
     )
     require(
@@ -277,7 +278,8 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     chronology = reports["chronological_targets"]
     require(set(chronology) == {
         "schema", "snapshot_sha256", "target_manifest_sha256", "snapshot_row_count",
-        "target_ids", "target_ids_sha256", "training_cutoff_ids", "minimum_training_draws",
+        "target_ids", "target_ids_sha256", "target_dates", "training_cutoff_ids",
+        "training_cutoff_dates", "minimum_training_draws",
         "strictly_before_target", "equipment_fields_used", "holdout_accessed",
     }, "chronological target fields invalid")
     target_ids = chronology["target_ids"]
@@ -343,37 +345,78 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     for line_number, line in enumerate(ledger_lines, 1):
         record = _strict_json(line, f"G3 terminal ledger line {line_number}")
         require(set(record) == {
-            "model_id", "zone", "target_draw_id", "pairing_key",
-            "training_count", "train_cutoff_draw_id", "strictly_before_target",
-            "status", "nll",
+            "run_id", "target_draw_id", "target_draw_date", "zone", "model_family",
+            "model_name", "artifact_id", "diagnostic_ref", "snapshot_sha256",
+            "training_first_draw_id", "training_last_draw_id", "training_row_count",
+            "training_dates_strictly_before_target", "model_configuration_hash",
+            "feature_schema_hash", "optimizer_solver_status", "converged",
+            "failure_reason", "terminal_status", "observed_subset",
+            "predicted_log_probability", "negative_log_score", "pairing_key",
+            "record_sha256",
         }, f"terminal ledger line {line_number} fields invalid")
-        model_id, zone, target = record["model_id"], record["zone"], record["target_draw_id"]
+        model_id, zone, target = record["model_name"], record["zone"], record["target_draw_id"]
+        index = target_index.get(target)
         require(
             model_id in model_ids.values() and zone in ("front", "back")
-            and target in target_index and record["pairing_key"] == zone + ":" + target
-            and type(record["training_count"]) is int
-            and record["training_count"] == 300 + target_index[target]
-            and isinstance(record["train_cutoff_draw_id"], str)
-            and re.fullmatch(r"\d{5}", record["train_cutoff_draw_id"])
-            and record["train_cutoff_draw_id"] == cutoff_ids[target_index[target]]
-            and record["strictly_before_target"] is True,
-            f"terminal ledger line {line_number} violates target/cutoff pairing",
+            and index is not None
+            and record["target_draw_date"] == target_dates[index]
+            and record["snapshot_sha256"] == prereg["snapshot_sha256"]
+            and isinstance(record["run_id"], str) and record["run_id"]
+            and record["pairing_key"] == record["run_id"] + ":" + zone + ":" + target
+            and type(record["training_row_count"]) is int
+            and record["training_row_count"] == 300 + index
+            and record["training_first_draw_id"] == "07001"
+            and record["training_last_draw_id"] == cutoff_ids[index]
+            and record["training_dates_strictly_before_target"] is True
+            and isinstance(record["model_configuration_hash"], str)
+            and record["model_configuration_hash"].startswith("sha256:")
+            and isinstance(record["feature_schema_hash"], str)
+            and record["feature_schema_hash"].startswith("sha256:")
+            and isinstance(record["optimizer_solver_status"], str)
+            and type(record["converged"]) is bool,
+            f"terminal ledger line {line_number} violates target/cutoff/model identity",
         )
+        if "run_id" not in locals():
+            run_id = record["run_id"]
+        require(record["run_id"] == run_id, "terminal ledger mixes multiple run IDs")
         key = (model_id, zone, target)
         require(key not in seen, f"duplicate terminal ledger record {key}")
         seen.add(key)
-        status = record["status"]
+        status = record["terminal_status"]
         require(status in allowed_statuses, f"unknown terminal status at line {line_number}")
         status_totals[status] += 1
+        body = {key: value for key, value in record.items() if key != "record_sha256"}
+        expected_record_hash = "sha256:" + hashlib.sha256(canonicalize(body)).hexdigest()
+        require(record["record_sha256"] == expected_record_hash, f"terminal ledger record hash mismatch at line {line_number}")
+        expected_family = {
+            "uniform": "uniform_analytic",
+            "expanding": "conditional_poisson",
+            "ewma": "conditional_poisson",
+            "exponential_family": "complete_subset_exponential",
+        }[model_id]
+        require(record["model_family"] == expected_family, f"model family mismatch at line {line_number}")
         if status == "scored":
             require(
-                type(record["nll"]) in (int, float)
-                and math.isfinite(record["nll"]) and record["nll"] >= 0,
-                f"scored ledger record {key} has invalid NLL",
+                type(record["negative_log_score"]) in (int, float)
+                and math.isfinite(record["negative_log_score"])
+                and record["negative_log_score"] >= 0
+                and type(record["predicted_log_probability"]) in (int, float)
+                and math.isfinite(record["predicted_log_probability"])
+                and abs(record["predicted_log_probability"] + record["negative_log_score"]) <= 1e-12
+                and record["converged"] is True
+                and record["failure_reason"] is None
+                and ((model_id == "uniform" and record["artifact_id"] is None)
+                     or (model_id != "uniform" and isinstance(record["artifact_id"], str) and record["artifact_id"])),
+                f"scored ledger record {key} has invalid NLL/probability/artifact",
             )
-            scores[key] = float(record["nll"])
+            scores[key] = float(record["negative_log_score"])
         else:
-            require(record["nll"] is None, f"failed ledger record {key} must not contain a fabricated score")
+            require(
+                record["negative_log_score"] is None
+                and record["predicted_log_probability"] is None
+                and isinstance(record["failure_reason"], str) and record["failure_reason"],
+                f"failed ledger record {key} must not contain a fabricated score",
+            )
     require(len(seen) == expected_records and status_totals == {
         key: status_counts.get(key, 0) for key in allowed_statuses
     }, "terminal ledger inventory/status counts do not reconcile")
