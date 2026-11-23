@@ -276,10 +276,13 @@ def build_registry_schedule(
                 "lifecycle_state": lifecycle_state,
             }))
             for target in targets:
+                target_date = date.fromisoformat(draw_dates[target["target_draw_id"]])
                 for zone in ("front", "back"):
                     artifact_id, artifact, training = loaded[zone]
                     if artifact["training_cutoff_draw_id"] >= target["target_draw_id"]:
                         raise RegistryScheduleError("training cutoff is not strictly before target draw")
+                    if date.fromisoformat(training["training_last_draw_date"]) >= target_date:
+                        raise RegistryScheduleError("training cutoff date is not strictly before target draw date")
                     records.append({
                         "target_draw_id": target["target_draw_id"],
                         "target_draw_at_utc": target["target_draw_at_utc"],
