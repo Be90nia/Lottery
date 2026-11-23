@@ -81,10 +81,12 @@ def _build_g3_registry_spec(
     registration = json.loads(registration_raw)
     if registration.get("schema") != "lottery.g3-preregistration/v1":
         raise ValueError("unsupported G3 diagnostic registration schema")
-    if registration.get("experiment_id") != hashlib.sha256(
-        b"LOT055-OPT-DIAG-20261120"
+    if registration.get("legacy_experiment_label") != "LOT055-OPT-DIAG-20261120":
+        raise ValueError("legacy G3 experiment label is missing or mismatched")
+    if registration.get("legacy_experiment_label_sha256") != hashlib.sha256(
+        registration["legacy_experiment_label"].encode("utf-8")
     ).hexdigest():
-        raise ValueError("legacy G3 label digest does not match the historical registration")
+        raise ValueError("legacy G3 label digest does not match the historical label")
     if registration.get("experiment_class") != "exploratory_diagnostic":
         raise ValueError("historical G3 registration must remain exploratory_diagnostic")
     if registration.get("outcomes_observed_at_registration") is not True:
@@ -175,7 +177,8 @@ def _build_g3_registry_spec(
             "tolerance": registration.get("calibration_tolerance"),
         },
         "feature_contract_sha256": hashlib.sha256(canonicalize(feature_contract)).hexdigest(),
-        "legacy_g3_label_digest": registration["experiment_id"],
+        "legacy_g3_experiment_label": registration["legacy_experiment_label"],
+        "legacy_g3_label_digest": registration["legacy_experiment_label_sha256"],
         "legacy_registration_source_sha256": hashlib.sha256(registration_raw).hexdigest(),
         "legacy_parent_issue_url": registration["legacy_parent_issue_url"],
         "legacy_child_registration_comment_url": registration["legacy_child_registration_comment_url"],
