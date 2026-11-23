@@ -222,6 +222,58 @@ def verify_fault_receipt(
     }
 
 
+V2_SCALAR_REFS = (
+    "workflow_policy", "dependency_lock", "readiness_policy", "canonical_snapshot",
+    "source_evidence_ledger", "runtime_toolchain", "sbom", "security_scan",
+    "experiment_registration", "champion_registry_snapshot", "sampler_rng",
+    "storage_commit_receipts", "backup_generation", "independent_restore_receipt",
+)
+
+
+def verify_release_manifest_v2(
+    manifest: dict[str, Any], evidence_root: str | Path,
+) -> dict[str, Any]:
+    """Verify every immutable release-tuple reference against its actual bytes."""
+    if not isinstance(manifest, dict) or set(manifest) != {
+        "schema", "release_id", "release_ref", "source_commit", "lot042_accessed", "evidence",
+    }:
+        raise ReceiptVerificationError("v2 release manifest has missing or unknown fields")
+    if manifest["schema"] != "lottery.release-manifest/v2":
+        raise ReceiptVerificationError("unsupported v2 release manifest schema")
+    if (
+        not isinstance(manifest["release_id"], str) or not manifest["release_id"]
+        or not isinstance(manifest["source_commit"], str)
+        or not GIT_SHA.fullmatch(manifest["source_commit"])
+        or manifest["release_ref"] != manifest["source_commit"]
+        or type(manifest["lot042_accessed"]) is not bool
+    ):
+        raise ReceiptVerificationError("v2 release identity, immutable ref or LOT-042 flag invalid")
+    evidence = manifest["evidence"]
+    required = set(V2_SCALAR_REFS) | {"evaluation_manifests", "model_artifacts"}
+    if not isinstance(evidence, dict) or set(evidence) != required:
+        raise ReceiptVerificationError("v2 release evidence inventory has missing or unknown refs")
+    root = Path(evidence_root).resolve(strict=True)
+    references: list[tuple[str, Any]] = [(key, evidence[key]) for key in V2_SCALAR_REFS]
+    for collection in ("evaluation_manifests", "model_artifacts"):
+        values = evidence[collection]
+        if not isinstance(values, list) or not values:
+            raise ReceiptVerificationError(f"v2 {collection} must be a non-empty array")
+        references.extend((f"{collection}[{i}]", item) for i, item in enumerate(values))
+    verified: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    for label, reference in references:
+        _, digest = _safe_file(root, reference, "manifest " + label)
+        path = reference["path"]
+        if path in seen_paths:
+            raise ReceiptVerificationError("v2 manifest evidence paths must be unique")
+        seen_paths.add(path)
+        verified.append({"name": label, "path": path, "sha256": digest})
+    return {
+        "release_manifest_sha256": "sha256:" + hashlib.sha256(canonicalize(manifest)).hexdigest(),
+        "verified_evidence": verified,
+    }
+
+
 def verify_receipt_set(
     manifest: dict[str, Any],
     gate_results: list[dict[str, Any]],
@@ -229,20 +281,25 @@ def verify_receipt_set(
     evidence_root: str | Path,
 ) -> dict[str, Any]:
     """Verify complete, non-reused typed receipt inventory and derive readiness."""
-    if manifest.get("schema") != "lottery.release-manifest/v1":
+    if not isinstance(manifest, dict):
+        raise ReceiptVerificationError("release manifest must be an object")
+    if manifest.get("schema") == "lottery.release-manifest/v2":
+        verify_release_manifest_v2(manifest, evidence_root)
+    elif manifest.get("schema") == "lottery.release-manifest/v1":
+        if (
+            not isinstance(manifest.get("release_id"), str) or not manifest["release_id"]
+            or not isinstance(manifest.get("source_commit"), str)
+            or not GIT_SHA.fullmatch(manifest["source_commit"])
+            or manifest.get("release_ref") != manifest.get("source_commit")
+        ):
+            raise ReceiptVerificationError("manifest release identity/ref is invalid or mutable")
+        for field in ("workflow_policy_sha256", "dependency_lock_sha256", "readiness_policy_sha256", "snapshot_sha256"):
+            if not isinstance(manifest.get(field), str) or not SHA256.fullmatch(manifest[field]):
+                raise ReceiptVerificationError(f"manifest {field} must be a lowercase SHA-256")
+        if type(manifest.get("lot042_accessed")) is not bool:
+            raise ReceiptVerificationError("manifest LOT-042 isolation must be explicit")
+    else:
         raise ReceiptVerificationError("unsupported release manifest schema")
-    if (
-        not isinstance(manifest.get("release_id"), str) or not manifest["release_id"]
-        or not isinstance(manifest.get("source_commit"), str)
-        or not GIT_SHA.fullmatch(manifest["source_commit"])
-        or manifest.get("release_ref") != manifest.get("source_commit")
-    ):
-        raise ReceiptVerificationError("manifest release identity/ref is invalid or mutable")
-    for field in ("workflow_policy_sha256", "dependency_lock_sha256", "readiness_policy_sha256", "snapshot_sha256"):
-        if not isinstance(manifest.get(field), str) or not SHA256.fullmatch(manifest[field]):
-            raise ReceiptVerificationError(f"manifest {field} must be a lowercase SHA-256")
-    if type(manifest.get("lot042_accessed")) is not bool:
-        raise ReceiptVerificationError("manifest LOT-042 isolation must be explicit")
     if not isinstance(gate_results, list) or not isinstance(fault_results, list):
         raise ReceiptVerificationError("gate and fault receipt inventories must be arrays")
     if any(not isinstance(item, dict) or not isinstance(item.get("gate_id"), str) for item in gate_results):
