@@ -284,6 +284,7 @@ def import_historical_execution(
         "source_artifact_zip_sha256": _digest(archive_raw),
         "source_manifest_sha256": _digest(archive_manifest_raw := _read_manifest_bytes(evidence_path, archive_raw)),
         "source_model_artifacts_sha256": _digest(artifacts_raw),
+        "source_evidence_sha256": _digest(evidence_path.read_bytes()),
         "scientific_result_status": manifest["status"],
         "confirmatory_eligible": False,
     }
@@ -294,6 +295,7 @@ def import_historical_execution(
         "verified": True,
         "source_metadata_sha256": source_metadata_sha256,
         "artifact_zip_sha256": _digest(archive_raw),
+        "source_evidence_sha256": source_metadata["source_evidence_sha256"],
         "verified_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     attempt_id = f"imported-actions-{expected_run['id']}-attempt-{expected_run['run_attempt']}"
