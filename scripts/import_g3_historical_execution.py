@@ -116,10 +116,19 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
         raise ValueError("historical run manifest self-digest mismatch")
     if manifest_self_digest.removeprefix("sha256:") != content["run_manifest_sha256"]:
         raise ValueError("historical run manifest digest differs from pinned evidence")
-    if (manifest.get("status") != evidence["scientific_result"]["status"]
+    scientific = evidence["scientific_result"]
+    target_manifest = manifest.get("target_manifest", {})
+    if (manifest.get("status") != scientific["status"]
             or manifest.get("confirmatory_eligible") is not False
-            or manifest.get("snapshot", {}).get("sha256") != evidence["scientific_result"]["snapshot_sha256"]):
-        raise ValueError("historical run manifest scientific status or snapshot differs from evidence")
+            or manifest.get("snapshot", {}).get("sha256") != scientific["snapshot_sha256"]
+            or manifest.get("expected_target_record_count") != 21192
+            or manifest.get("actual_target_record_count") != 21192
+            or manifest.get("model_artifact_count") != scientific["model_artifacts"]["record_count"]
+            or manifest.get("terminal_status_counts") != scientific["terminal_counts"]
+            or target_manifest.get("first_target_draw_id") != "09054"
+            or target_manifest.get("last_target_draw_id") != "26131"
+            or target_manifest.get("target_count_per_zone") != scientific["target_count_per_zone"]):
+        raise ValueError("historical run manifest scientific status, snapshot or target denominators differ from evidence")
     declared_outputs = manifest.get("output_files", {})
     for filename, raw in (
         ("target-score-ledger.jsonl", ledger_raw),
