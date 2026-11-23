@@ -128,6 +128,9 @@ class G3SemanticEvidenceTests(unittest.TestCase):
                     rows.append(row)
         self.ledger_raw = b"".join(canonicalize(row) + b"\n" for row in rows)
         self.ledger_path.write_bytes(self.ledger_raw)
+        self.model_artifacts_path = self.root / "g3-model-artifacts.jsonl"
+        self.model_artifacts_raw = b"{}\n" * (2649 * 2 * 3)
+        self.model_artifacts_path.write_bytes(self.model_artifacts_raw)
         self.run_manifest_path = self.root / "g3-run-manifest.json"
         self.run_manifest = {
             "schema": "lot-055-run-manifest-v1",
@@ -165,6 +168,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
                 for zone in ("front", "back")
                 for role in ("candidate", "uniform", "expanding", "ewma")
             ],
+            "model_artifact_count": 2649 * 2 * 3,
             "expected_target_record_count": 2649 * 4 * 2,
             "actual_target_record_count": 2649 * 4 * 2,
             "terminal_status_counts": {
@@ -175,6 +179,10 @@ class G3SemanticEvidenceTests(unittest.TestCase):
                 "target-score-ledger.jsonl": {
                     "sha256": hashlib.sha256(self.ledger_raw).hexdigest(),
                     "bytes": len(self.ledger_raw),
+                },
+                "model-artifacts.jsonl": {
+                    "sha256": hashlib.sha256(self.model_artifacts_raw).hexdigest(),
+                    "bytes": len(self.model_artifacts_raw),
                 },
             },
         }
@@ -199,6 +207,10 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             "run_manifest": {
                 "path": self.run_manifest_path.name,
                 "sha256": hashlib.sha256(self.run_manifest_raw).hexdigest(),
+            },
+            "model_artifacts": {
+                "path": self.model_artifacts_path.name,
+                "sha256": hashlib.sha256(self.model_artifacts_raw).hexdigest(),
             },
         }
         zones = {}
@@ -295,10 +307,11 @@ class G3SemanticEvidenceTests(unittest.TestCase):
 
     def test_complete_g3_evidence_reconciles_full_2649_target_ledger(self):
         verified = self.verify()
-        self.assertEqual(verified, [{
-            "path": self.ledger_path.name,
-            "sha256": hashlib.sha256(self.ledger_raw).hexdigest(),
-        }])
+        self.assertEqual(verified, [
+            {"path": self.ledger_path.name, "sha256": hashlib.sha256(self.ledger_raw).hexdigest()},
+            {"path": self.run_manifest_path.name, "sha256": hashlib.sha256(self.run_manifest_raw).hexdigest()},
+            {"path": self.model_artifacts_path.name, "sha256": hashlib.sha256(self.model_artifacts_raw).hexdigest()},
+        ])
 
     def test_future_or_wrong_training_cutoff_is_rejected(self):
         lines = self.ledger_raw.splitlines()
