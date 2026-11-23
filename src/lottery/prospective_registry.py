@@ -113,7 +113,7 @@ def _candidate(slot: dict[str, Any], field: str) -> tuple[str, str] | None:
     validation = slot.get("validation", {}).get(artifact_id)
     if not validation or validation.get("eligible") is not True:
         raise RegistryScheduleError("registered challenger has not passed retrospective eligibility")
-    return artifact_id, "challenger_shadow"
+    return artifact_id, ("challenger" if field == "challenger_artifact_id" else "shadow")
 
 
 def _registry_slots(snapshot: dict[str, Any]) -> dict[str, dict[str, dict[str, Any]]]:
@@ -218,7 +218,7 @@ def build_registry_schedule(
         if all(candidate_presence):
             if candidates["front"][1] != candidates["back"][1]:
                 raise RegistryScheduleError("front/back candidate lifecycle roles differ")
-            pairs.append(("challenger_shadow", {z: candidates[z] for z in ("front", "back")}))
+            pairs.append(("shadow", {z: candidates[z] for z in ("front", "back")}))
         for lifecycle_state, artifact_pair in pairs:
             loaded = {}
             for zone in ("front", "back"):
@@ -272,7 +272,7 @@ def build_registry_schedule(
         "generated_at_utc": generated.isoformat(),
         "expected_forecasts": records,
     }
-    schedule["schedule_id"] = "sha256:" + _sha(canonicalize(schedule)).decode("ascii") if False else "sha256:" + _sha(canonicalize(schedule))
+    schedule["schedule_id"] = "sha256:" + _sha(canonicalize(schedule))
     validate_schedule(schedule)
     # Detect a registry generation/pointer race during artifact and target preflight.
     after = lifecycle.snapshot()
