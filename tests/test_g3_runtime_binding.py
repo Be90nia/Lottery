@@ -118,7 +118,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
         snapshot = registry.snapshot()
         attempt = snapshot["experiments"][binding["experiment_id"]]["attempts"][binding["attempt_id"]]
         self.assertEqual(attempt["status"], "succeeded")
-        self.assertEqual(attempt["execution_id"], binding["execution_id"])
+        self.assertEqual(attempt["execution_id"], binding["execution_context"]["execution_id"])
         self.assertIsNone(attempt["approval_sha256"])
         self.assertEqual(receipt["execution_status"], "completed")
         self.assertEqual(receipt["scientific_result_status"], "complete_with_explicit_failures")
