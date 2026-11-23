@@ -110,7 +110,7 @@ class ThreeSlotBatchPublisher:
             }
             if len(contracts) != 1:
                 raise BatchPublicationError(
-                    f"all three {zone} population artifacts must share one compatible model/schema contract"
+                    f"all three {zone} population artifacts must share one compatible model family/schema contract"
                 )
 
         slots_by_population: dict[str, dict[str, str]] = {};
