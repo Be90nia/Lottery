@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from math import comb, log\nfrom lottery.subset_model import ExponentialFamily, build_uniform_feature_table
+from math import comb, log
+from lottery.subset_model import ExponentialFamily, build_uniform_feature_table
 import unittest
 
 from lottery.prospective_evaluator import (
