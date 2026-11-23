@@ -117,6 +117,16 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertEqual(receipt["approval_disposition"], "not_required_exploratory")
         self.assertTrue(receipt["start_event_sha256"])
         self.assertTrue(receipt["terminal_event_sha256"])
+        self.assertEqual(receipt["event_chain_head_sha256"], receipt["terminal_event_sha256"])
+        self.assertEqual(receipt["event_count_at_terminal"], 3)
+        self.assertEqual(
+            receipt["legacy_child_registration_comment_url"],
+            "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
+        )
+        receipt_bytes = (self.output_dir / "registry-run-receipt.json").read_bytes()
+        replayed = runner._finish_registered_execution(registry, binding, self.output_path)
+        self.assertEqual(replayed, receipt)
+        self.assertEqual((self.output_dir / "registry-run-receipt.json").read_bytes(), receipt_bytes)
         self.assertTrue((self.output_dir / "registry-run-receipt.json").exists())
 
     def test_caught_runner_exception_terminalizes_started_attempt(self):
