@@ -283,8 +283,9 @@ def verify_receipt_set(
     """Verify complete, non-reused typed receipt inventory and derive readiness."""
     if not isinstance(manifest, dict):
         raise ReceiptVerificationError("release manifest must be an object")
+    manifest_evidence: list[dict[str, str]] = []
     if manifest.get("schema") == "lottery.release-manifest/v2":
-        verify_release_manifest_v2(manifest, evidence_root)
+        manifest_evidence = verify_release_manifest_v2(manifest, evidence_root)["verified_evidence"]
     elif manifest.get("schema") == "lottery.release-manifest/v1":
         if (
             not isinstance(manifest.get("release_id"), str) or not manifest["release_id"]
@@ -321,21 +322,30 @@ def verify_receipt_set(
     identities = [item["receipt_sha256"] for item in verified_gates + verified_faults]
     paths = [gates[key]["receipt"]["path"] for key in GATE_TYPES]
     paths += [faults[key]["receipt"]["path"] for key in FAULTS]
-    evidence_paths = [
-        entry["path"]
+    evidence_records = [
+        entry
         for gate in verified_gates for entry in gate["check_evidence"]
     ]
-    evidence_paths += [
-        json.loads(_safe_file(Path(evidence_root).resolve(strict=True), faults[key]["receipt"], key)[0])["evidence"]["path"]
-        for key in FAULTS
-    ]
+    evidence_records += manifest_evidence
+    for key in FAULTS:
+        fault_raw, _ = _safe_file(
+            Path(evidence_root).resolve(strict=True), faults[key]["receipt"], key
+        )
+        fault_receipt = _strict_json(fault_raw, key)
+        evidence_records.append({
+            "path": fault_receipt["evidence"]["path"],
+            "sha256": fault_receipt["evidence"]["sha256"],
+        })
+    evidence_paths = [entry["path"] for entry in evidence_records]
+    evidence_digests = [entry["sha256"] for entry in evidence_records]
     if (
         len(set(identities)) != len(identities)
         or len(set(paths)) != len(paths)
         or len(set(evidence_paths)) != len(evidence_paths)
+        or len(set(evidence_digests)) != len(evidence_digests)
         or set(evidence_paths) & set(paths)
     ):
-        raise ReceiptVerificationError("receipt and check evidence files must be unique per gate and fault")
+        raise ReceiptVerificationError("receipt and evidence files/digests must be unique per gate and fault")
     return {
         "schema": "lottery.readiness-receipt-verification/v1",
         "release_id": manifest["release_id"],
