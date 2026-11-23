@@ -5,7 +5,7 @@ is injected; content hashes alone are integrity checks, not source authenticatio
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
 from pathlib import Path
