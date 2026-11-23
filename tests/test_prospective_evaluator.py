@@ -65,7 +65,7 @@ class FrozenArtifactEvaluatorTests(unittest.TestCase):
     def test_exponential_family_rebuilds_feature_schema_and_full_support(self):
         table = build_uniform_feature_table(12, 2, include_gap_variance=False)
         family = ExponentialFamily(table)
-        theta = [0.0] * table.stats.dimension
+        theta = [0.0] * len(table.stats.feature_names)
         artifact = {
             "artifact_id": "sha256:" + "c" * 64,
             "artifact_schema": "lottery.subset-probability-model/v1",
