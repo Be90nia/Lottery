@@ -181,7 +181,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         self.run_manifest["manifest_sha256"] = "sha256:" + hashlib.sha256(
             canonicalize(self.run_manifest)
         ).hexdigest()
-        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\\n"
+        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\n"
         self.run_manifest_path.write_bytes(self.run_manifest_raw)
         self.denominator = {
             "schema": "lottery.g3-terminal-ledger-index/v1",
@@ -285,7 +285,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         }
         body = {key: value for key, value in self.run_manifest.items() if key != "manifest_sha256"}
         self.run_manifest["manifest_sha256"] = "sha256:" + hashlib.sha256(canonicalize(body)).hexdigest()
-        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\\n"
+        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\n"
         self.run_manifest_path.write_bytes(self.run_manifest_raw)
         self.denominator["run_manifest"]["sha256"] = hashlib.sha256(self.run_manifest_raw).hexdigest()
         self.raw["complete_denominator"] = canonicalize(self.denominator)
@@ -353,7 +353,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         self.run_manifest["confirmatory_eligible"] = False
         body = {key: value for key, value in self.run_manifest.items() if key != "manifest_sha256"}
         self.run_manifest["manifest_sha256"] = "sha256:" + hashlib.sha256(canonicalize(body)).hexdigest()
-        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\\n"
+        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\n"
         self.run_manifest_path.write_bytes(self.run_manifest_raw)
         self.denominator["run_manifest"]["sha256"] = hashlib.sha256(self.run_manifest_raw).hexdigest()
         self.raw["complete_denominator"] = canonicalize(self.denominator)
@@ -364,7 +364,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         self.run_manifest["output_files"]["target-score-ledger.jsonl"]["sha256"] = "0" * 64
         body = {key: value for key, value in self.run_manifest.items() if key != "manifest_sha256"}
         self.run_manifest["manifest_sha256"] = "sha256:" + hashlib.sha256(canonicalize(body)).hexdigest()
-        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\\n"
+        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\n"
         self.run_manifest_path.write_bytes(self.run_manifest_raw)
         self.denominator["run_manifest"]["sha256"] = hashlib.sha256(self.run_manifest_raw).hexdigest()
         self.raw["complete_denominator"] = canonicalize(self.denominator)
