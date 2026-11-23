@@ -35,6 +35,7 @@ def artifact(zone, cutoff="26130"):
         "training": {
             "first_draw_id": "09054", "last_draw_id": cutoff,
             "snapshot_sha256": "3" * 64, "row_count": 300,
+            "cutoff_draw_id": cutoff, "cutoff_inclusive": True,
         },
         "training_snapshot_sha256": "3" * 64,
         "training_cutoff_draw_id": cutoff,
@@ -192,6 +193,20 @@ class RegistryScheduleTests(unittest.TestCase):
         target["targets"][0]["target_cutoff_utc"] = "2026-11-20T14:00:00+00:00"
         target = sealed({k: v for k, v in target.items() if k != "manifest_id"}, "manifest_id")
         with self.assertRaisesRegex(RegistryScheduleError, "generated/expected < cutoff"):
+            self.build(lifecycle, target, inventory)
+
+    def test_target_draw_timestamp_must_match_canonical_inventory_date(self):
+        lifecycle, target, inventory = fixture()
+        target["targets"][0]["target_draw_at_utc"] = "2026-11-22T13:00:00+00:00"
+        target = sealed({k: v for k, v in target.items() if k != "manifest_id"}, "manifest_id")
+        with self.assertRaisesRegex(RegistryScheduleError, "does not match the canonical inventory date"):
+            self.build(lifecycle, target, inventory)
+
+    def test_training_envelope_must_match_its_cutoff_and_front_back_range(self):
+        lifecycle, target, inventory = fixture()
+        artifact_id = lifecycle.registry["slots"]["pooled-equipment-blind|front"]["champion_artifact_id"]
+        lifecycle.artifacts[artifact_id]["training"]["cutoff_draw_id"] = "26129"
+        with self.assertRaisesRegex(RegistryScheduleError, "training envelope disagrees"):
             self.build(lifecycle, target, inventory)
 
 
