@@ -37,7 +37,7 @@ class G3EvidenceAdapterTests(unittest.TestCase):
                 "back_numbers": [1, 2],
             })
         raw = b"".join(
-            json.dumps(row, separators=(",", ":")).encode("utf-8") + b"\\n"
+            json.dumps(row, separators=(",", ":")).encode("utf-8") + b"\n"
             for row in rows
         )
         with tempfile.TemporaryDirectory() as temp:
