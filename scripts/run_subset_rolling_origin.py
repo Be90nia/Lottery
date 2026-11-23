@@ -351,7 +351,12 @@ def _finish_registered_execution(
             "read_back_verified": True,
         }
 
-    storage_receipts_sha256 = hashlib.sha256(canonicalize(storage_receipts)).hexdigest()
+    storage_receipts_raw = canonicalize(storage_receipts)
+    storage_receipts_sha256 = hashlib.sha256(storage_receipts_raw).hexdigest()
+    _write_once_bytes(
+        registry.root / "storage-receipts" / f"{execution['execution_id']}.json",
+        storage_receipts_raw,
+    )
     manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
     artifacts_raw = (output_dir / "model-artifacts.jsonl").read_bytes()
     artifacts_sha256 = hashlib.sha256(artifacts_raw).hexdigest()
