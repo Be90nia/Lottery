@@ -164,6 +164,47 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptVerificationError, "SHA-256 mismatch"):
             verify_release_manifest_v2(manifest, self.root)
 
+    def test_v2_manifest_integrates_with_complete_receipt_set(self):
+        names = (
+            "workflow_policy", "dependency_lock", "readiness_policy", "canonical_snapshot",
+            "source_evidence_ledger", "runtime_toolchain", "sbom", "security_scan",
+            "experiment_registration", "champion_registry_snapshot", "sampler_rng",
+            "storage_commit_receipts", "backup_generation", "independent_restore_receipt",
+        )
+        evidence = {}
+        for name in names:
+            raw = (name + "\\n").encode()
+            path = "manifest-" + name + ".bin"
+            (self.root / path).write_bytes(raw)
+            evidence[name] = {"path": path, "sha256": hashlib.sha256(raw).hexdigest()}
+        for collection in ("evaluation_manifests", "model_artifacts"):
+            raw = (collection + "\\n").encode()
+            path = "manifest-" + collection + ".bin"
+            (self.root / path).write_bytes(raw)
+            evidence[collection] = [{"path": path, "sha256": hashlib.sha256(raw).hexdigest()}]
+        self.manifest = {
+            "schema": "lottery.release-manifest/v2", "release_id": "v2-release",
+            "release_ref": "c" * 40, "source_commit": "c" * 40,
+            "lot042_accessed": False, "evidence": evidence,
+        }
+        manifest_digest = "sha256:" + hashlib.sha256(canonicalize(self.manifest)).hexdigest()
+        for item in self.gates:
+            self.rewrite(item["receipt"], lambda r: (
+                r.__setitem__("release_id", self.manifest["release_id"]),
+                r.__setitem__("source_commit", self.manifest["source_commit"]),
+                r.__setitem__("release_manifest_sha256", manifest_digest),
+            ))
+        for item in self.faults:
+            self.rewrite(item["receipt"], lambda r: (
+                r.__setitem__("release_id", self.manifest["release_id"]),
+                r.__setitem__("source_commit", self.manifest["source_commit"]),
+                r.__setitem__("release_manifest_sha256", manifest_digest),
+            ))
+        report = verify_receipt_set(self.manifest, self.gates, self.faults, self.root)
+        self.assertEqual(report["receipt_completeness"], "COMPLETE")
+        self.assertEqual(len(report["release_manifest_evidence"]), 16)
+        self.assertFalse(report["shadow_authorized"])
+
     def test_malformed_inventory_identifiers_fail_closed_without_type_errors(self):
         bad_gates = list(self.gates)
         bad_gates[0] = {"gate_id": ["G0"], "receipt": self.gates[0]["receipt"]}
