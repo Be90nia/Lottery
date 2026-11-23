@@ -23,6 +23,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from lottery.ingest import PARSER_VERSION, _add_draw, _parse_page  # noqa: E402
 
+COLLECTOR_VERSION = "raw-snapshot-collector/1.0.0"
+
 
 class AuditError(ValueError):
     pass
@@ -134,7 +136,7 @@ def audit_archive(
                 "sha256": digest,
                 "raw_file": name.rsplit("/", 1)[-1],
                 "page_no": page_no,
-                "parser_version": PARSER_VERSION,
+                "parser_version": COLLECTOR_VERSION,
             }
             mismatches = {
                 key: {"actual": sidecar.get(key), "expected": expected}
@@ -255,6 +257,8 @@ def audit_archive(
         "retrieval_start_utc": min(retrieved).astimezone(timezone.utc).isoformat(),
         "retrieval_end_utc": max(retrieved).astimezone(timezone.utc).isoformat(),
         "run_id_count": len(run_ids),
+        "collector_version": COLLECTOR_VERSION,
+        "importer_parser_version": PARSER_VERSION,
         "raw_snapshot_hashes_match_processed_manifest": True,
         "processed_rebuild_byte_identical": True,
         "processed_sha256": processed_sha256,
