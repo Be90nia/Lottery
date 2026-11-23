@@ -19,6 +19,10 @@ class OfficialSnapshotArchiveAuditTests(unittest.TestCase):
             "success": True,
             "errorCode": "0",
             "value": {
+                "total": 1,
+                "pages": 1,
+                "pageNo": 1,
+                "pageSize": 100,
                 "list": [{
                     "lotteryDrawNum": "26131",
                     "lotteryDrawTime": "2026-11-16",
