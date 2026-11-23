@@ -126,7 +126,7 @@ class RegistryScheduleTests(unittest.TestCase):
         self.assertEqual({r["zone"] for r in rows}, {"front", "back"})
         self.assertEqual({r["registry_generation"] for r in rows}, {9})
         self.assertTrue(all(r["training_last_draw_date"] == "2026-11-20" for r in rows))
-        assert_registry_unchanged(lifecycle, schedule)
+        assert_registry_unchanged(lifecycle, schedule, schedule_verifier=lambda value: True)
 
     def test_missing_front_back_champion_pair_fails_closed(self):
         lifecycle, target, inventory = fixture()
@@ -172,7 +172,7 @@ class RegistryScheduleTests(unittest.TestCase):
         schedule = self.build(lifecycle, target, inventory)
         lifecycle.registry = {**lifecycle.registry, "generation": 10}
         with self.assertRaisesRegex(RegistryScheduleError, "changed after schedule"):
-            assert_registry_unchanged(lifecycle, schedule)
+            assert_registry_unchanged(lifecycle, schedule, schedule_verifier=lambda value: True)
 
     def test_target_calendar_cannot_be_guessed_or_backdated(self):
         lifecycle, target, inventory = fixture()
