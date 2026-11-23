@@ -147,7 +147,7 @@ class RegistryScheduleTests(unittest.TestCase):
 
     def test_missing_trust_verifier_or_rejected_evidence_fails_closed(self):
         lifecycle, target, inventory = fixture()
-        with self.assertRaisesRegex(RegistryScheduleError, "verifiers are required"):
+        with self.assertRaisesRegex(RegistryScheduleError, "signing/verifier callbacks are required"):
             build_registry_schedule(
                 lifecycle, target, inventory,
                 now=datetime.fromisoformat("2026-11-20T14:01:00+00:00"),
