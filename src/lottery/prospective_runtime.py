@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 from .prospective import ProspectiveLedger
 from .prospective_evaluator import FrozenArtifactEvaluator
@@ -26,7 +26,7 @@ def issue_registered_forecast(
         raise ValueError("forecast slot is not a member of the content-addressed schedule")
     if record["lifecycle_state"] not in ("champion", "shadow"):
         raise ValueError("only Champion and shadow evaluation slots may issue forecasts")
-    assert_registry_unchanged(lifecycle, schedule)
+    assert_registry_unchanged(lifecycle, schedule, schedule_verifier=schedule_verifier)
     issued = now or datetime.now(timezone.utc)
     if issued.tzinfo is None or issued.utcoffset() is None:
         raise ValueError("forecast issue clock must be timezone-aware")
