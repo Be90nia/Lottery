@@ -285,7 +285,7 @@ def _verify_registry_binding(
     storage_raw = storage_commit_receipts_path.read_bytes()
     storage_bundle = _strict_json(storage_raw, "storage commit receipt bundle")
     storage_digest = _sha256(storage_raw)
-    if (canonicalize(storage_bundle) + b"\\n" != storage_raw
+    if (canonicalize(storage_bundle) + b"\n" != storage_raw
             or storage_bundle.get("schema") != "lottery.storage-commit-receipts/v1"
             or storage_bundle.get("experiment_id") != experiment_id
             or storage_bundle.get("trial_id") != trial_id
