@@ -14,6 +14,7 @@ import platform
 import random
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -41,6 +42,35 @@ BOOTSTRAP_SEED = 20261118
 EXPECTED_REPOSITORY = "Be90nia/Lottery"
 EXPECTED_REPOSITORY_ID = "1461523125"
 EXPECTED_WORKFLOW_PATH = ".github/workflows/subset-research.yml"
+
+
+def _write_once_bytes(path: Path, raw: bytes) -> None:
+    """Atomically create one immutable receipt; identical replay is idempotent."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(raw)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            if path.read_bytes() != raw:
+                raise ValueError(f"immutable registry run receipt conflicts at {path}")
+        if hasattr(os, "O_DIRECTORY"):
+            directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
 
 
 def _build_g3_registry_spec(
@@ -250,6 +280,17 @@ def _finish_registered_execution(
     )
     snapshot = registry.snapshot()
     events = registry._read_events()
+    start_event_id = hashlib.sha256(
+        f"{binding['experiment_id']}:{binding['attempt_id']}:start".encode("utf-8")
+    ).hexdigest()
+    terminal_event_id = hashlib.sha256(
+        f"{binding['experiment_id']}:{binding['attempt_id']}:finish".encode("utf-8")
+    ).hexdigest()
+    event_by_id = {event["event_id"]: event for event in events}
+    start_event = event_by_id.get(start_event_id)
+    terminal_event = event_by_id.get(terminal_event_id)
+    if start_event is None or terminal_event is None:
+        raise ValueError("registry start/terminal events are missing from the verified event chain")
     receipt = {
         "schema": "lottery.experiment-run-receipt/v1",
         "experiment_id": binding["experiment_id"],
@@ -265,6 +306,10 @@ def _finish_registered_execution(
         "run_manifest_sha256": manifest_sha256,
         "model_artifacts_sha256": artifacts_sha256,
         "event_count": snapshot["event_count"],
+        "start_event_id": start_event_id,
+        "start_event_sha256": start_event["event_hash"],
+        "terminal_event_id": terminal_event_id,
+        "terminal_event_sha256": terminal_event["event_hash"],
         "event_chain_head_sha256": events[-1]["event_hash"] if events else None,
         "terminal_status": "succeeded",
         "execution_status": "completed",
@@ -276,7 +321,7 @@ def _finish_registered_execution(
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     receipt_path = output_path.parent / "registry-run-receipt.json"
-    receipt_path.write_bytes(canonicalize(receipt) + b"\n")
+    _write_once_bytes(receipt_path, canonicalize(receipt) + b"\n")
     return receipt
 
 
