@@ -243,4 +243,4 @@ def verify_receipt_set(
         "lot042_accessed": manifest["lot042_accessed"],
         "authenticity_note": "SHA-256 verifies integrity only; receipt producer authenticity is not established by this offline verifier.",
     }
-}
+
