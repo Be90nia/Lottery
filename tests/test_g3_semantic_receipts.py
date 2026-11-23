@@ -375,9 +375,9 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             self.verify()
 
     def test_calibration_requires_all_target_level_diagnostics(self):
-        self.calibration["zones"]["front"]["per_target_abs_errors"].pop()
+        self.calibration["zones"]["front"]["per_target_brier_scores"].pop()
         self.raw["calibration"] = canonicalize(self.calibration)
-        with self.assertRaisesRegex(ReceiptVerificationError, "calibration evidence fails"):
+        with self.assertRaisesRegex(ReceiptVerificationError, "calibration target coverage/Brier score is invalid"):
             self.verify()
 
     def test_exploratory_run_manifest_cannot_be_promoted_by_confirmatory_receipt(self):
