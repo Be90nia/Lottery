@@ -172,6 +172,25 @@ class ExponentialFamily:
             for index in range(self.dimension)
         )
 
+    def inclusion_marginals(self, theta: Sequence[float]) -> tuple[float, ...]:
+        """Compute exact item-inclusion marginals from feature-cell multiplicities."""
+        values = self._theta(theta)
+        terms = self._cell_terms(values)
+        normalizer = logsumexp(terms)
+        probabilities = tuple(exp(term - normalizer) for term in terms)
+        result = tuple(
+            fsum(
+                probability * (cell.item_inclusion_counts[index] / cell.multiplicity)
+                for probability, cell in zip(probabilities, self.table.cells)
+            )
+            for index in range(self.m)
+        )
+        if any(not isfinite(value) or not 0.0 <= value <= 1.0 for value in result):
+            raise ArithmeticError("computed exponential-family inclusion marginal is invalid")
+        if abs(fsum(result) - self.k) > 1e-10:
+            raise ArithmeticError("exponential-family inclusion marginals do not sum to fixed subset size")
+        return result
+
     def log_probability(self, subset: Sequence[int], theta: Sequence[float]) -> float:
         values = self._theta(theta)
         canonical = validate_subset(subset, self.m, self.k)
