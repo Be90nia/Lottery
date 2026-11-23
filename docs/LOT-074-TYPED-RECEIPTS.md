@@ -125,7 +125,7 @@ receipt evidence.
 
 ## G3 semantic evidence integration (2026-11-23)
 
-The G3 semantic verifier now cross-binds its terminal score ledger to a hash-verified LOT-055 run manifest, including the exact snapshot, target-list digest, experiment class/eligibility, bootstrap seed schedule, denominator/status counts, ledger bytes and all eight model × zone configuration identities. An exploratory run manifest cannot be relabeled as confirmatory by a G3 receipt.
+The G3 semantic verifier now cross-binds its terminal score ledger and complete model-artifact ledger to a hash-verified LOT-055 run manifest, including the exact snapshot, target-list digest, experiment class/eligibility, bootstrap seed schedule, denominator/status counts, ledger bytes, model-artifact bytes/count and all eight model × zone configuration identities. Under a v2 release manifest, both the run manifest and model-artifact ledger must also be present in their immutable release evidence inventories. An exploratory run manifest cannot be relabeled as confirmatory by a G3 receipt.
 
 `scripts/build_g3_evidence.py` adapts a frozen snapshot, immutable run manifest, normalized terminal ledger and explicit registration into the six G3 evidence documents. It recomputes baseline means, paired moving-block intervals and Holm inputs from the terminal ledger. It requires a supplied calibration artifact and emits an explicit BLOCKED calibration document when none is available.
 
