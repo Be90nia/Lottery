@@ -309,7 +309,11 @@ class ExperimentRegistryTests(unittest.TestCase):
             "confirmatory_eligible": False,
         }
 
+        verification_calls = 0
+
         def verifier(metadata, execution):
+            nonlocal verification_calls
+            verification_calls += 1
             self.assertEqual(execution["execution_id"], context["execution_id"])
             return {
                 "schema": "lottery.github-actions-verification/v1",
@@ -318,7 +322,10 @@ class ExperimentRegistryTests(unittest.TestCase):
                 "source_metadata_sha256": hashlib.sha256(canonicalize(metadata)).hexdigest(),
                 "artifact_zip_sha256": metadata["source_artifact_zip_sha256"],
                 "source_evidence_sha256": metadata["source_evidence_sha256"],
-                "verified_at_utc": "2026-11-23T09:00:00Z",
+                "verified_at_utc": (
+                    "2026-11-23T09:00:00Z" if verification_calls == 1
+                    else "2026-11-23T09:01:00Z"
+                ),
             }
 
         imported = self.registry.import_completed_trial(
