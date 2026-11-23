@@ -46,7 +46,34 @@ class TypedReadinessReceiptTests(unittest.TestCase):
             }
             for check_id in GATE_REQUIRED_CHECKS[gate_id]:
                 evidence_name = gate_id + "-" + check_id + ".txt"
-                evidence_raw = (gate_id + ":" + check_id + "\\n").encode()
+                if gate_id == "G2":
+                    zones = [
+                        {"zone": "front", "population_size": 35, "selection_size": 5,
+                         "expected_support_count": 324632, "enumerated_support_count": 324632},
+                        {"zone": "back", "population_size": 12, "selection_size": 2,
+                         "expected_support_count": 66, "enumerated_support_count": 66},
+                    ]
+                    if check_id == "full_support":
+                        evidence = {"schema": "lottery.g2-full-support/v1", "zones": zones}
+                    elif check_id == "normalization":
+                        evidence = {"schema": "lottery.g2-normalization/v1", "zones": [
+                            {"zone": zone, "probability_sum": 1.0, "minimum_probability": 0.0, "max_abs_error": 0.0}
+                            for zone in ("front", "back")
+                        ]}
+                    elif check_id == "exact_subset_probability":
+                        evidence = {"schema": "lottery.g2-exact-probability/v1", "zones": [
+                            {"zone": "front", "enumerated_subset_count": 324632, "probability_sum": 1.0, "minimum_probability": 0.0, "max_abs_oracle_error": 0.0},
+                            {"zone": "back", "enumerated_subset_count": 66, "probability_sum": 1.0, "minimum_probability": 0.0, "max_abs_oracle_error": 0.0},
+                        ]}
+                    elif check_id == "conditional_poisson":
+                        evidence = {"schema": "lottery.g2-conditional-poisson/v1", "algorithm": "log_elementary_symmetric_dp", "oracle_cases": 100, "max_abs_probability_error": 0.0, "max_abs_marginal_error": 0.0, "all_finite": True}
+                    elif check_id == "deterministic_sampler":
+                        evidence = {"schema": "lottery.g2-deterministic-sampler/v1", "algorithm": "backward_dp", "seed": 7, "samples_per_zone": 1000, "replay_identical": True, "invalid_sample_count": 0}
+                    else:
+                        evidence = {"schema": "lottery.g2-numerical-stability/v1", "stress_cases": 100, "non_finite_count": 0, "max_abs_normalization_error": 0.0, "minimum_probability": 0.0}
+                    evidence_raw = json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()
+                else:
+                    evidence_raw = (gate_id + ":" + check_id + "\\n").encode()
                 (self.root / evidence_name).write_bytes(evidence_raw)
                 receipt["checks"].append({
                     "check_id": check_id,
