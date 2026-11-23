@@ -1,0 +1,83 @@
+{
+  "schema": "lottery.github-actions-historical-run-evidence/v1",
+  "repository": {
+    "full_name": "Be90nia/Lottery",
+    "id": "1461523125"
+  },
+  "run": {
+    "id": 44685498725,
+    "run_attempt": 1,
+    "run_number": 71,
+    "workflow_id": 423307604,
+    "workflow_name": "exact-subset-research",
+    "workflow_path": ".github/workflows/subset-research.yml",
+    "head_branch": "feat/lot-055-preregistered-holm-inference",
+    "head_sha": "ca364a3150122e038332df4bbd03d43274503d7e",
+    "event": "push",
+    "ref": "refs/heads/feat/lot-055-preregistered-holm-inference",
+    "actor": "Be90nia",
+    "status": "completed",
+    "conclusion": "success",
+    "run_started_at_utc": "2026-11-20T06:06:49Z",
+    "run_url": "https://github.com/Be90nia/Lottery/actions/runs/44685498725",
+    "execution_id": "f791d812ad446628fb96e25d608b44e65385a4cda0ffcb128e30894cea71c9e6"
+  },
+  "job": {
+    "id": 136118730705,
+    "name": "full-rolling-origin",
+    "status": "completed",
+    "conclusion": "success",
+    "started_at_utc": "2026-11-20T06:06:51Z",
+    "completed_at_utc": "2026-11-20T08:07:33Z",
+    "evaluator_step_started_at_utc": "2026-11-20T06:06:56.6324035Z",
+    "evaluator_step_completed_at_utc": "2026-11-20T08:07:28.2553913Z"
+  },
+  "artifact": {
+    "id": 14612805677,
+    "name": "exact-subset-rolling-origin",
+    "size_in_bytes": 21990827,
+    "digest": "sha256:d165d08dc1214e79f31c50101dc5a4920233fb998b14c6ff0f56197919041804",
+    "created_at_utc": "2026-11-20T08:07:30Z",
+    "expires_at_utc": "2027-02-18T06:06:49Z",
+    "download_url": "https://api.github.com/repos/Be90nia/Lottery/actions/artifacts/14612805677/zip"
+  },
+  "artifact_contents": {
+    "run_manifest_sha256": "03339972dc5f0d6ea8580030054aa33e2cded494366b5bb38eb1e377f0f82649",
+    "target_score_ledger": {
+      "filename": "target-score-ledger.jsonl",
+      "sha256": "823d3df0dfd31b07fbc808c905ff0d8e25c60d581569f51301b68320888847f9",
+      "byte_length": 22526794,
+      "record_count": 21192
+    },
+    "model_artifacts": {
+      "filename": "model-artifacts.jsonl",
+      "sha256": "ef4cc4250d1638986bc12076667d599a32c9c859c6320bea65e65c23f47d1b89",
+      "byte_length": 79593290,
+      "record_count": 15894
+    }
+  },
+  "scientific_result": {
+    "status": "complete_with_explicit_failures",
+    "confirmatory_eligible": false,
+    "target_count_per_zone": 2649,
+    "zones": ["front", "back"],
+    "snapshot_row_count": 2949,
+    "snapshot_sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa",
+    "terminal_counts": {
+      "scored": 21188,
+      "fit_failed": 4,
+      "artifact_invalid": 0,
+      "probability_invalid": 0,
+      "runner_error": 0
+    }
+  },
+  "import_policy": {
+    "mode": "retrospective_append_only",
+    "preserve_source_timestamps_separately_from_registry_recorded_timestamps": true,
+    "do_not_rewrite_original_manifest_or_artifact": true,
+    "do_not_claim_contemporaneous_lot064_registration_events": true,
+    "execution_completion_is_not_scientific_acceptance": true,
+    "lot065_durable_commit_receipt": "not_present_in_original_run",
+    "required_live_verification": "GitHub Actions run, job, artifact metadata and downloaded ZIP digest must be re-verified before import"
+  }
+}
