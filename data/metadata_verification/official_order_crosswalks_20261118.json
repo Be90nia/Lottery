@@ -1,7 +1,7 @@
 {
   "schema": "dlt-official-order-crosswalks/v1",
   "created_on": "2026-11-18",
-  "sample_design": "Mixed sample: 16 purposive convenience crosswalks plus 5 official-page matches from a reproducible one-draw-per-year stratified random sample (seed 20261118). The random audit selected 16 rows across 2011-2026; 5 official DLT pages were located and all 5 matched, while 11 selected rows had no official DLT announcement URL located in this search pass. Source availability is unknown and may be non-random.",
+  "sample_design": "Mixed sample: 16 purposive convenience crosswalks plus 7 official-page matches from a reproducible one-draw-per-year stratified random sample (seed 20261118). The random audit selected 16 rows across 2011-2026; 7 official DLT pages were located and all 7 matched, while 9 selected rows had no official DLT announcement URL located in this search pass. Source availability is unknown and may be non-random.",
   "source_capture_status": "Official announcement URLs and displayed values transcribed; raw HTML/HTTP response bytes are not archived or hashed in this registry.",
   "interpretation": "The pages explicitly label the listed order as 本期出球顺序 and the equipment value as 本期使用第N套摇奖球. This registry is evidence for the listed rows only.",
   "records": [
@@ -600,6 +600,39 @@
       "sample_group": "purposive_convenience"
     },
     {
+      "draw_id": "25006",
+      "draw_date": "2025-01-13",
+      "front_numbers": [
+        3,
+        4,
+        13,
+        19,
+        35
+      ],
+      "back_numbers": [
+        3,
+        10
+      ],
+      "front_draw_order": [
+        3,
+        35,
+        4,
+        13,
+        19
+      ],
+      "back_draw_order": [
+        10,
+        3
+      ],
+      "equipment_set": 2,
+      "source_authority": "Guangdong Sports Lottery Center official website",
+      "source_label_order": "本期出球顺序",
+      "source_label_equipment": "本期使用第2套摇奖球",
+      "source_url": "https://www.gdlottery.cn/f_html/kjgg_pdf_bak/AN.307-%E8%B6%85%E7%BA%A7%E5%A4%A7%E4%B9%90%E9%80%8F-25006%E6%9C%9F-20250113215113882.pdf",
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "stratified_random_1_per_year_seed_20261118"
+    },
+    {
       "draw_id": "25100",
       "draw_date": "2025-09-01",
       "front_numbers": [
@@ -664,6 +697,39 @@
       "source_url": "https://www.gdlottery.cn/f_html/kjgg_pdf_bak/P085_25112.pdf",
       "source_capture_status": "url_transcribed_not_archived",
       "sample_group": "purposive_convenience"
+    },
+    {
+      "draw_id": "26025",
+      "draw_date": "2026-03-11",
+      "front_numbers": [
+        3,
+        15,
+        24,
+        28,
+        29
+      ],
+      "back_numbers": [
+        3,
+        7
+      ],
+      "front_draw_order": [
+        24,
+        29,
+        28,
+        15,
+        3
+      ],
+      "back_draw_order": [
+        3,
+        7
+      ],
+      "equipment_set": 2,
+      "source_authority": "Guangdong Sports Lottery Center official website",
+      "source_label_order": "本期出球顺序",
+      "source_label_equipment": "本期使用第2套摇奖球",
+      "source_url": "https://www.gdlottery.cn/f_html/kjgg/P085_26025.html",
+      "source_capture_status": "url_transcribed_not_archived",
+      "sample_group": "stratified_random_1_per_year_seed_20261118"
     },
     {
       "draw_id": "26083",
