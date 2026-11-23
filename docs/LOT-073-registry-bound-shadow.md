@@ -27,10 +27,14 @@ Canonical inventory:
 - `draw_dates`: exact five-digit draw ID to ISO date crosswalk
 
 The content ID proves integrity only. The caller must supply a protected
-`--trust-adapter` Python module exporting both
-`verify_target_manifest(value)` and `verify_inventory(value)`. Each callback
-must return the literal boolean `True` only after verifying source authority,
-signature/receipt, completeness, and freshness. No permissive default exists.
+`--trust-adapter` Python module exporting
+`verify_target_manifest(value)`, `verify_inventory(value)`,
+`attest_schedule(payload)`, and `verify_schedule(schedule)`. The first two
+callbacks must return literal `True` only after verifying source authority,
+signature/receipt, completeness, and freshness. The attestor returns a key ID,
+signature, and SHA-256 bound to the canonical unsigned schedule payload; the
+verifier checks it against a protected trust root. Register/finalize and forecast
+issuance reverify the signed schedule. No permissive default exists.
 
 ## Registry binding and preflight
 
