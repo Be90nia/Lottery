@@ -33,6 +33,14 @@ The G3 receipt check inventory is fixed to six evidence documents:
 5. `lottery.g3-holm-control/v1`: the fixed two confirmatory hypotheses, bootstrap identity, raw p-values and Holm-adjusted p-values.
 6. `lottery.g3-calibration/v1`: preregistered calibration method and per-zone full-target diagnostics.
 
+## Canonical snapshot cross-check (2026-11-23)
+
+G3 no longer accepts a chronology document as a self-contained assertion of its own target IDs and cutoff arrays. In typed receipt mode it requires a v2 release manifest and resolves the exact `canonical_snapshot` evidence reference under the bounded evidence root. It verifies the referenced bytes against the preregistration digest, parses all 2,949 JSONL rows, and derives the 2,649 target IDs/dates and each target's immediately preceding training cutoff directly from those rows.
+
+The verifier then compares all four arrays (target IDs, target dates, cutoff IDs, cutoff dates) against the G3 chronology evidence. A self-consistent but fabricated target list, a stale cutoff sequence, or a snapshot file whose bytes differ from the release manifest is rejected. The v2 release manifest must also bind the exact run manifest and model-artifact ledger into their corresponding immutable evidence inventories.
+
+This is a material strengthening over checking only a declared snapshot digest plus chronology fields: the actual snapshot bytes are now read and used as the chronology oracle. It remains a byte-integrity and deterministic-consistency check, not proof of official publisher authenticity or a substitute for the G1 provenance gate.
+
 ## Semantic checks
 
 The verifier currently enforces:
