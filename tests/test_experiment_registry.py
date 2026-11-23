@@ -341,6 +341,7 @@ class ExperimentRegistryTests(unittest.TestCase):
             metadata_verifier=verifier,
             expected_repository="Be90nia/Lottery",
             expected_repository_id="1461523125",
+            expected_workflow_id=423307604,
             expected_workflow_path=".github/workflows/subset-research.yml",
         )
         self.assertEqual(imported["status"], "completed_uncommitted")
@@ -360,6 +361,7 @@ class ExperimentRegistryTests(unittest.TestCase):
             metadata_verifier=verifier,
             expected_repository="Be90nia/Lottery",
             expected_repository_id="1461523125",
+            expected_workflow_id=423307604,
             expected_workflow_path=".github/workflows/subset-research.yml",
         )
         self.assertEqual(replayed, imported)
@@ -444,6 +446,7 @@ class ExperimentRegistryTests(unittest.TestCase):
             metadata_verifier=verifier,
             expected_repository="Be90nia/Lottery",
             expected_repository_id="1461523125",
+            expected_workflow_id=423307604,
             expected_workflow_path=".github/workflows/subset-research.yml",
         )
         self.assertEqual(recovered["status"], "completed_uncommitted")
@@ -476,6 +479,7 @@ class ExperimentRegistryTests(unittest.TestCase):
                 metadata_verifier=None,
                 expected_repository="Be90nia/Lottery",
                 expected_repository_id="1461523125",
+                expected_workflow_id=423307604,
                 expected_workflow_path=".github/workflows/subset-research.yml",
             )
 
@@ -501,6 +505,7 @@ class ExperimentRegistryTests(unittest.TestCase):
                 metadata_verifier=bad_verifier,
                 expected_repository="Be90nia/Lottery",
                 expected_repository_id="1461523125",
+                expected_workflow_id=423307604,
                 expected_workflow_path=".github/workflows/subset-research.yml",
             )
 
