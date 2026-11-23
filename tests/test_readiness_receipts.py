@@ -418,9 +418,13 @@ class TypedReadinessReceiptTests(unittest.TestCase):
             (self.root / path).write_bytes(raw)
             evidence[name] = {"path": path, "sha256": hashlib.sha256(raw).hexdigest()}
         for collection in ("evaluation_manifests", "model_artifacts"):
-            raw = (collection + "\\n").encode()
-            path = "manifest-" + collection + ".bin"
-            (self.root / path).write_bytes(raw)
+            if collection == "evaluation_manifests":
+                path = "G3-run-manifest.json"
+                raw = (self.root / path).read_bytes()
+            else:
+                raw = (collection + "\\n").encode()
+                path = "manifest-" + collection + ".bin"
+                (self.root / path).write_bytes(raw)
             evidence[collection] = [{"path": path, "sha256": hashlib.sha256(raw).hexdigest()}]
         self.manifest = {
             "schema": "lottery.release-manifest/v2", "release_id": "v2-release",
