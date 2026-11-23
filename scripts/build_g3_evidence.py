@@ -149,10 +149,179 @@ def _legacy_label_digest(run_manifest: dict[str, Any]) -> str:
     return _sha256(label.encode("utf-8"))
 
 
+def _verify_registry_binding(
+    *,
+    run_manifest: dict[str, Any],
+    run_manifest_raw: bytes,
+    model_artifacts_raw: bytes,
+    registration_raw: bytes,
+    registry_root: Path | None,
+    registry_run_receipt_path: Path | None,
+    artifact_provenance_path: Path | None,
+) -> dict[str, Any]:
+    binding = run_manifest.get("experiment_binding")
+    if binding is None:
+        return {
+            "schema": "lottery.g3-registry-binding/v1",
+            "status": "UNBOUND_LEGACY",
+            "legacy_experiment_label": run_manifest.get("experiment_id"),
+            "legacy_label_sha256": _legacy_label_digest(run_manifest),
+            "registry_experiment_id": None,
+            "trial_id": None,
+            "execution_id": None,
+            "reason": (
+                "The historical run manifest has no LOT-064 registry, trial, or "
+                "concrete evaluator execution binding. A hash of its display label "
+                "is not proof of registry admission."
+            ),
+        }
+
+    if registry_root is None or registry_run_receipt_path is None or artifact_provenance_path is None:
+        return {
+            "schema": "lottery.g3-registry-binding/v1",
+            "status": "INCOMPLETE",
+            "registry_experiment_id": binding.get("experiment_id"),
+            "trial_id": binding.get("trial_id"),
+            "execution_id": binding.get("execution_id"),
+            "reason": "registry root, terminal run receipt, or artifact provenance file was not supplied",
+        }
+    if not registry_root.is_dir() or not registry_run_receipt_path.is_file() or not artifact_provenance_path.is_file():
+        return {
+            "schema": "lottery.g3-registry-binding/v1",
+            "status": "INCOMPLETE",
+            "registry_experiment_id": binding.get("experiment_id"),
+            "trial_id": binding.get("trial_id"),
+            "execution_id": binding.get("execution_id"),
+            "reason": "one or more registry binding files are missing",
+        }
+
+    required_binding = {
+        "schema", "experiment_id", "spec_sha256", "approval_sha256",
+        "trial_id", "registry_attempt_id", "execution_id", "execution_context",
+    }
+    if not isinstance(binding, dict) or set(binding) != required_binding:
+        raise G3EvidenceBuildError("run manifest experiment_binding fields are invalid")
+    if binding.get("schema") != "lottery.experiment-run-binding/v1":
+        raise G3EvidenceBuildError("unsupported run manifest experiment_binding schema")
+    experiment_id = binding["experiment_id"]
+    trial_id = binding["trial_id"]
+    attempt_id = binding["registry_attempt_id"]
+    execution_id = binding["execution_id"]
+    if (not isinstance(experiment_id, str) or not re.fullmatch(r"[0-9a-f]{64}", experiment_id)
+            or binding["spec_sha256"] != experiment_id
+            or not isinstance(trial_id, str) or not re.fullmatch(r"[0-9a-f]{64}", trial_id)
+            or not isinstance(attempt_id, str) or not attempt_id
+            or not isinstance(execution_id, str) or not re.fullmatch(r"[0-9a-f]{64}", execution_id)):
+        raise G3EvidenceBuildError("run manifest registry/trial/execution identity is malformed")
+
+    try:
+        registry = ExperimentRegistry(registry_root)
+        snapshot = registry.snapshot()
+        events = registry._read_events()
+    except (ExperimentRegistryError, OSError, ValueError) as exc:
+        raise G3EvidenceBuildError("LOT-064 registry snapshot or event chain is invalid") from exc
+    experiment = snapshot["experiments"].get(experiment_id)
+    if experiment is None:
+        raise G3EvidenceBuildError("run manifest experiment_id does not resolve in LOT-064 registry")
+    registration = experiment["registration"]
+    spec = registration["spec"]
+    if (registration.get("spec_sha256") != binding["spec_sha256"]
+            or registration.get("approval_sha256") != binding["approval_sha256"]
+            or spec.get("experiment_class") != "exploratory"
+            or spec.get("outcomes_observed") is not True
+            or spec.get("holdout_accessed") is not False
+            or spec.get("source_evidence_sha256") != _sha256(registration_raw)):
+        raise G3EvidenceBuildError("LOT-064 registration does not bind the exact retrospective G3 source/class")
+    if trial_id not in {_sha256(canonicalize(item)) for item in spec.get("trial_plan", [])}:
+        raise G3EvidenceBuildError("run manifest trial_id is not in the immutable registered trial plan")
+
+    attempt = experiment["attempts"].get(attempt_id)
+    if attempt is None or attempt.get("status") != "succeeded":
+        raise G3EvidenceBuildError("registry has no successful terminal event for the bound trial attempt")
+    if (attempt.get("config_sha256") != trial_id
+            or attempt.get("trial_id") != trial_id
+            or attempt.get("execution_id") != execution_id
+            or attempt.get("execution_context") != binding["execution_context"]
+            or attempt.get("approval_sha256") != binding["approval_sha256"]):
+        raise G3EvidenceBuildError("registry trial attempt does not match run manifest identities")
+
+    receipt_raw = registry_run_receipt_path.read_bytes()
+    receipt = _strict_json(receipt_raw, "registry run receipt")
+    if canonicalize(receipt) + b"\n" != receipt_raw:
+        raise G3EvidenceBuildError("registry run receipt is not canonical JSON")
+    run_manifest_sha256 = _sha256(run_manifest_raw)
+    model_artifacts_sha256 = _sha256(model_artifacts_raw)
+    event_head = events[-1]["event_hash"] if events else None
+    if (receipt.get("schema") != "lottery.experiment-run-receipt/v1"
+            or receipt.get("experiment_id") != experiment_id
+            or receipt.get("spec_sha256") != binding["spec_sha256"]
+            or receipt.get("approval_sha256") != binding["approval_sha256"]
+            or receipt.get("trial_id") != trial_id
+            or receipt.get("attempt_id") != attempt_id
+            or receipt.get("execution_id") != execution_id
+            or receipt.get("evaluation_run_id") != run_manifest.get("run_id")
+            or receipt.get("run_manifest_sha256") != run_manifest_sha256
+            or receipt.get("model_artifacts_sha256") != model_artifacts_sha256
+            or receipt.get("event_count") != snapshot["event_count"]
+            or receipt.get("event_chain_head_sha256") != event_head
+            or receipt.get("terminal_status") != "succeeded"):
+        raise G3EvidenceBuildError("registry run receipt does not bind the manifest, artifacts, and event-chain head")
+    if (attempt.get("result_sha256") != run_manifest_sha256
+            or attempt.get("artifact_sha256") != model_artifacts_sha256):
+        raise G3EvidenceBuildError("terminal registry event digests do not match run outputs")
+
+    provenance_raw = artifact_provenance_path.read_bytes()
+    declared_provenance = run_manifest.get("output_files", {}).get("model-artifact-provenance.jsonl", {})
+    if (declared_provenance.get("sha256") != _sha256(provenance_raw)
+            or declared_provenance.get("bytes") != len(provenance_raw)):
+        raise G3EvidenceBuildError("model artifact provenance bytes do not match run manifest")
+    artifact_ids = set()
+    for index, line in enumerate(model_artifacts_raw.splitlines(), 1):
+        artifact = _strict_json(line, f"model artifact line {index}")
+        artifact_id = artifact.get("artifact_id")
+        if not isinstance(artifact_id, str) or artifact_id in artifact_ids:
+            raise G3EvidenceBuildError("model artifact ledger contains a missing or duplicate artifact ID")
+        artifact_ids.add(artifact_id)
+    provenance_ids = set()
+    for index, line in enumerate(provenance_raw.splitlines(), 1):
+        item = _strict_json(line, f"model artifact provenance line {index}")
+        if (item.get("schema") != "lottery.model-artifact-provenance/v1"
+                or item.get("experiment_id") != experiment_id
+                or item.get("trial_id") != trial_id
+                or item.get("attempt_id") != attempt_id
+                or item.get("execution_id") != execution_id
+                or item.get("evaluation_run_id") != run_manifest.get("run_id")):
+            raise G3EvidenceBuildError("model artifact provenance contains a cross-run or cross-trial reference")
+        artifact_id = item.get("artifact_id")
+        if not isinstance(artifact_id, str) or artifact_id in provenance_ids:
+            raise G3EvidenceBuildError("model artifact provenance contains a missing or duplicate artifact ID")
+        provenance_ids.add(artifact_id)
+    if (provenance_ids != artifact_ids
+            or len(provenance_ids) != run_manifest.get("model_artifact_provenance_count")):
+        raise G3EvidenceBuildError("model artifact provenance does not cover the exact artifact inventory")
+
+    return {
+        "schema": "lottery.g3-registry-binding/v1",
+        "status": "VERIFIED",
+        "registry_experiment_id": experiment_id,
+        "trial_id": trial_id,
+        "attempt_id": attempt_id,
+        "execution_id": execution_id,
+        "approval_sha256": binding["approval_sha256"],
+        "registry_event_count": snapshot["event_count"],
+        "event_chain_head_sha256": event_head,
+        "registry_run_receipt_sha256": _sha256(receipt_raw),
+        "artifact_provenance_sha256": _sha256(provenance_raw),
+    }
+
+
 def build_g3_evidence_bundle(
     *, snapshot_path: Path, run_manifest_path: Path, ledger_path: Path,
     model_artifacts_path: Path, registration_path: Path, output_dir: Path, expected_snapshot_sha256: str,
     expected_run_manifest_sha256: str, calibration_path: Path | None = None,
+    registry_root: Path | None = None,
+    registry_run_receipt_path: Path | None = None,
+    artifact_provenance_path: Path | None = None,
 ) -> dict[str, Any]:
     """Create six G3 evidence files and an explicit non-authorizing build summary."""
     if expected_snapshot_sha256 != EXPECTED_SNAPSHOT_SHA256:
@@ -196,22 +365,17 @@ def build_g3_evidence_bundle(
     if registration.get("experiment_class") != run_manifest.get("experiment_class"):
         raise G3EvidenceBuildError("registration/run experiment class mismatch")
 
-    # This historical compatibility digest is deliberately NOT accepted as a
-    # LOT-064 registry identity. The old run predates registry/runtime binding.
-    registry_binding = {
-        "schema": "lottery.g3-registry-binding/v1",
-        "status": "UNBOUND_LEGACY",
-        "legacy_experiment_label": run_manifest["experiment_id"],
-        "legacy_label_sha256": legacy_label_digest,
-        "registry_experiment_id": run_manifest.get("registry_experiment_id"),
-        "trial_id": run_manifest.get("trial_id"),
-        "execution_id": run_manifest.get("execution_id"),
-        "reason": (
-            "The historical run manifest has no verified LOT-064 registration, "
-            "trial, or concrete evaluator execution binding. A hash of its display "
-            "label is not proof of registry admission."
-        ),
-    }
+    # The legacy label digest is a historical consistency check only. A real
+    # binding must resolve through the immutable LOT-064 registry and receipts.
+    registry_binding = _verify_registry_binding(
+        run_manifest=run_manifest,
+        run_manifest_raw=run_raw,
+        model_artifacts_raw=model_artifacts_path.read_bytes(),
+        registration_raw=registration_path.read_bytes(),
+        registry_root=registry_root,
+        registry_run_receipt_path=registry_run_receipt_path,
+        artifact_provenance_path=artifact_provenance_path,
+    )
 
     ledger_raw = ledger_path.read_bytes()
     ledger_digest = _sha256(ledger_raw)
@@ -547,9 +711,10 @@ def build_g3_evidence_bundle(
         (output_dir / f"{name}.json").write_bytes(canonicalize(report) + b"\n")
 
     blockers = []
-    blockers.append(
-        "historical G3 run is not bound to a LOT-064 registry experiment, trial, and concrete execution"
-    )
+    if registry_binding.get("status") != "VERIFIED":
+        blockers.append(
+            "G3 run is not verified against a LOT-064 registry experiment, trial, execution, and artifact provenance"
+        )
     if run_manifest.get("experiment_class") != "confirmatory" or run_manifest.get("confirmatory_eligible") is not True:
         blockers.append("run manifest explicitly marks this experiment as exploratory/non-confirmatory")
     if registration.get("outcomes_observed_at_registration") is not False:
@@ -584,9 +749,9 @@ def build_g3_evidence_bundle(
         "experiment_class": run_manifest.get("experiment_class"),
         "confirmatory_eligible": run_manifest.get("confirmatory_eligible"),
         "registry_binding_status": registry_binding["status"],
-        "registry_experiment_id": registry_binding["registry_experiment_id"],
-        "trial_id": registry_binding["trial_id"],
-        "execution_id": registry_binding["execution_id"],
+        "registry_experiment_id": registry_binding.get("registry_experiment_id"),
+        "trial_id": registry_binding.get("trial_id"),
+        "execution_id": registry_binding.get("execution_id"),
         "snapshot_sha256": expected_snapshot_sha256,
         "target_count_per_zone": TARGET_COUNT,
         "terminal_record_count": len(ledger),
@@ -629,6 +794,9 @@ def main() -> int:
     parser.add_argument("--model-artifacts", type=Path, required=True)
     parser.add_argument("--registration", type=Path, required=True)
     parser.add_argument("--calibration", type=Path)
+    parser.add_argument("--registry-root", type=Path)
+    parser.add_argument("--registry-run-receipt", type=Path)
+    parser.add_argument("--artifact-provenance", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     try:
@@ -638,6 +806,9 @@ def main() -> int:
             expected_run_manifest_sha256=args.expected_run_manifest_sha256,
             ledger_path=args.ledger, model_artifacts_path=args.model_artifacts,
             registration_path=args.registration, calibration_path=args.calibration,
+            registry_root=args.registry_root,
+            registry_run_receipt_path=args.registry_run_receipt,
+            artifact_provenance_path=args.artifact_provenance,
             output_dir=args.output_dir,
         )
     except (OSError, G3EvidenceBuildError, ValueError, KeyError, TypeError) as exc:
