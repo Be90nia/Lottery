@@ -256,6 +256,17 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertEqual(manifest["experiment_binding"]["execution_id"], binding["execution_context"]["execution_id"])
         self.assertFalse(manifest["experiment_binding"]["approval_required"])
         self.assertEqual(manifest["experiment_binding"]["approval_disposition"], "not_required_exploratory")
+        manifest_body = dict(manifest)
+        supplied_manifest_hash = manifest_body.pop("manifest_sha256")
+        expected_manifest_hash = "sha256:" + runner.hashlib.sha256(
+            runner.canonicalize(manifest_body)
+        ).hexdigest()
+        self.assertEqual(supplied_manifest_hash, expected_manifest_hash)
+        provenance_raw = (self.output_dir / "model-artifact-provenance.jsonl").read_bytes()
+        self.assertEqual(
+            manifest["output_files"]["model-artifact-provenance.jsonl"]["sha256"],
+            runner.hashlib.sha256(provenance_raw).hexdigest(),
+        )
         self.assertEqual(ledger_first["experiment_id"], binding["experiment_id"])
         self.assertEqual(ledger_first["trial_id"], binding["trial_id"])
         self.assertEqual(ledger_first["execution_id"], binding["execution_context"]["execution_id"])
