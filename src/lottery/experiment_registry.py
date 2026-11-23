@@ -352,6 +352,27 @@ class ExperimentRegistry:
                     raise ExperimentRegistryError("terminal event execution identity does not match trial start")
                 if "approval_sha256" in event and event["approval_sha256"] != attempt.get("approval_sha256"):
                     raise ExperimentRegistryError("terminal event approval receipt does not match trial start")
+                terminal_status = event.get("terminal_status")
+                if terminal_status not in TERMINAL_STATUSES:
+                    raise ExperimentRegistryError("terminal event status is outside the closed status set")
+                if terminal_status == "completed_uncommitted":
+                    if (event.get("imported") is not True
+                            or not _is_sha(event.get("source_metadata_sha256"))
+                            or not _is_sha(event.get("source_verification_receipt_sha256"))
+                            or event.get("confirmatory_eligible") is not False
+                            or event.get("storage_receipts_sha256") is not None
+                            or not isinstance(event.get("source_completed_at_utc"), str)):
+                        raise ExperimentRegistryError("completed_uncommitted terminal event lacks verified retrospective-import lineage")
+                if terminal_status == "succeeded" and attempt.get("execution_context") is not None:
+                    storage_digest = event.get("storage_receipts_sha256")
+                    if not _is_sha(storage_digest):
+                        raise ExperimentRegistryError("execution-bound success event is missing LOT-065 receipt digest")
+                    self._verify_execution_storage_receipts(
+                        execution_id=attempt["execution_id"],
+                        result_sha256=event["result_sha256"],
+                        artifact_sha256=event["artifact_sha256"],
+                        expected_receipts_sha256=storage_digest,
+                    )
                 attempt.update({
                     "status": event["terminal_status"],
                     "finished_at_utc": event["occurred_at_utc"],
