@@ -304,6 +304,7 @@ def import_historical_execution(
         "schema": "lottery.github-actions-execution/v1",
         "repository": REPOSITORY,
         "repository_id": REPOSITORY_ID,
+        "workflow_id": expected_run["workflow_id"],
         "workflow_path": WORKFLOW_PATH,
         "workflow_ref": f"{REPOSITORY}/{WORKFLOW_PATH}@{expected_run['ref']}",
         "run_id": expected_run["id"],
@@ -319,6 +320,7 @@ def import_historical_execution(
     context = validate_execution_context(
         context, expected_repository=REPOSITORY,
         expected_repository_id=REPOSITORY_ID,
+        expected_workflow_id=expected_run["workflow_id"],
         expected_workflow_path=WORKFLOW_PATH,
     )
     if context["execution_id"] != expected_run["execution_id"]:
@@ -357,6 +359,7 @@ def import_historical_execution(
         metadata_verifier=lambda _metadata, _context: verification,
         expected_repository=REPOSITORY,
         expected_repository_id=REPOSITORY_ID,
+        expected_workflow_id=expected_run["workflow_id"],
         expected_workflow_path=WORKFLOW_PATH,
     )
     receipt = {
