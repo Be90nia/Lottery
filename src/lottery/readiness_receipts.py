@@ -269,9 +269,6 @@ def verify_receipt_set(
         for gate in verified_gates for entry in gate["check_evidence"]
     ]
     evidence_paths += [
-        faults[key]["receipt"]["path"] for key in FAULTS
-    ]
-    evidence_paths += [
         json.loads(_safe_file(Path(evidence_root).resolve(strict=True), faults[key]["receipt"], key)[0])["evidence"]["path"]
         for key in FAULTS
     ]
