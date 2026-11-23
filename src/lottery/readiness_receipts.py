@@ -287,7 +287,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         and chronology["target_manifest_sha256"] == prereg["target_manifest_sha256"]
         and chronology["snapshot_row_count"] == 2949
         and isinstance(target_ids, list) and len(target_ids) == 2649
-        and all(isinstance(value, str) and re.fullmatch(r"\\d{5}", value) for value in target_ids)
+        and all(isinstance(value, str) and re.fullmatch(r"\d{5}", value) for value in target_ids)
         and target_ids == sorted(set(target_ids))
         and target_ids[0] == "09054" and target_ids[-1] == "26131"
         and chronology["target_ids_sha256"] == hashlib.sha256(canonicalize(target_ids)).hexdigest()
@@ -300,7 +300,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     cutoff_ids = chronology["training_cutoff_ids"]
     require(
         isinstance(cutoff_ids, list) and len(cutoff_ids) == 2649
-        and all(isinstance(value, str) and re.fullmatch(r"\\d{5}", value) for value in cutoff_ids)
+        and all(isinstance(value, str) and re.fullmatch(r"\d{5}", value) for value in cutoff_ids)
         and cutoff_ids[0] < target_ids[0]
         and cutoff_ids[1:] == target_ids[:-1]
         and all(cutoff_ids[index] < target_ids[index] for index in range(2649)),
@@ -354,7 +354,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
             and type(record["training_count"]) is int
             and record["training_count"] == 300 + target_index[target]
             and isinstance(record["train_cutoff_draw_id"], str)
-            and re.fullmatch(r"\\d{5}", record["train_cutoff_draw_id"])
+            and re.fullmatch(r"\d{5}", record["train_cutoff_draw_id"])
             and record["train_cutoff_draw_id"] == cutoff_ids[target_index[target]]
             and record["strictly_before_target"] is True,
             f"terminal ledger line {line_number} violates target/cutoff pairing",
