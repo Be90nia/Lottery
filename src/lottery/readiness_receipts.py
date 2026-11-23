@@ -354,7 +354,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     run_id = None
     for line_number, line in enumerate(ledger_lines, 1):
         record = _strict_json(line, f"G3 terminal ledger line {line_number}")
-        require(set(record) == {
+        expected_record_fields = {
             "run_id", "target_draw_id", "target_draw_date", "zone", "model_family",
             "model_name", "artifact_id", "diagnostic_ref", "snapshot_sha256",
             "training_first_draw_id", "training_last_draw_id", "training_row_count",
@@ -363,7 +363,11 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
             "failure_reason", "terminal_status", "observed_subset",
             "predicted_log_probability", "negative_log_score", "pairing_key",
             "record_sha256",
-        }, f"terminal ledger line {line_number} fields invalid")
+        }
+        require(
+            set(record) == expected_record_fields,
+            f"terminal ledger line {line_number} fields invalid; missing={sorted(expected_record_fields - set(record))}, extra={sorted(set(record) - expected_record_fields)}",
+        )
         model_id, zone, target = record["model_name"], record["zone"], record["target_draw_id"]
         index = target_index.get(target)
         require(
