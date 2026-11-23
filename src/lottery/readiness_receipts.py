@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from functools import lru_cache
 import math
 import re
 import random
@@ -212,6 +213,39 @@ def _verify_g2_evidence(check_id: str, raw: bytes) -> None:
             and report["minimum_probability"] >= 0.0,
             "numerical stability stress checks failed",
         )
+
+
+
+
+@lru_cache(maxsize=24)
+def _g3_moving_block_bootstrap(values: tuple[float, ...], seed: int) -> tuple[float, float, float]:
+    """Replay the frozen 1,000 × 50 non-circular bootstrap exactly."""
+    n = len(values)
+    if n < 50 or any(not math.isfinite(value) for value in values):
+        raise ReceiptVerificationError("G3: invalid paired values for moving-block bootstrap")
+    rng = random.Random(seed)
+    observed = sum(values) / n
+    centered = [value - observed for value in values]
+    means: list[float] = []
+    null_means: list[float] = []
+    for _ in range(1000):
+        indices: list[int] = []
+        while len(indices) < n:
+            start = rng.randrange(0, n - 50 + 1)
+            indices.extend(range(start, start + 50))
+        indices = indices[:n]
+        means.append(sum(values[index] for index in indices) / n)
+        null_means.append(sum(centered[index] for index in indices) / n)
+    ordered = sorted(means)
+    def percentile(probability: float) -> float:
+        position = (len(ordered) - 1) * probability
+        lower, upper = math.floor(position), math.ceil(position)
+        if lower == upper:
+            return ordered[lower]
+        weight = position - lower
+        return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+    p_value = (1 + sum(value <= observed for value in null_means)) / 1001
+    return percentile(0.025), percentile(0.975), p_value
 
 
 
@@ -506,34 +540,6 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
             and math.isfinite(entry["candidate_vs_ewma_ci95_upper"]),
             f"{zone} paired uncertainty/non-regression report invalid",
         )
-        def bootstrap(values: list[float], seed: int) -> tuple[float, float, float]:
-            n = len(values)
-            if n < 50 or any(not math.isfinite(value) for value in values):
-                raise ReceiptVerificationError("G3: invalid paired values for moving-block bootstrap")
-            rng = random.Random(seed)
-            observed = sum(values) / n
-            centered = [value - observed for value in values]
-            means: list[float] = []
-            null_means: list[float] = []
-            for _ in range(1000):
-                indices: list[int] = []
-                while len(indices) < n:
-                    start = rng.randrange(0, n - 50 + 1)
-                    indices.extend(range(start, start + 50))
-                indices = indices[:n]
-                means.append(sum(values[index] for index in indices) / n)
-                null_means.append(sum(centered[index] for index in indices) / n)
-            ordered = sorted(means)
-            def percentile(probability: float) -> float:
-                position = (len(ordered) - 1) * probability
-                lower, upper = math.floor(position), math.ceil(position)
-                if lower == upper:
-                    return ordered[lower]
-                weight = position - lower
-                return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
-            p_value = (1 + sum(value <= observed for value in null_means)) / 1001
-            return percentile(0.025), percentile(0.975), p_value
-
         paired = {
             role: [
                 scores[(model_ids["candidate"], zone, target)]
@@ -542,14 +548,14 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
             ]
             for role in ("uniform", "expanding", "ewma")
         }
-        uniform_ci = bootstrap(
-            paired["uniform"], prereg["bootstrap_seeds_by_zone_and_comparison"][zone]["uniform"]
+        uniform_ci = _g3_moving_block_bootstrap(
+            tuple(paired["uniform"]), prereg["bootstrap_seeds_by_zone_and_comparison"][zone]["uniform"]
         )
-        expanding_ci = bootstrap(
-            paired["expanding"], prereg["bootstrap_seeds_by_zone_and_comparison"][zone]["expanding"]
+        expanding_ci = _g3_moving_block_bootstrap(
+            tuple(paired["expanding"]), prereg["bootstrap_seeds_by_zone_and_comparison"][zone]["expanding"]
         )
-        ewma_ci = bootstrap(
-            paired["ewma"], prereg["bootstrap_seeds_by_zone_and_comparison"][zone]["ewma"]
+        ewma_ci = _g3_moving_block_bootstrap(
+            tuple(paired["ewma"]), prereg["bootstrap_seeds_by_zone_and_comparison"][zone]["ewma"]
         )
         require(
             abs(interval[0] - uniform_ci[0]) <= 1e-10
