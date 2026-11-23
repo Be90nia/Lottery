@@ -755,35 +755,42 @@ class ExperimentRegistry:
                     or _sha(commit_raw) != entry["commit_receipt_sha256"]
                     or _sha(publication_raw) != entry["publication_receipt_sha256"]):
                 raise ExperimentRegistryError(f"LOT-065 receipt digest mismatch: {filename}")
-            if (stage.get("operation_id") != operation_id
-                    or stage.get("content_sha256") != entry["content_sha256"]
-                    or stage.get("byte_length") != entry["byte_length"]
-                    or validation.get("operation_id") != operation_id
-                    or validation.get("content_sha256") != entry["content_sha256"]
-                    or validation.get("validated") is not True
-                    or validation.get("validation_mode") != "semantic"
-                    or validation.get("validator_id") != "lottery.g3-json-object-or-jsonl/v1"
-                    or stage.get("producer_commit") != expected_producer_commit
-                    or stage.get("schema_version") != "lottery.g3-run-output/v1"
-                    or commit.get("operation_id") != operation_id
-                    or commit.get("content_sha256") != entry["content_sha256"]
-                    or commit.get("byte_length") != entry["byte_length"]
-                    or commit.get("committed") is not True
-                    or commit.get("stage_manifest_sha256") != _sha(stage_raw)
-                    or commit.get("validation_receipt_sha256") != _sha(validation_raw)
-                    or commit.get("object_key") != str(store._object_path(entry["content_sha256"]).relative_to(store.root))
-                    or pointer.get("last_operation_id") != operation_id
-                    or pointer.get("object_sha256") != entry["content_sha256"]
-                    or publication != {
-                        "schema": "lottery.storage-publication/v1",
-                        "pointer_name": entry["pointer_name"],
-                        "generation": pointer["generation"],
-                        "object_sha256": entry["content_sha256"],
-                        "operation_id": operation_id,
-                        "previous_object_sha256": pointer.get("previous_object_sha256"),
-                        "published_at_utc": pointer.get("published_at_utc"),
-                    }):
-                raise ExperimentRegistryError(f"LOT-065 stage/validation/commit/read-back chain mismatch: {filename}")
+            expected_publication = {
+                "schema": "lottery.storage-publication/v1",
+                "pointer_name": entry["pointer_name"],
+                "generation": pointer["generation"],
+                "object_sha256": entry["content_sha256"],
+                "operation_id": operation_id,
+                "previous_object_sha256": pointer.get("previous_object_sha256"),
+                "published_at_utc": pointer.get("published_at_utc"),
+            }
+            checks = {
+                "stage_operation_id": stage.get("operation_id") == operation_id,
+                "stage_content_sha256": stage.get("content_sha256") == entry["content_sha256"],
+                "stage_byte_length": stage.get("byte_length") == entry["byte_length"],
+                "stage_producer_commit": stage.get("producer_commit") == expected_producer_commit,
+                "stage_schema_version": stage.get("schema_version") == "lottery.g3-run-output/v1",
+                "validation_operation_id": validation.get("operation_id") == operation_id,
+                "validation_content_sha256": validation.get("content_sha256") == entry["content_sha256"],
+                "validation_passed": validation.get("validated") is True,
+                "validation_mode": validation.get("validation_mode") == "semantic",
+                "validation_validator_id": validation.get("validator_id") == "lottery.g3-json-object-or-jsonl/v1",
+                "commit_operation_id": commit.get("operation_id") == operation_id,
+                "commit_content_sha256": commit.get("content_sha256") == entry["content_sha256"],
+                "commit_byte_length": commit.get("byte_length") == entry["byte_length"],
+                "commit_flag": commit.get("committed") is True,
+                "commit_stage_receipt": commit.get("stage_manifest_sha256") == _sha(stage_raw),
+                "commit_validation_receipt": commit.get("validation_receipt_sha256") == _sha(validation_raw),
+                "commit_object_key": commit.get("object_key") == str(store._object_path(entry["content_sha256"]).relative_to(store.root)),
+                "pointer_operation_id": pointer.get("last_operation_id") == operation_id,
+                "pointer_content_sha256": pointer.get("object_sha256") == entry["content_sha256"],
+                "publication_receipt": publication == expected_publication,
+            }
+            mismatches = [name for name, passed in checks.items() if not passed]
+            if mismatches:
+                raise ExperimentRegistryError(
+                    f"LOT-065 stage/validation/commit/read-back chain mismatch: {filename}: {mismatches}"
+                )
             resolved[filename] = object_raw
 
         manifest_raw = resolved["run_manifest.json"]
