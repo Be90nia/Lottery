@@ -108,6 +108,110 @@ def _utc_timestamp(value: Any, label: str) -> None:
         raise ReceiptVerificationError(f"{label}: timestamp must be UTC")
 
 
+def _verify_g2_evidence(check_id: str, raw: bytes) -> None:
+    """Validate numerical-engine evidence values, not merely their file hashes."""
+    report = _strict_json(raw, "G2 " + check_id)
+    zones = {"front": (35, 5, 324632), "back": (12, 2, 66)}
+
+    def finite_number(value: Any) -> bool:
+        return type(value) in (int, float) and math.isfinite(value)
+
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            raise ReceiptVerificationError("G2 " + check_id + ": " + message)
+
+    if check_id in ("full_support", "normalization", "exact_subset_probability"):
+        require(set(report) == {"schema", "zones"}, "report fields invalid")
+        expected_schema = {
+            "full_support": "lottery.g2-full-support/v1",
+            "normalization": "lottery.g2-normalization/v1",
+            "exact_subset_probability": "lottery.g2-exact-probability/v1",
+        }[check_id]
+        require(report["schema"] == expected_schema, "unsupported evidence schema")
+        entries = report["zones"]
+        require(isinstance(entries, list) and len(entries) == 2, "must contain front and back zones")
+        indexed = {entry.get("zone"): entry for entry in entries if isinstance(entry, dict)}
+        require(set(indexed) == set(zones), "front/back zone inventory mismatch")
+        for zone, (m, k, support_count) in zones.items():
+            entry = indexed[zone]
+            if check_id == "full_support":
+                require(
+                    set(entry) == {"zone", "population_size", "selection_size", "expected_support_count", "enumerated_support_count"}
+                    and entry["population_size"] == m and entry["selection_size"] == k
+                    and entry["expected_support_count"] == support_count
+                    and entry["enumerated_support_count"] == support_count,
+                    f"{zone} support coverage is not exact",
+                )
+            else:
+                expected_fields = (
+                    {"zone", "probability_sum", "minimum_probability", "max_abs_error"}
+                    if check_id == "normalization"
+                    else {"zone", "enumerated_subset_count", "probability_sum", "minimum_probability", "max_abs_oracle_error"}
+                )
+                require(set(entry) == expected_fields, f"{zone} numerical fields invalid")
+                count_field = "enumerated_subset_count"
+                if check_id == "exact_subset_probability":
+                    require(entry[count_field] == support_count, f"{zone} probability oracle did not cover full support")
+                error_field = "max_abs_error" if check_id == "normalization" else "max_abs_oracle_error"
+                require(
+                    finite_number(entry["probability_sum"])
+                    and abs(entry["probability_sum"] - 1.0) <= 1e-12
+                    and finite_number(entry["minimum_probability"])
+                    and entry["minimum_probability"] >= 0.0
+                    and finite_number(entry[error_field])
+                    and entry[error_field] <= 1e-12,
+                    f"{zone} probabilities are not normalized/nonnegative within 1e-12",
+                )
+        return
+
+    contracts = {
+        "conditional_poisson": (
+            {"schema", "algorithm", "oracle_cases", "max_abs_probability_error", "max_abs_marginal_error", "all_finite"},
+            "lottery.g2-conditional-poisson/v1", "log_elementary_symmetric_dp",
+        ),
+        "deterministic_sampler": (
+            {"schema", "algorithm", "seed", "samples_per_zone", "replay_identical", "invalid_sample_count"},
+            "lottery.g2-deterministic-sampler/v1", "backward_dp",
+        ),
+        "numerical_stability": (
+            {"schema", "stress_cases", "non_finite_count", "max_abs_normalization_error", "minimum_probability"},
+            "lottery.g2-numerical-stability/v1", None,
+        ),
+    }
+    fields, schema, algorithm = contracts[check_id]
+    require(set(report) == fields and report["schema"] == schema, "report schema/fields invalid")
+    if check_id == "conditional_poisson":
+        require(
+            report["algorithm"] == algorithm and type(report["oracle_cases"]) is int
+            and report["oracle_cases"] >= 100
+            and finite_number(report["max_abs_probability_error"])
+            and report["max_abs_probability_error"] <= 1e-12
+            and finite_number(report["max_abs_marginal_error"])
+            and report["max_abs_marginal_error"] <= 1e-12
+            and report["all_finite"] is True,
+            "conditional-Poisson oracle checks failed",
+        )
+    elif check_id == "deterministic_sampler":
+        require(
+            report["algorithm"] == algorithm and type(report["seed"]) is int
+            and report["seed"] >= 0
+            and type(report["samples_per_zone"]) is int and report["samples_per_zone"] >= 1000
+            and report["replay_identical"] is True
+            and report["invalid_sample_count"] == 0,
+            "deterministic sampler replay/support checks failed",
+        )
+    else:
+        require(
+            type(report["stress_cases"]) is int and report["stress_cases"] >= 100
+            and report["non_finite_count"] == 0
+            and finite_number(report["max_abs_normalization_error"])
+            and report["max_abs_normalization_error"] <= 1e-10
+            and finite_number(report["minimum_probability"])
+            and report["minimum_probability"] >= 0.0,
+            "numerical stability stress checks failed",
+        )
+
+
 def _checks_pass(checks: Any, label: str, root: Path) -> list[dict[str, str]]:
     required = GATE_REQUIRED_CHECKS[label]
     if not isinstance(checks, list):
@@ -128,7 +232,7 @@ def _checks_pass(checks: Any, label: str, root: Path) -> list[dict[str, str]]:
         check = indexed[check_id]
         if check["status"] != "PASS":
             raise ReceiptVerificationError(f"{label}: check {check_id} did not pass")
-        _, digest = _safe_file(root, check["evidence"], label + " " + check_id)
+        evidence_raw, digest = _safe_file(root, check["evidence"], label + " " + check_id)\n        if label == "G2":\n            _verify_g2_evidence(check_id, evidence_raw)
         path = check["evidence"]["path"]
         if path in seen_paths:
             raise ReceiptVerificationError(f"{label}: check evidence must be unique")
