@@ -75,6 +75,11 @@ class G3RuntimeBindingTests(unittest.TestCase):
         )
         self.assertEqual(spec["experiment_class"], "exploratory")
         self.assertTrue(spec["outcomes_observed"])
+        self.assertEqual(config["legacy_g3_experiment_label"], "LOT055-OPT-DIAG-20261120")
+        self.assertEqual(
+            config["legacy_g3_label_digest"],
+            "4eceab2eab2cc9cdd2961634815f5ed586ddd9f54df5496d7d2754f60039a12a",
+        )
         self.assertIsNone(spec["parent_experiment_id"])
         self.assertFalse(config["approval_required"])
         self.assertEqual(config["approval_disposition"], "not_required_exploratory")
