@@ -277,9 +277,11 @@ class ExperimentRegistryTests(unittest.TestCase):
             result_sha256=digest("result"),
             artifact_sha256=digest("artifact"),
             execution_id=context["execution_id"],
+            storage_commit_receipts_sha256=digest("storage receipts"),
             actor="research-operator",
         )
         self.assertEqual(finished["execution_id"], context["execution_id"])
+        self.assertEqual(finished["storage_commit_receipts_sha256"], digest("storage receipts"))
         self.assertEqual(finished["status"], "succeeded")
 
     def test_execution_context_requires_explicit_workflow_allowlist(self):
