@@ -1,0 +1,78 @@
+# G1 official-source provenance audit — 2026-11-23
+
+## Scope
+
+This audit covers the 2026-11-18 Sporttery Super Lotto historical snapshot used by the model. It does not access LOT-042. It separates three different claims:
+
+1. **Byte integrity:** stored bytes match declared SHA-256 values.
+2. **Source provenance:** capture metadata points to the expected official HTTPS endpoint and records status/time.
+3. **Source authenticity:** an independently trusted signature or equivalent proves who produced the response.
+
+The repository currently supports the first two as auditable metadata. It does not have a Sporttery response signature, so it must not claim the third.
+
+## Canonical snapshot facts
+
+The processed snapshot is `data/processed/draws-20261118.jsonl`:
+
+- 2,949 rows and 2,949 unique draw IDs.
+- Draw ID range: 07001–26131.
+- Draw-date range: 2007-05-30–2026-11-16.
+- The processed manifest records 30 raw-page SHA-256 values and 30 per-page provenance-complete flags.
+- Current trust label remains `manifest_complete_not_officially_authenticated`.
+
+The repository's archive-layout note distinguishes the incoming ZIP, immutable raw snapshots, and processed analytical data. The raw page bodies and sidecars are retained in `data/incoming/dlt_official_raw.zip`; the documented expanded raw directory is not currently committed.
+
+## Archive audit implementation
+
+`scripts/audit_official_snapshot_archive.py` now independently checks:
+
+- ZIP CRC/readability, safe member paths, exact page/sidecar/collection-manifest inventory.
+- 30 contiguous page numbers and expected 2,949-record pagination (29 × 100 plus 49).
+- Every raw page's SHA-256 against its filename and sidecar.
+- Sidecar source name, HTTPS host/path, gameNo=85, pageNo, HTTP 200, JSON content type, parser version, run ID and timezone-aware retrieval timestamp.
+- A single collection run and bounded retrieval interval.
+- Raw page parsing through the repository ingestion parser.
+- Raw-page SHA-256 inventory against the processed manifest.
+- Byte-for-byte rebuilding of the processed JSONL from the raw response bodies.
+- Crosswalk row agreement with the canonical processed dataset.
+
+CI now invokes this audit and includes its JSON report in the research artifact bundle. The CI run associated with the current branch head is the acceptance evidence; until it completes successfully, this implementation is pending validation.
+
+## Official announcement crosswalk sample
+
+The crosswalk registry now has 23 rows:
+
+- 16 purposive convenience crosswalks.
+- 7 matches from the reproducible 16-row, one-draw-per-year stratified random sample.
+- 9 of the 16 random selections still have no located official DLT announcement URL in this search pass.
+
+Two additional random-sample matches were found and compared with the canonical processed snapshot:
+
+| Draw | Date | Front result | Back result | Front order | Back order | Equipment |
+|---|---|---|---|---|---|---:|
+| 25006 | 2025-01-13 | 03 04 13 19 35 | 03 10 | 03 35 04 13 19 | 10 03 | 2 |
+| 26025 | 2026-03-11 | 03 15 24 28 29 | 03 07 | 24 29 28 15 03 | 03 07 | 2 |
+
+Official announcement sources:
+- Draw 25006: Guangdong Sports Lottery Center official PDF: https://www.gdlottery.cn/f_html/kjgg_pdf_bak/AN.307-%E8%B6%85%E7%BA%A7%E5%A4%A7%E4%B9%90%E9%80%8F-25006%E6%9C%9F-20250113215113882.pdf
+- Draw 26025: Guangdong Sports Lottery Center official announcement: https://www.gdlottery.cn/f_html/kjgg/P085_26025.html
+
+The values match the canonical processed rows. The registry deliberately records `url_transcribed_not_archived`: the raw HTML/PDF response bytes and their retrieval hashes have not yet been added. These are additional official-page cross-checks, not cryptographic attestations.
+
+The remaining nine selected IDs are: 11038, 12120, 13071, 14128, 15138, 16029, 18070, 19011, and 23048. Search results that expose only third-party pages or news articles without official draw-order/equipment fields are not promoted to official crosswalk evidence.
+
+## Known ingestion gap
+
+The existing `ingest_snapshot_directory` validates each page's sidecar digest and selected endpoint metadata. The archive extraction helper checks page/sidecar counts and collection totals. Before G1 can be accepted, the archive-level audit must pass in CI and the collection manifest must be fully cross-checked against the page inventory. The current audit script checks the collection's total page and record counts plus all raw page/sidecar pairs; if the collection manifest carries an explicit page inventory, the next refinement should compare that inventory entry-by-entry as well.
+
+## G1 disposition
+
+**Status: IN PROGRESS — not yet PASS.**
+
+Reasons:
+- Archive-level audit is implemented but the current-head CI run must pass before it is accepted.
+- Nine random-sample official announcement URLs remain unlocated.
+- Crosswalk source HTML/PDF bytes are not archived.
+- No cryptographic signature or independent publisher identity proof exists for the raw API responses.
+
+Do not upgrade the trust label to authenticated. Keep `manifest_complete_not_officially_authenticated` and keep Shadow/production authorization disabled until the remaining G1 requirements are resolved.
