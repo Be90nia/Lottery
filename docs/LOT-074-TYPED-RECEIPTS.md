@@ -35,6 +35,22 @@ account, login, MFA, human identity provider, or KMS dependency.
 - All receipts bind the same immutable release manifest and source commit.
   Mutable release refs are rejected.
 
+## Champion registry cross-check
+
+The lifecycle API also exposes a read-only
+`ChampionLifecycle.audit_three_slot_generation(population_keys)` check. It
+loads the real registry snapshot and immutable artifacts/evaluation/approval
+receipts, then verifies all six front/back pointers across reported-set indices
+1/2/3: one registry generation, one Champion generation, distinct population
+training snapshots, paired front/back training and regime-evidence hashes,
+matching artifact/evaluation scope, and valid approval-receipt structure.
+
+This is intentionally not the protected resolver: it does not claim approval
+signature authenticity and returns both
+`approval_authenticity_verified=false` and `readiness_authorized=false`.
+The existing `resolve_three_slot_generation` remains separately protected by
+the injected approval verifier.
+
 ## What this does not prove
 
 SHA-256 establishes byte integrity, not who produced the bytes or whether a
