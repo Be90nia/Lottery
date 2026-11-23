@@ -93,6 +93,10 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
     if not required <= set(members):
         raise ValueError("historical artifact is missing one or more required result files")
     manifest_raw = members["run_manifest.json"]
+    manifest_file_evidence = evidence["artifact_contents"]["run_manifest_file"]
+    if (_digest(manifest_raw) != manifest_file_evidence["sha256"]
+            or len(manifest_raw) != manifest_file_evidence["byte_length"]):
+        raise ValueError("historical run manifest file bytes differ from pinned evidence")
     ledger_raw = members["target-score-ledger.jsonl"]
     artifacts_raw = members["model-artifacts.jsonl"]
     content = evidence["artifact_contents"]
