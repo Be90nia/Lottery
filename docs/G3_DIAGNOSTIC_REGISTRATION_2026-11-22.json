@@ -37,6 +37,13 @@
   ],
   "alpha": 0.05,
   "calibration_method": "UNSPECIFIED_NO_PREREGISTERED_METHOD",
-  "calibration_tolerance": 0.0,
-  "holdout_accessed": false
+  "calibration_tolerance": 0,
+  "holdout_accessed": false,
+  "migration_mode": "retrospective_registry_materialization",
+  "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
+  "legacy_child_registration_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
+  "parent_lineage_disposition": "external_issue_reference_only; no synthetic content-addressed parent ID is asserted",
+  "approval_required": false,
+  "approval_disposition": "not_required_exploratory",
+  "approval_disposition_reason": "The child registration is outcome-informed and exploratory; protected confirmatory approval is not applicable and no approval receipt is fabricated."
 }
