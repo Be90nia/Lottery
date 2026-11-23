@@ -16,13 +16,16 @@ from lottery.readiness_receipts import (
 
 def _build_g3_fixture(root: Path) -> dict[str, bytes]:
     model_ids = {
-        "candidate": "a" * 64, "uniform": "uniform-exact-v1",
-        "expanding": "expanding-frequency-v1", "ewma": "ewma-conditional-poisson-v1",
+        "candidate": "exponential_family", "uniform": "uniform",
+        "expanding": "expanding", "ewma": "ewma",
     }
     targets = [
         f"{9054 + (17077 * index // 2648):05d}" for index in range(2649)
     ]
     cutoffs = [f"{int(targets[0]) - 1:05d}", *targets[:-1]]
+    from datetime import date, timedelta
+    target_dates = [(date(2000, 1, 1) + timedelta(days=i)).isoformat() for i in range(count)]
+    cutoff_dates = [date(1999, 12, 31).isoformat(), *target_dates[:-1]]
     target_hash = hashlib.sha256(canonicalize(targets)).hexdigest()
     snapshot_hash = "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
     target_manifest_hash = "b" * 64
@@ -40,7 +43,8 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         "schema": "lottery.g3-chronological-targets/v1", "snapshot_sha256": snapshot_hash,
         "target_manifest_sha256": target_manifest_hash, "snapshot_row_count": 2949,
         "target_ids": targets, "target_ids_sha256": target_hash,
-        "training_cutoff_ids": cutoffs, "minimum_training_draws": 300,
+        "target_dates": target_dates, "training_cutoff_ids": cutoffs,
+        "training_cutoff_dates": cutoff_dates, "minimum_training_draws": 300,
         "strictly_before_target": True, "equipment_fields_used": False, "holdout_accessed": False,
     }
     rows = []
@@ -53,12 +57,31 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
                 "expanding": uniform_nll + 0.1, "ewma": uniform_nll + 0.1,
             }[role]
             for index, target in enumerate(targets):
-                rows.append({
-                    "model_id": model_id, "zone": zone, "target_draw_id": target,
-                    "pairing_key": zone + ":" + target, "training_count": 300 + index,
-                    "train_cutoff_draw_id": cutoffs[index], "strictly_before_target": True,
-                    "status": "scored", "nll": nll,
-                })
+                row = {
+                    "run_id": "g3-fixture-run", "target_draw_id": target,
+                    "target_draw_date": target_dates[index], "zone": zone,
+                    "model_family": {
+                        "candidate": "complete_subset_exponential",
+                        "uniform": "uniform_analytic",
+                        "expanding": "conditional_poisson", "ewma": "conditional_poisson",
+                    }[role],
+                    "model_name": model_id,
+                    "artifact_id": None if role == "uniform" else "sha256:" + hashlib.sha256(
+                        (role + zone + target).encode()
+                    ).hexdigest(),
+                    "diagnostic_ref": None, "snapshot_sha256": snapshot_hash,
+                    "training_first_draw_id": "07001", "training_last_draw_id": cutoffs[index],
+                    "training_row_count": 300 + index, "training_dates_strictly_before_target": True,
+                    "model_configuration_hash": "sha256:" + "d" * 64,
+                    "feature_schema_hash": "sha256:" + "e" * 64,
+                    "optimizer_solver_status": "analytic_closed_form" if role == "uniform" else "converged",
+                    "converged": True, "failure_reason": None, "terminal_status": "scored",
+                    "observed_subset": [1, 2, 3, 4, 5] if zone == "front" else [1, 2],
+                    "predicted_log_probability": -nll, "negative_log_score": nll,
+                    "pairing_key": "g3-fixture-run:" + zone + ":" + target,
+                }
+                row["record_sha256"] = "sha256:" + hashlib.sha256(canonicalize(row)).hexdigest()
+                rows.append(row)
     ledger_raw = b"".join(canonicalize(row) + b"\n" for row in rows)
     ledger_path = root / "G3-terminal-ledger.jsonl"
     ledger_path.write_bytes(ledger_raw)
