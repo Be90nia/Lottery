@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from lottery.experiment_registry import ExperimentRegistry, ExperimentRegistryError
 from lottery.subset_model.artifact import canonicalize
 from lottery.subset_model.exponential import ExponentialFamily
 from lottery.subset_model.uniform import build_uniform_feature_table
