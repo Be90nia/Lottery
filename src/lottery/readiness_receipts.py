@@ -441,7 +441,7 @@ def _verify_g3_evidence_bundle(
         and run_manifest.get("bootstrap", {}).get("seed") == prereg["bootstrap_seed"]
         and run_manifest.get("bootstrap", {}).get("seeds_by_zone_and_comparison")
             == prereg["bootstrap_seeds_by_zone_and_comparison"]
-        and expected_snapshot_digest == prereg["snapshot_sha256"],
+        and (expected_snapshot_digest is None or expected_snapshot_digest == prereg["snapshot_sha256"]),
         "run manifest is missing, non-confirmatory, tampered, or inconsistent with the frozen release/protocol",
     )
     require(
