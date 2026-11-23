@@ -13,9 +13,9 @@ from typing import Any
 from .subset_model.artifact import canonicalize
 
 
-EXECUTION_SCHEMA = "lottery.github-actions-execution/v1"
+EXECUTION_SCHEMA = "lottery.github-actions-execution/v2"
 _EXECUTION_FIELDS = {
-    "schema", "repository", "repository_id", "workflow_path", "workflow_ref",
+    "schema", "repository", "repository_id", "workflow_id", "workflow_path", "workflow_ref",
     "run_id", "run_attempt", "job", "event_name", "ref", "sha", "actor", "run_url",
     "execution_id",
 }
@@ -29,6 +29,7 @@ def _execution_digest(context: Mapping[str, Any]) -> str:
     identity = {
         "schema": EXECUTION_SCHEMA,
         "repository_id": context["repository_id"],
+        "workflow_id": context["workflow_id"],
         "workflow_path": context["workflow_path"],
         "run_id": context["run_id"],
         "run_attempt": context["run_attempt"],
@@ -41,6 +42,7 @@ def validate_execution_context(
     *,
     expected_repository: str,
     expected_repository_id: str,
+    expected_workflow_id: int,
     expected_workflow_path: str,
 ) -> dict[str, Any]:
     """Validate a closed execution envelope and return a shallow copy."""
@@ -52,6 +54,8 @@ def validate_execution_context(
         raise ExecutionContextError("execution repository does not match the allowlist")
     if str(context["repository_id"]) != str(expected_repository_id):
         raise ExecutionContextError("execution repository ID does not match the allowlist")
+    if type(context["workflow_id"]) is not int or context["workflow_id"] != expected_workflow_id:
+        raise ExecutionContextError("execution workflow ID does not match the allowlist")
     if context["workflow_path"] != expected_workflow_path:
         raise ExecutionContextError("execution workflow path does not match the allowlist")
     prefix = f'{expected_repository}/{expected_workflow_path}@'
@@ -82,11 +86,12 @@ def execution_context_from_env(
     checked_out_sha: str,
     expected_repository: str,
     expected_repository_id: str,
+    expected_workflow_id: int,
     expected_workflow_path: str,
 ) -> dict[str, Any]:
     """Build and validate an execution envelope from the real Actions environment."""
     required = (
-        "GITHUB_REPOSITORY", "GITHUB_REPOSITORY_ID", "GITHUB_WORKFLOW_REF",
+        "GITHUB_REPOSITORY", "GITHUB_REPOSITORY_ID", "LOTTERY_WORKFLOW_ID", "GITHUB_WORKFLOW_REF",
         "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_EVENT_NAME",
         "GITHUB_REF", "GITHUB_SHA", "GITHUB_ACTOR",
     )
@@ -102,10 +107,11 @@ def execution_context_from_env(
     if not isinstance(checked_out_sha, str) or re.fullmatch(r"[0-9a-f]{40}", checked_out_sha) is None:
         raise ExecutionContextError("checked_out_sha must be a lowercase 40-character commit SHA")
     try:
+        workflow_id = int(env["LOTTERY_WORKFLOW_ID"])
         run_id = int(env["GITHUB_RUN_ID"])
         run_attempt = int(env["GITHUB_RUN_ATTEMPT"])
     except (TypeError, ValueError) as exc:
-        raise ExecutionContextError("GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT must be integers") from exc
+        raise ExecutionContextError("LOTTERY_WORKFLOW_ID, GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT must be integers") from exc
     prefix = f'{expected_repository}/'
     workflow_ref = env["GITHUB_WORKFLOW_REF"]
     if not workflow_ref.startswith(prefix) or "@" not in workflow_ref:
@@ -115,6 +121,7 @@ def execution_context_from_env(
         "schema": EXECUTION_SCHEMA,
         "repository": env["GITHUB_REPOSITORY"],
         "repository_id": str(env["GITHUB_REPOSITORY_ID"]),
+        "workflow_id": workflow_id,
         "workflow_path": workflow_path,
         "workflow_ref": workflow_ref,
         "run_id": run_id,
@@ -131,5 +138,6 @@ def execution_context_from_env(
         context,
         expected_repository=expected_repository,
         expected_repository_id=expected_repository_id,
+        expected_workflow_id=expected_workflow_id,
         expected_workflow_path=expected_workflow_path,
     )
