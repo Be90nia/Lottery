@@ -50,6 +50,7 @@ class FeatureCell:
     """One distinct standardized feature vector and its exact support count."""
     standardized_features: tuple[float, ...]
     multiplicity: int
+    item_inclusion_counts: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,7 @@ def build_uniform_feature_table(
     expected = support_size(m, k)
     names = feature_names(k, include_gap_variance=include_gap_variance)
     counts: Counter[RawFeatureKey] = Counter()
+    item_counts: dict[RawFeatureKey, list[int]] = {}
     sums = [Fraction(0) for _ in names]
     sums_sq = [Fraction(0) for _ in names]
     seen = 0
@@ -84,6 +86,9 @@ def build_uniform_feature_table(
     for subset in enumerate_support(m, k):
         raw = extract_features(subset, m, k, include_gap_variance=include_gap_variance)
         counts[raw] += 1
+        per_item = item_counts.setdefault(raw, [0] * m)
+        for item in subset:
+            per_item[item - 1] += 1
         seen += 1
         for index, value in enumerate(raw):
             exact = Fraction(value)
@@ -117,11 +122,19 @@ def build_uniform_feature_table(
     )
 
     cells = tuple(
-        FeatureCell(stats.standardize(raw), multiplicity)
+        FeatureCell(stats.standardize(raw), multiplicity, tuple(item_counts[raw]))
         for raw, multiplicity in sorted(counts.items(), key=lambda item: item[0])
     )
     if sum(cell.multiplicity for cell in cells) != expected:
         raise RuntimeError("aggregated feature-cell multiplicities do not equal support size")
+    if any(
+        len(cell.item_inclusion_counts) != m
+        or any(type(value) is not int or not 0 <= value <= cell.multiplicity
+               for value in cell.item_inclusion_counts)
+        or sum(cell.item_inclusion_counts) != k * cell.multiplicity
+        for cell in cells
+    ):
+        raise RuntimeError("feature-cell item inclusion counts do not reconcile to fixed cardinality")
     return UniformFeatureTable(stats=stats, cells=cells)
 
 
