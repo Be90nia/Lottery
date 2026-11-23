@@ -4,11 +4,12 @@ import sys
 import tempfile
 from dataclasses import asdict
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page, ingest_snapshot_directory
+from lottery.ingest import Draw, IngestionError, _add_draw, _parse_page, fetch_history, ingest_snapshot_directory
 from lottery.validate import validate_records
 
 
@@ -193,6 +194,50 @@ class ParsePageTests(unittest.TestCase):
         _add_draw(rows, first)
         with self.assertRaises(IngestionError):
             _add_draw(rows, conflict)
+
+
+
+class FetchPaginationSafetyTests(unittest.TestCase):
+    def payload(self, rows):
+        return json.dumps({"success": True, "value": {"list": rows}}).encode("utf-8")
+
+    def row(self, draw_id="26131"):
+        return {
+            "lotteryDrawNum": draw_id,
+            "lotteryDrawTime": "2026-11-16",
+            "lotteryDrawResult": "01 02 03 04 05 01 02",
+        }
+
+    def test_full_page_at_max_pages_fails_closed_without_publishing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "processed" / "draws.jsonl"
+            raw_dir = root / "raw"
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json")):
+                with self.assertRaisesRegex(IngestionError, "potentially truncated"):
+                    fetch_history(output, raw_dir, page_size=1, max_pages=1, delay_seconds=0)
+            self.assertFalse(output.exists())
+            self.assertEqual(len([path for path in raw_dir.glob("*.json") if not path.name.endswith(".manifest.json")]), 1)
+
+    def test_empty_first_page_fails_closed_without_publishing(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "processed" / "draws.jsonl"
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([]), 200, "application/json")):
+                with self.assertRaisesRegex(IngestionError, "no draws"):
+                    fetch_history(output, root / "raw", page_size=100, delay_seconds=0)
+            self.assertFalse(output.exists())
+
+    def test_short_terminal_page_is_explicitly_unverified_for_completeness(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "processed" / "draws.jsonl"
+            with patch("lottery.ingest._fetch_page", return_value=(self.payload([self.row()]), 200, "application/json")):
+                result = fetch_history(output, root / "raw", page_size=2, delay_seconds=0)
+            self.assertEqual(result["records"], 1)
+            self.assertEqual(result["pagination_end_reason"], "short_page")
+            self.assertFalse(result["source_completeness_verified"])
+            self.assertEqual(result["trust_status"], "manifest_complete_not_officially_authenticated")
 
 if __name__ == "__main__":
     unittest.main()

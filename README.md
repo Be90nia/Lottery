@@ -39,6 +39,12 @@
 - [研究方法](docs/RESEARCH_METHODS.md)
 - [奖金规则时期](docs/PRIZE_RULE_ERAS.md)
 - [初步随机基线结果](docs/BASELINE_RESULTS.md)
+- [MVP 首轮样本外评估](docs/TICKET_MVP_RESULTS.md)
+- [三策略批量生成与凭据契约](docs/TICKET_MVP_BATCH_CONTRACT.md)
+- [自动开奖同步 MVP](docs/AUTO_DRAW_SYNC_MVP.md)
+- [追加式开奖数据发布门禁](docs/APPEND_ONLY_DRAW_PUBLICATION.md)
+- [模型回归评估凭据](docs/MODEL_REGRESSION_RECEIPTS.md)
+- [开奖结果快照绑定](docs/OUTCOME_SNAPSHOT_BINDING.md)
 - [任务清单](TASKS.md)
 - [测试计划](TEST_PLAN.md)
 
@@ -51,7 +57,7 @@
 Python 3.10+ is sufficient; the initial collector uses only the standard library.
 
 ```bash
-python scripts/fetch_history.py --max-pages 2
+python scripts/fetch_history.py
 python scripts/fetch_history.py --snapshots-dir data/raw/user-supplied --require-manifests --output data/processed/from-snapshots.jsonl
 python scripts/validate_dataset.py
 python scripts/validate_legacy_prizes.py
@@ -60,7 +66,7 @@ python scripts/analyze_baseline.py data/candidates/legacy_draws.jsonl --simulati
 python -m unittest discover -s tests -v
 ```
 
-Remove `--max-pages 2` to request all available pages. The collector writes immutable raw page snapshots and SHA-256 manifests under `data/raw/sporttery/`, then writes normalized JSON Lines to `data/processed/draws.jsonl`. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
+The collector writes immutable raw page snapshots and SHA-256 manifests under `data/raw/sporttery/`, then writes normalized JSON Lines to `data/processed/draws.jsonl`. `--max-pages` is a diagnostic safety cap: if the final allowed page is full, the run fails closed rather than publishing a potentially truncated dataset. An observed short/empty terminal page is not independent proof of upstream completeness. Generated datasets are intentionally ignored by Git until provenance and completeness have been reviewed.
 
 The live endpoint has not yet passed this repository's end-to-end verification. See [source notes](docs/SOURCES.md) before treating fetched records as a trusted research dataset. If an authorized party supplies raw JSON response snapshots, they can be imported offline with `--snapshots-dir`; use `--require-manifests` to require matching per-file SHA-256 sidecars with the exact Sporttery API endpoint, timezone-aware retrieval timestamp, HTTP 200, and matching raw filename. This checks consistency of supplied metadata, not cryptographic source authenticity or uncertain field semantics.
 
@@ -93,20 +99,44 @@ The ledger is not a digital signature or proof of source authenticity. See
 eligibility, archival, and analysis rules. The prospective test has not started.
 
 
+### Exploratory ticket-candidate MVP
+
+Generate legal candidate combinations from a draw-history JSONL file:
+
+```bash
+python scripts/run_mvp.py --dataset data/candidates/legacy_draws.jsonl \
+  --tickets-per-strategy 5 --seed 20261119 --output mvp-output.json
+```
+
+The one-command runner validates the input, generates the three-lane batch, and atomically writes a machine-readable receipt alongside the batch. The receipt makes explicit that source authentication, automatic sync, model training, and promotion were not performed by this command. The lower-level `scripts/generate_tickets.py` command remains available for direct candidate generation.
+
+The command emits N tickets in each of three explicitly separate strategy
+lanes: legal uniform sampling, expanding-frequency weights, and EWMA weights
+(3N tickets total; N is limited to 1..100 per lane). Every zone is sampled
+without replacement. The output records the exact input SHA-256, canonical
+training fingerprint, deterministic run/ticket IDs, master and lane seeds,
+training cutoff, and per-lane counts. The tool does not
+authenticate the input dataset: the checked-in legacy history remains an
+unverified candidate. These marginal-weighted tickets are exploratory
+combinations, not a calibrated joint model, physical ball-set labels, or
+predictions with demonstrated advantage. See the output's limitations field.
+
 ### Post-draw outcome capture and scoring
 
 After a result is officially published and its raw response snapshot is
 captured, `scripts/outcome_ledger.py` can append a separately hash-chained
-outcome event linked to the pre-draw forecast event. It checks the submitted
-official-domain URL, HTTP status, timestamp ordering, result number ranges,
-and hashes the exact snapshot bytes. It never fetches results itself and never
-modifies the forecast ledger.
+outcome event linked to the pre-draw forecast event. It requires the exact HTTPS Sporttery history endpoint with `gameNo=85`,
+parses the raw response, derives the selected numbers from the unique matching
+target draw, and rejects any CLI-supplied numbers that disagree with the
+snapshot. It also checks HTTP status and timestamp ordering and hashes the
+exact source bytes. It never fetches results itself and never modifies the
+forecast ledger.
 
 ```bash
 python scripts/outcome_ledger.py record --forecasts data/holdout/forecast-ledger.jsonl \
   --outcomes data/holdout/outcome-ledger.jsonl --target-draw-id 27XXX \
   --published-at 2027-01-01T20:40:00+08:00 --captured-at 2027-01-01T20:41:00+08:00 \
-  --source-url https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry \
+  --source-url 'https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1' \
   --snapshot data/raw/sporttery/official-response.json --http-status 200 \
   --front 1,2,3,4,5 --back 1,2
 python scripts/outcome_ledger.py score --forecasts data/holdout/forecast-ledger.jsonl \

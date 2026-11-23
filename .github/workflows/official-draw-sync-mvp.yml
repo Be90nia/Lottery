@@ -1,0 +1,114 @@
+name: official-draw-sync-mvp
+
+on:
+  schedule:
+    - cron: "17 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: official-draw-sync
+  cancel-in-progress: false
+
+jobs:
+  fetch-and-archive-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Fetch official endpoint into an isolated run directory
+        id: fetch
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+        shell: bash
+        run: |
+          set +e
+          mkdir -p sync-run/raw sync-run/processed
+          python scripts/fetch_history.py \
+            --output sync-run/processed/draws.jsonl \
+            --raw-dir sync-run/raw \
+            --delay 1.0 > sync-run/fetch-output.json 2> sync-run/fetch-error.txt
+          rc=$?
+          printf '%s\n' "$rc" > sync-run/exit-code.txt
+          exit "$rc"
+      - name: Strictly validate archived snapshots and build candidate dataset
+        id: validate_candidate
+        if: steps.fetch.outcome == 'success'
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+        run: |
+          python scripts/fetch_history.py \
+            --snapshots-dir sync-run/raw \
+            --require-manifests \
+            --output sync-run/processed/candidate.jsonl
+      - name: Write machine-readable sync receipt
+        if: always()
+        env:
+          FETCH_OUTCOME: ${{ steps.fetch.outcome }}
+          VALIDATION_OUTCOME: ${{ steps.validate_candidate.outcome }}
+          GIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          root = Path("sync-run")
+          code_path = root / "exit-code.txt"
+          code = int(code_path.read_text().strip()) if code_path.exists() else None
+          def read_json(path):
+              try:
+                  return json.loads(path.read_text(encoding="utf-8"))
+              except (OSError, json.JSONDecodeError):
+                  return None
+          summary = read_json(root / "fetch-output.json")
+          manifest_path = root / "processed/candidate.jsonl.manifest.json"
+          manifest = read_json(manifest_path)
+          candidate_path = root / "processed/candidate.jsonl"
+          candidate_sha = hashlib.sha256(candidate_path.read_bytes()).hexdigest() if candidate_path.exists() else None
+          ready = os.environ["FETCH_OUTCOME"] == "success" and os.environ["VALIDATION_OUTCOME"] == "success" and code == 0 and manifest is not None
+          receipt = {
+              "schema_version": 2,
+              "status": "candidate_archived_untrusted" if ready else "source_unavailable_or_validation_failed",
+              "fetch_step_outcome": os.environ["FETCH_OUTCOME"],
+              "snapshot_validation_outcome": os.environ["VALIDATION_OUTCOME"],
+              "fetch_exit_code": code,
+              "created_at": datetime.now(timezone.utc).isoformat(),
+              "workflow_event": os.environ["EVENT_NAME"],
+              "code_commit": os.environ["GIT_SHA"],
+              "fetch_summary": summary,
+              "candidate_records": manifest.get("validation", {}).get("records") if manifest else None,
+              "candidate_sha256": candidate_sha,
+              "candidate_manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest() if manifest_path.exists() else None,
+              "trust_status": manifest.get("trust_status") if manifest else "unverified",
+              "source_completeness_verified": bool(summary and summary.get("source_completeness_verified") is True),
+              "pagination_end_reason": summary.get("pagination_end_reason") if summary else None,
+              "canonical_dataset_modified": False,
+              "model_training_or_promotion": False,
+              "holdout_accessed": False
+          }
+          root.mkdir(exist_ok=True)
+          (root / "sync-receipt.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+      - name: Upload immutable run evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: official-draw-sync-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sync-run/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Fail visibly when the source fetch or validation failed
+        if: steps.fetch.outcome == 'failure' || steps.validate_candidate.outcome == 'failure'
+        run: |
+          echo "Official source fetch or strict snapshot validation failed. Evidence was uploaded; canonical data was not changed."
+          exit 1
