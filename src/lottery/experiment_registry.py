@@ -26,7 +26,7 @@ EVENT_SCHEMA = "lottery.experiment-event/v1"
 CONFIRMATORY_BOOTSTRAP_REPLICATES = 1000
 CONFIRMATORY_BLOCK_LENGTH = 50
 TERMINAL_STATUSES = {
-    "succeeded", "fit_failed", "invalid_artifact", "runner_error", "timeout", "cancelled", "abandoned"
+    "succeeded", "completed_uncommitted", "fit_failed", "invalid_artifact", "runner_error", "timeout", "cancelled", "abandoned"
 }
 POPULATION_CLAIMS = {
     "pooled", "same_artifact_distinct_fit", "distinct_population", "distributionally_distinct"
@@ -223,8 +223,18 @@ class ExperimentRegistry:
         }
         optional_fields = {
             "experiment_registered": set(),
-            "trial_started": {"execution_context", "approval_sha256"},
-            "trial_finished": {"execution_id", "approval_sha256", "storage_receipts_sha256"},
+            "trial_started": {
+                "execution_context", "approval_sha256", "source_metadata_sha256",
+                "source_verification_receipt_sha256", "source_started_at_utc",
+                "source_run_url", "imported",
+            },
+            "trial_finished": {
+                "execution_id", "approval_sha256", "storage_receipts_sha256",
+                "source_metadata_sha256", "source_verification_receipt_sha256",
+                "source_started_at_utc", "source_completed_at_utc", "source_run_url",
+                "source_artifact_id", "source_artifact_zip_sha256",
+                "scientific_result_status", "confirmatory_eligible", "imported",
+            },
         }
         event_type = body.get("event_type")
         required = required_fields.get(event_type)
@@ -325,6 +335,11 @@ class ExperimentRegistry:
                     "artifact_sha256": None,
                     "result_sha256": None,
                     "failure_code": None,
+                    "source_metadata_sha256": event.get("source_metadata_sha256"),
+                    "source_verification_receipt_sha256": event.get("source_verification_receipt_sha256"),
+                    "source_started_at_utc": event.get("source_started_at_utc"),
+                    "source_run_url": event.get("source_run_url"),
+                    "imported": event.get("imported", False),
                 }
             elif event.get("event_type") == "trial_finished":
                 if experiment_id not in experiments:
@@ -344,6 +359,16 @@ class ExperimentRegistry:
                     "result_sha256": event["result_sha256"],
                     "storage_receipts_sha256": event.get("storage_receipts_sha256"),
                     "failure_code": event["failure_code"],
+                    "source_metadata_sha256": event.get("source_metadata_sha256"),
+                    "source_verification_receipt_sha256": event.get("source_verification_receipt_sha256"),
+                    "source_started_at_utc": event.get("source_started_at_utc"),
+                    "source_completed_at_utc": event.get("source_completed_at_utc"),
+                    "source_run_url": event.get("source_run_url"),
+                    "source_artifact_id": event.get("source_artifact_id"),
+                    "source_artifact_zip_sha256": event.get("source_artifact_zip_sha256"),
+                    "scientific_result_status": event.get("scientific_result_status"),
+                    "confirmatory_eligible": event.get("confirmatory_eligible"),
+                    "imported": event.get("imported", False),
                 })
             else:
                 raise ExperimentRegistryError("unknown experiment event type")
@@ -491,6 +516,155 @@ class ExperimentRegistry:
             })
             return self._snapshot_unlocked()["experiments"][experiment_id]["attempts"][attempt_id]
 
+    def import_completed_trial(
+        self, *, experiment_id: str, attempt_id: str, config: dict[str, Any],
+        actor: str, execution_context: dict[str, Any], source_metadata: dict[str, Any],
+        metadata_verifier: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]],
+        expected_repository: str, expected_repository_id: str,
+        expected_workflow_path: str,
+    ) -> dict[str, Any]:
+        """Append an honest retrospective import; source times never replace registry times."""
+        if not _is_sha(experiment_id):
+            raise ExperimentRegistryError("experiment_id is malformed")
+        if not isinstance(attempt_id, str) or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", attempt_id
+        ):
+            raise ValueError("attempt_id must be a canonical 1-128 character identifier")
+        if not isinstance(actor, str) or not actor:
+            raise ValueError("actor must be a non-empty string")
+        if not callable(metadata_verifier):
+            raise ExperimentRegistryError("historical import requires a trusted GitHub metadata verifier")
+        try:
+            context = validate_execution_context(
+                execution_context,
+                expected_repository=expected_repository,
+                expected_repository_id=expected_repository_id,
+                expected_workflow_path=expected_workflow_path,
+            )
+        except ExecutionContextError as exc:
+            raise ExperimentRegistryError("historical execution context is invalid") from exc
+        required_source = {
+            "source_run_url", "source_started_at_utc", "source_completed_at_utc",
+            "source_artifact_id", "source_artifact_zip_sha256", "source_manifest_sha256",
+            "source_model_artifacts_sha256", "scientific_result_status", "confirmatory_eligible",
+        }
+        if not isinstance(source_metadata, dict) or set(source_metadata) != required_source:
+            raise ExperimentRegistryError("historical source metadata fields do not match the closed import schema")
+        if (source_metadata["source_run_url"] != context["run_url"]
+                or source_metadata["confirmatory_eligible"] is not False
+                or not isinstance(source_metadata["source_artifact_id"], int)
+                or source_metadata["source_artifact_id"] <= 0
+                or not isinstance(source_metadata["scientific_result_status"], str)
+                or not source_metadata["scientific_result_status"]):
+            raise ExperimentRegistryError("historical source metadata conflicts with the execution identity or exploratory boundary")
+        for field in ("source_artifact_zip_sha256", "source_manifest_sha256", "source_model_artifacts_sha256"):
+            if not _is_sha(source_metadata[field]):
+                raise ExperimentRegistryError(f"{field} must be a lowercase SHA-256")
+        parsed_times = []
+        for field in ("source_started_at_utc", "source_completed_at_utc"):
+            try:
+                value = datetime.fromisoformat(source_metadata[field].replace("Z", "+00:00"))
+            except (AttributeError, TypeError, ValueError) as exc:
+                raise ExperimentRegistryError(f"{field} is not an ISO-8601 timestamp") from exc
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise ExperimentRegistryError(f"{field} must be timezone-aware")
+            parsed_times.append(value)
+        if parsed_times[0] >= parsed_times[1]:
+            raise ExperimentRegistryError("historical source start must precede source completion")
+        source_metadata_sha256 = _sha(canonicalize(source_metadata))
+        verification = metadata_verifier(source_metadata, context)
+        verification_fields = {
+            "schema", "verifier_id", "verified", "source_metadata_sha256",
+            "artifact_zip_sha256", "verified_at_utc",
+        }
+        if (not isinstance(verification, dict) or set(verification) != verification_fields
+                or verification.get("schema") != "lottery.github-actions-verification/v1"
+                or verification.get("verified") is not True
+                or verification.get("source_metadata_sha256") != source_metadata_sha256
+                or verification.get("artifact_zip_sha256") != source_metadata["source_artifact_zip_sha256"]
+                or not isinstance(verification.get("verifier_id"), str)
+                or not verification["verifier_id"]):
+            raise ExperimentRegistryError("trusted GitHub metadata verifier did not attest the exact historical source")
+        try:
+            verified_at = datetime.fromisoformat(verification["verified_at_utc"].replace("Z", "+00:00"))
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise ExperimentRegistryError("GitHub verification receipt timestamp is invalid") from exc
+        if verified_at.tzinfo is None or verified_at.utcoffset() is None:
+            raise ExperimentRegistryError("GitHub verification receipt timestamp must be timezone-aware")
+        verification_receipt_sha256 = _sha(canonicalize(verification))
+        config_sha256 = _sha(canonicalize(config))
+        with ledger_lock(self.events_path):
+            snapshot = self._snapshot_unlocked()
+            experiment = snapshot["experiments"].get(experiment_id)
+            if experiment is None:
+                raise ExperimentRegistryError("historical import requires a content-addressed registration")
+            spec = experiment["registration"]["spec"]
+            if spec["experiment_class"] != "exploratory" or spec["outcomes_observed"] is not True:
+                raise ExperimentRegistryError("post-outcome historical imports must remain exploratory")
+            if config_sha256 not in {_sha(canonicalize(item)) for item in spec["trial_plan"]}:
+                raise ExperimentRegistryError("historical import config was not in the immutable trial plan")
+            existing = experiment["attempts"].get(attempt_id)
+            if existing is not None:
+                if (existing.get("imported") is True
+                        and existing.get("source_metadata_sha256") == source_metadata_sha256
+                        and existing.get("source_verification_receipt_sha256") == verification_receipt_sha256
+                        and existing.get("status") == "completed_uncommitted"):
+                    return existing
+                raise ExperimentRegistryError("historical attempt ID already exists with conflicting evidence")
+            approval_sha256 = experiment["registration"].get("approval_sha256")
+            if approval_sha256 is not None:
+                raise ExperimentRegistryError("exploratory historical import must not fabricate an approval receipt")
+            start_event_id = _sha(f"{experiment_id}:{attempt_id}:import-start".encode("utf-8"))
+            finish_event_id = _sha(f"{experiment_id}:{attempt_id}:import-finish".encode("utf-8"))
+            recorded_at = datetime.now(timezone.utc).isoformat()
+            common = {
+                "source_metadata_sha256": source_metadata_sha256,
+                "source_verification_receipt_sha256": verification_receipt_sha256,
+                "source_started_at_utc": source_metadata["source_started_at_utc"],
+                "source_run_url": source_metadata["source_run_url"],
+                "imported": True,
+            }
+            self._append_event_locked({
+                "schema": EVENT_SCHEMA,
+                "event_id": start_event_id,
+                "event_type": "trial_started",
+                "occurred_at_utc": recorded_at,
+                "actor": actor,
+                "experiment_id": experiment_id,
+                "attempt_id": attempt_id,
+                "config_sha256": config_sha256,
+                "execution_context": context,
+                "approval_sha256": None,
+                **common,
+            })
+            self._append_event_locked({
+                "schema": EVENT_SCHEMA,
+                "event_id": finish_event_id,
+                "event_type": "trial_finished",
+                "occurred_at_utc": datetime.now(timezone.utc).isoformat(),
+                "actor": actor,
+                "experiment_id": experiment_id,
+                "attempt_id": attempt_id,
+                "terminal_status": "completed_uncommitted",
+                "artifact_sha256": source_metadata["source_model_artifacts_sha256"],
+                "result_sha256": source_metadata["source_manifest_sha256"],
+                "failure_code": None,
+                "execution_id": context["execution_id"],
+                "approval_sha256": None,
+                "storage_receipts_sha256": None,
+                "source_metadata_sha256": source_metadata_sha256,
+                "source_verification_receipt_sha256": verification_receipt_sha256,
+                "source_started_at_utc": source_metadata["source_started_at_utc"],
+                "source_completed_at_utc": source_metadata["source_completed_at_utc"],
+                "source_run_url": source_metadata["source_run_url"],
+                "source_artifact_id": source_metadata["source_artifact_id"],
+                "source_artifact_zip_sha256": source_metadata["source_artifact_zip_sha256"],
+                "scientific_result_status": source_metadata["scientific_result_status"],
+                "confirmatory_eligible": False,
+                "imported": True,
+            })
+            return self._snapshot_unlocked()["experiments"][experiment_id]["attempts"][attempt_id]
+
     def _verify_execution_storage_receipts(
         self, *, execution_id: str, result_sha256: str, artifact_sha256: str,
         expected_receipts_sha256: str,
@@ -614,7 +788,7 @@ class ExperimentRegistry:
         if terminal_status == "succeeded":
             if result_sha256 is None:
                 raise ExperimentRegistryError("successful trial requires a result digest")
-        elif not isinstance(failure_code, str) or not failure_code:
+        elif terminal_status != "completed_uncommitted" and (not isinstance(failure_code, str) or not failure_code):
             raise ExperimentRegistryError("failed trial must retain a stable failure_code")
         with ledger_lock(self.events_path):
             snapshot = self._snapshot_unlocked()
