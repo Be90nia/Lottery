@@ -20,6 +20,10 @@ _G3_FIXTURE_CACHE: tuple[dict[str, bytes], bytes, bytes, bytes] | None = None
 def _build_g3_fixture(root: Path) -> dict[str, bytes]:
     global _G3_FIXTURE_CACHE
     ledger_path = root / "G3-terminal-ledger.jsonl"
+    source_snapshot = Path(__file__).resolve().parents[1] / "data/processed/draws-20261118.jsonl"
+    snapshot_raw = source_snapshot.read_bytes()
+    snapshot_path = root / "G3-canonical-snapshot.jsonl"
+    snapshot_path.write_bytes(snapshot_raw)
     if _G3_FIXTURE_CACHE is not None:
         ledger_path.write_bytes(_G3_FIXTURE_CACHE[1])
         (root / "G3-run-manifest.json").write_bytes(_G3_FIXTURE_CACHE[2])
@@ -29,11 +33,7 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         "candidate": "exponential_family", "uniform": "uniform",
         "expanding": "expanding", "ewma": "ewma",
     }
-    source_snapshot = Path(__file__).resolve().parents[1] / "data/processed/draws-20261118.jsonl"
-    snapshot_raw = source_snapshot.read_bytes()
     snapshot_rows = [json.loads(line) for line in snapshot_raw.splitlines()]
-    snapshot_path = root / "G3-canonical-snapshot.jsonl"
-    snapshot_path.write_bytes(snapshot_raw)
     targets = [row["draw_id"] for row in snapshot_rows[300:]]
     cutoffs = [row["draw_id"] for row in snapshot_rows[299:-1]]
     target_dates = [row["draw_date"] for row in snapshot_rows[300:]]
