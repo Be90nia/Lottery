@@ -268,6 +268,12 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptVerificationError, "Holm adjusted p-values"):
             self.verify()
 
+    def test_calibration_requires_all_target_level_diagnostics(self):
+        self.calibration["zones"]["front"]["per_target_abs_errors"].pop()
+        self.raw["calibration"] = canonicalize(self.calibration)
+        with self.assertRaisesRegex(ReceiptVerificationError, "calibration evidence fails"):
+            self.verify()
+
     def test_posthoc_or_holdout_tainted_registration_is_rejected(self):
         self.prereg["outcomes_observed_at_registration"] = True
         self.raw["preregistration"] = canonicalize(self.prereg)
