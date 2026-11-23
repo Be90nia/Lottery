@@ -49,6 +49,21 @@ The verifier currently enforces:
 - Calibration must use the preregistered method, cover all targets in both zones and remain within the registered tolerance.
 - The nested ledger path and digest are verified under the bounded evidence root and must be unique.
 
+
+## Existing full-run diagnostic evidence (not confirmatory)
+
+The PR #98 full diagnostic rerun (Actions run `44996717511`, artifact `14749238221`, branch head `a244b5731575a5aced47bcc44ff40870f321a112`) completed all 2,649 targets × 4 model lanes × 2 zones:
+
+- 21,192/21,192 terminal records were present.
+- All 21,192 records were `scored`; the prior 10,596 expanding/EWMA `artifact_invalid` records were eliminated by correcting the baseline artifact identity to include the registered solver and optimizer settings.
+- The run manifest still labels the run `exploratory_diagnostic` and `confirmatory_eligible=false`, because the solver repair followed observed fit failures. This cannot be relabeled confirmatory.
+- Candidate-vs-uniform front: mean NLL delta -0.00887, 95% CI [-0.02032, 0.00087], one-sided p=0.06294.
+- Candidate-vs-uniform back: mean NLL delta +0.00059, 95% CI [-0.00033, 0.00151], one-sided p=0.89910.
+- Holm-adjusted p-values: front 0.12587; back 0.89910. Neither co-primary zone passes.
+- Non-regression against expanding/EWMA fails in the front zone because candidate-vs-EWMA CI upper endpoint is +0.00556. Back-zone non-regression passes.
+
+The result is a useful complete exploratory diagnostic and a negative confirmatory signal, not a G3 PASS and not evidence of predictive advantage. No Champion promotion, serving, or LOT-042 access occurred.
+
 ## Current boundary / remaining G3 work
 
 This code verifies the structure and arithmetic consistency of the supplied evidence. It does not independently rerun the model fitting, recompute every exact-set probability from source artifacts, or regenerate the moving-block bootstrap samples from per-target score deltas. Those require the separate exact-set evaluator/run artifacts and independent replay. The receipt verifier's SHA-256 checks establish byte integrity, not producer authenticity.
