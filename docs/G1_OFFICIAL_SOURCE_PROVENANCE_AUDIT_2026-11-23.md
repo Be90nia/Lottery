@@ -36,7 +36,7 @@ The repository's archive-layout note distinguishes the incoming ZIP, immutable r
 - Byte-for-byte rebuilding of the processed JSONL from the raw response bodies.
 - Crosswalk row agreement with the canonical processed dataset.
 
-CI now invokes this audit and includes its JSON report in the research artifact bundle. The first CI attempt exposed an incorrect assumption in the new audit: sidecars identify the collection tool as `raw-snapshot-collector/1.0.0`, while `0.1.0` is the later offline importer parser. The verifier and fixture were corrected to validate these as separate versions. The current-head CI run is the acceptance evidence; until it completes successfully, this implementation is pending validation.
+CI now invokes this audit and includes its JSON report in the research artifact bundle. The first CI attempt exposed an incorrect assumption in the new audit: sidecars identify the collection tool as `raw-snapshot-collector/1.0.0`, while `0.1.0` is the later offline importer parser. The verifier and fixture were corrected to validate these as separate versions. CI run #1327 (`45108013254`) passed: 289 unit tests (one pre-existing long-form test skipped), workflow security policy, Windows ledger-lock tests, crosswalk verification and the archive audit. The audit reported a 676,600-byte ZIP with SHA-256 `e112babccdd387aa8cf54e7bba46e4162defac8284a9f9c3acb1f51f53b55c30`, 30 pages, 30 sidecars, 2,949 raw/unique draws, and byte-identical processed JSONL reconstruction with SHA-256 `9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa`. A follow-up run is exposing the collection manifest itself for review to determine whether it contains a per-page inventory beyond total counts.
 
 ## Official announcement crosswalk sample
 
