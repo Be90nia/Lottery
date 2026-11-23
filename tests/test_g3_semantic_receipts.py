@@ -5,6 +5,7 @@ import json
 import math
 import tempfile
 import unittest
+from datetime import date, timedelta
 from pathlib import Path
 
 from lottery.subset_model.artifact import canonicalize
@@ -17,10 +18,10 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.model_ids = {
-            "candidate": "a" * 64,
-            "uniform": "uniform-exact-v1",
-            "expanding": "expanding-frequency-v1",
-            "ewma": "ewma-conditional-poisson-v1",
+            "candidate": "exponential_family",
+            "uniform": "uniform",
+            "expanding": "expanding",
+            "ewma": "ewma",
         }
         start, end, count = 9054, 26131, 2649
         self.targets = [
@@ -28,6 +29,8 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             for index in range(count)
         ]
         self.cutoffs = [f"{int(self.targets[0]) - 1:05d}", *self.targets[:-1]]
+        self.target_dates = [(date(2000, 1, 1) + timedelta(days=i)).isoformat() for i in range(count)]
+        self.cutoff_dates = [(date(1999, 12, 31)).isoformat(), *self.target_dates[:-1]]
         self.target_hash = hashlib.sha256(canonicalize(self.targets)).hexdigest()
         self.snapshot_hash = "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
         self.target_manifest_hash = "b" * 64
@@ -58,7 +61,9 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             "snapshot_row_count": 2949,
             "target_ids": self.targets,
             "target_ids_sha256": self.target_hash,
+            "target_dates": self.target_dates,
             "training_cutoff_ids": self.cutoffs,
+            "training_cutoff_dates": self.cutoff_dates,
             "minimum_training_draws": 300,
             "strictly_before_target": True,
             "equipment_fields_used": False,
@@ -77,17 +82,40 @@ class G3SemanticEvidenceTests(unittest.TestCase):
                     "ewma": uniform_nll + 0.1,
                 }[role]
                 for index, target in enumerate(self.targets):
-                    rows.append({
-                        "model_id": model_id,
-                        "zone": zone,
+                    row = {
+                        "run_id": "g3-fixture-run",
                         "target_draw_id": target,
-                        "pairing_key": zone + ":" + target,
-                        "training_count": 300 + index,
-                        "train_cutoff_draw_id": self.cutoffs[index],
-                        "strictly_before_target": True,
-                        "status": "scored",
-                        "nll": nll,
-                    })
+                        "target_draw_date": self.target_dates[index],
+                        "zone": zone,
+                        "model_family": {
+                            "candidate": "complete_subset_exponential",
+                            "uniform": "uniform_analytic",
+                            "expanding": "conditional_poisson",
+                            "ewma": "conditional_poisson",
+                        }[role],
+                        "model_name": model_id,
+                        "artifact_id": None if role == "uniform" else "sha256:" + hashlib.sha256(
+                            (role + zone + target).encode()
+                        ).hexdigest(),
+                        "diagnostic_ref": None,
+                        "snapshot_sha256": self.snapshot_hash,
+                        "training_first_draw_id": "07001",
+                        "training_last_draw_id": self.cutoffs[index],
+                        "training_row_count": 300 + index,
+                        "training_dates_strictly_before_target": True,
+                        "model_configuration_hash": "sha256:" + "d" * 64,
+                        "feature_schema_hash": "sha256:" + "e" * 64,
+                        "optimizer_solver_status": "analytic_closed_form" if role == "uniform" else "converged",
+                        "converged": True,
+                        "failure_reason": None,
+                        "terminal_status": "scored",
+                        "observed_subset": [1, 2, 3, 4, 5] if zone == "front" else [1, 2],
+                        "predicted_log_probability": -nll,
+                        "negative_log_score": nll,
+                        "pairing_key": "g3-fixture-run:" + zone + ":" + target,
+                    }
+                    row["record_sha256"] = "sha256:" + hashlib.sha256(canonicalize(row)).hexdigest()
+                    rows.append(row)
         self.ledger_raw = b"".join(canonicalize(row) + b"\n" for row in rows)
         self.ledger_path.write_bytes(self.ledger_raw)
         self.denominator = {
