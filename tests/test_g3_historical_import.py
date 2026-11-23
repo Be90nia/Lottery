@@ -22,7 +22,7 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
         manifest = {
             "status": "complete_with_explicit_failures",
             "confirmatory_eligible": False,
-            "snapshot_sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa",
+            "snapshot": {"sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"},
             "output_files": {
                 "target-score-ledger.jsonl": {"sha256": sha(ledger_raw), "bytes": len(ledger_raw)},
                 "model-artifacts.jsonl": {"sha256": sha(artifact_raw), "bytes": len(artifact_raw)},
@@ -50,7 +50,7 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
             },
             "scientific_result": {
                 "status": "complete_with_explicit_failures",
-                "snapshot_sha256": manifest["snapshot_sha256"],
+                "snapshot_sha256": manifest["snapshot"]["sha256"],
             },
         }
         return evidence, zip_raw
