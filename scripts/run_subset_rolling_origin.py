@@ -12,10 +12,14 @@ import math
 import os
 import platform
 import random
+import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from lottery.backtest import _probabilities
+from lottery.execution_context import execution_context_from_env
+from lottery.experiment_registry import EXPERIMENT_SCHEMA, ExperimentRegistry
 from lottery.subset_model.artifact import canonicalize, create_artifact, verify_artifact
 from lottery.subset_model.rolling_origin_ledger import write_immutable_outputs
 from lottery.subset_model import (
@@ -34,6 +38,214 @@ MIN_TRAIN = 300
 BOOTSTRAP_REPLICATES = 1000
 BOOTSTRAP_BLOCK = 50
 BOOTSTRAP_SEED = 20261118
+EXPECTED_REPOSITORY = "Be90nia/Lottery"
+EXPECTED_REPOSITORY_ID = "1461523125"
+EXPECTED_WORKFLOW_PATH = ".github/workflows/subset-research.yml"
+
+
+def _build_g3_registry_spec(
+    rows: list[dict], snapshot_digest: str, registration_path: Path,
+) -> tuple[dict, dict]:
+    """Map the retrospective G3 record into a new exploratory LOT-064 registration."""
+    registration_raw = registration_path.read_bytes()
+    registration = json.loads(registration_raw)
+    if registration.get("schema") != "lottery.g3-preregistration/v1":
+        raise ValueError("unsupported G3 diagnostic registration schema")
+    if registration.get("experiment_id") != hashlib.sha256(
+        b"LOT055-OPT-DIAG-20261120"
+    ).hexdigest():
+        raise ValueError("legacy G3 label digest does not match the historical registration")
+    if registration.get("experiment_class") != "exploratory_diagnostic":
+        raise ValueError("historical G3 registration must remain exploratory_diagnostic")
+    if registration.get("outcomes_observed_at_registration") is not True:
+        raise ValueError("historical G3 child must preserve its post-outcome registration status")
+    if registration.get("snapshot_sha256") != snapshot_digest:
+        raise ValueError("G3 registration snapshot digest differs from evaluator snapshot")
+    if registration.get("holdout_accessed") is not False:
+        raise ValueError("G3 registration must preserve the LOT-042 holdout firewall")
+
+    targets = rows[MIN_TRAIN:]
+    target_list = [
+        {"target_draw_id": row["draw_id"], "target_draw_date": row["draw_date"]}
+        for row in targets
+    ]
+    target_manifest_sha256 = hashlib.sha256(
+        canonicalize({"targets": target_list})
+    ).hexdigest()
+    if registration.get("target_manifest_sha256") != target_manifest_sha256:
+        raise ValueError("G3 registration target manifest differs from frozen evaluator targets")
+
+    expected_seeds = {
+        "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+        "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+    }
+    seeds = registration.get("bootstrap_seeds_by_zone_and_comparison")
+    if (registration.get("bootstrap_replicates") != BOOTSTRAP_REPLICATES
+            or registration.get("block_length") != BOOTSTRAP_BLOCK
+            or registration.get("bootstrap_seed") != BOOTSTRAP_SEED
+            or seeds != expected_seeds):
+        raise ValueError("G3 registration bootstrap plan differs from frozen evaluator policy")
+
+    feature_contract = {
+        "schema": "lottery.g3-feature-contract/v1",
+        "front": {
+            "population_size": FRONT_POPULATION,
+            "selection_size": FRONT_SELECTION,
+            "candidate_features": ["sum", "odd_count", "range", "adjacent_count", "gap_variance"],
+        },
+        "back": {
+            "population_size": BACK_POPULATION,
+            "selection_size": BACK_SELECTION,
+            "candidate_features": ["sum", "odd_count", "range", "adjacent_count"],
+        },
+        "baseline_feature_schema": "lottery-item-inclusion/v1",
+        "feature_definition_revision": "PR-16@aec3a864ea14d84b8b9fac971e0d4b08e72cb0c0",
+    }
+    trial_config = {
+        "protocol_id": registration["protocol_id"],
+        "candidate": {
+            "model_family": "complete_subset_exponential",
+            "objective_scale": "mean_nll",
+            "regularization_lambda": 1.0,
+            "solver": "deterministic_unbounded_lbfgsb_strong_wolfe_v1",
+            "max_iterations": 5000,
+            "gradient_tolerance": 1e-8,
+            "accumulation": "compensated_float64",
+        },
+        "baselines": {
+            "uniform": {"probability": "1/C(m,k)"},
+            "expanding": {"model_family": "conditional_poisson", "alpha": 100.0, "weighting": "expanding"},
+            "ewma": {"model_family": "conditional_poisson", "alpha": 100.0, "half_life": 100.0,
+                     "weighting": "2^(-lag/100)"},
+        },
+        "zones": ["front", "back"],
+        "target_manifest_sha256": target_manifest_sha256,
+        "bootstrap": {
+            "replicates": BOOTSTRAP_REPLICATES,
+            "block_length": BOOTSTRAP_BLOCK,
+            "seed": BOOTSTRAP_SEED,
+            "seeds_by_zone_and_comparison": seeds,
+            "multiplicity_family": registration["multiplicity_family"],
+            "alpha": registration["alpha"],
+        },
+        "calibration": {
+            "method": registration.get("calibration_method"),
+            "tolerance": registration.get("calibration_tolerance"),
+        },
+        "feature_contract_sha256": hashlib.sha256(canonicalize(feature_contract)).hexdigest(),
+        "legacy_g3_label_digest": registration["experiment_id"],
+        "legacy_registration_source_sha256": hashlib.sha256(registration_raw).hexdigest(),
+    }
+    spec = {
+        "schema": EXPERIMENT_SCHEMA,
+        "experiment_name": "LOT055-OPT-DIAG-G3-RETROSPECTIVE-RUNTIME-BOUND",
+        "experiment_class": "exploratory",
+        "parent_experiment_id": None,
+        "hypothesis": (
+            "Retrospectively bind the already-observed LOT-055 optimizer-repair diagnostic "
+            "to immutable trial and execution provenance; no confirmatory claim."
+        ),
+        "model_family": "LOT055_multi_model_evaluation",
+        "population_key": "pooled_equipment_blind",
+        "zone": "joint",
+        "training_snapshot_sha256": snapshot_digest,
+        "training_cutoff_draw_id": rows[MIN_TRAIN - 1]["draw_id"],
+        "target_draw_ids": [row["draw_id"] for row in targets],
+        "target_manifest_sha256": target_manifest_sha256,
+        "source_evidence_sha256": hashlib.sha256(registration_raw).hexdigest(),
+        "feature_schema_sha256": hashlib.sha256(canonicalize(feature_contract)).hexdigest(),
+        "trial_plan": [trial_config],
+        "primary_metric": "exact_set_nll",
+        "multiplicity_family": registration["multiplicity_family"],
+        "bootstrap_replicates": BOOTSTRAP_REPLICATES,
+        "block_length": BOOTSTRAP_BLOCK,
+        "seed_commitment_sha256": hashlib.sha256(canonicalize(seeds)).hexdigest(),
+        "holdout_accessed": False,
+        "outcomes_observed": True,
+        "population_claim": "pooled",
+        "population_evidence_sha256": None,
+    }
+    return spec, trial_config
+
+
+def _start_registered_execution(
+    rows: list[dict], snapshot_digest: str, registration_path: Path,
+    registry_root: Path,
+) -> tuple[ExperimentRegistry, dict]:
+    checked_out_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    execution = execution_context_from_env(
+        os.environ,
+        checked_out_sha=checked_out_sha,
+        expected_repository=EXPECTED_REPOSITORY,
+        expected_repository_id=EXPECTED_REPOSITORY_ID,
+        expected_workflow_path=EXPECTED_WORKFLOW_PATH,
+    )
+    spec, trial_config = _build_g3_registry_spec(rows, snapshot_digest, registration_path)
+    registry = ExperimentRegistry(registry_root)
+    registration = registry.register_experiment(spec, actor=execution["actor"])
+    attempt_id = "exec-" + execution["execution_id"]
+    registry.start_trial(
+        experiment_id=registration["experiment_id"],
+        attempt_id=attempt_id,
+        config=trial_config,
+        actor=execution["actor"],
+        execution_context=execution,
+        expected_repository=EXPECTED_REPOSITORY,
+        expected_repository_id=EXPECTED_REPOSITORY_ID,
+        expected_workflow_path=EXPECTED_WORKFLOW_PATH,
+    )
+    binding = {
+        "experiment_id": registration["experiment_id"],
+        "spec_sha256": registration["spec_sha256"],
+        "approval_sha256": registration["approval_sha256"],
+        "trial_id": hashlib.sha256(canonicalize(trial_config)).hexdigest(),
+        "trial_config": trial_config,
+        "attempt_id": attempt_id,
+        "execution_context": execution,
+    }
+    return registry, binding
+
+
+def _finish_registered_execution(
+    registry: ExperimentRegistry, binding: dict, output_path: Path,
+) -> dict:
+    manifest_raw = (output_path.parent / "run_manifest.json").read_bytes()
+    artifacts_raw = (output_path.parent / "model-artifacts.jsonl").read_bytes()
+    manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
+    artifacts_sha256 = hashlib.sha256(artifacts_raw).hexdigest()
+    execution = binding["execution_context"]
+    registry.finish_trial(
+        experiment_id=binding["experiment_id"],
+        attempt_id=binding["attempt_id"],
+        terminal_status="succeeded",
+        result_sha256=manifest_sha256,
+        artifact_sha256=artifacts_sha256,
+        execution_id=execution["execution_id"],
+        actor=execution["actor"],
+    )
+    snapshot = registry.snapshot()
+    events = registry._read_events()
+    receipt = {
+        "schema": "lottery.experiment-run-receipt/v1",
+        "experiment_id": binding["experiment_id"],
+        "spec_sha256": binding["spec_sha256"],
+        "approval_sha256": binding["approval_sha256"],
+        "trial_id": binding["trial_id"],
+        "attempt_id": binding["attempt_id"],
+        "execution_id": execution["execution_id"],
+        "evaluation_run_id": json.loads(manifest_raw)["run_id"],
+        "run_manifest_sha256": manifest_sha256,
+        "model_artifacts_sha256": artifacts_sha256,
+        "event_count": snapshot["event_count"],
+        "event_chain_head_sha256": events[-1]["event_hash"] if events else None,
+        "terminal_status": "succeeded",
+        "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    receipt_path = output_path.parent / "registry-run-receipt.json"
+    receipt_path.write_bytes(canonicalize(receipt) + b"\n")
+    return receipt
 
 
 def _confirmatory_gate(
@@ -687,8 +899,21 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     }
 
 
-def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = None) -> dict:
+def run(
+    snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = None,
+    *, registry_root: Path | None = None, registration_path: Path | None = None,
+    require_execution_binding: bool = False,
+) -> dict:
     rows, digest = _load_and_validate(snapshot_path)
+    registry = None
+    experiment_binding = None
+    if require_execution_binding:
+        if registration_path is None:
+            raise ValueError("execution-bound run requires the G3 registration source")
+        registry_root = registry_root or output_path.parent / "experiment-registry"
+        registry, experiment_binding = _start_registered_execution(
+            rows, digest, registration_path, registry_root,
+        )
     checkpoint_dir = checkpoint_dir or output_path.parent / "subset-model-checkpoints"
     front = _evaluate_zone(rows, "front", FRONT_POPULATION, FRONT_SELECTION, True,
                            BOOTSTRAP_SEED, checkpoint_dir / "front.jsonl", digest)
@@ -830,8 +1055,15 @@ def run(snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = No
                         "Holm statistics are descriptive only for this post-outcome optimizer-repair child experiment",
                         "not eligible for confirmatory claims under LOT-064/Issue #27"],
     }
-    immutable_outputs = write_immutable_outputs(result, rows, snapshot_path, output_path)
+    immutable_outputs = write_immutable_outputs(
+        result, rows, snapshot_path, output_path,
+        experiment_binding=experiment_binding,
+    )
     result["immutable_outputs"] = immutable_outputs
+    if registry is not None and experiment_binding is not None:
+        result["registry_run_receipt"] = _finish_registered_execution(
+            registry, experiment_binding, output_path,
+        )
     # The canonical model payloads live in model-artifacts.jsonl and the
     # checkpoint ledgers. Keep only their content IDs in the human report.
     for zone in ("front", "back"):
@@ -858,8 +1090,16 @@ def main() -> int:
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--checkpoint-dir", type=Path)
+    parser.add_argument("--registry-root", type=Path)
+    parser.add_argument("--registration", type=Path)
+    parser.add_argument("--require-execution-binding", action="store_true")
     args = parser.parse_args()
-    run(args.snapshot, args.output, args.checkpoint_dir)
+    run(
+        args.snapshot, args.output, args.checkpoint_dir,
+        registry_root=args.registry_root,
+        registration_path=args.registration,
+        require_execution_binding=args.require_execution_binding,
+    )
     return 0
 
 
