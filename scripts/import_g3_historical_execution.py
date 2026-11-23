@@ -126,8 +126,8 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
             or manifest.get("actual_target_record_count") != evidence["artifact_contents"]["target_score_ledger"]["record_count"]
             or manifest.get("model_artifact_count") != evidence["artifact_contents"]["model_artifacts"]["record_count"]
             or manifest.get("terminal_status_counts") != scientific["terminal_counts"]
-            or target_manifest.get("first_target_draw_id") != "09054"
-            or target_manifest.get("last_target_draw_id") != "26131"
+            or target_manifest.get("first_target_draw_id") != scientific["first_target_draw_id"]
+            or target_manifest.get("last_target_draw_id") != scientific["last_target_draw_id"]
             or target_manifest.get("target_count_per_zone") != scientific["target_count_per_zone"]):
         raise ValueError("historical run manifest scientific status, snapshot or target denominators differ from evidence")
     declared_outputs = manifest.get("output_files", {})
