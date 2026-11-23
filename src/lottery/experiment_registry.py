@@ -786,8 +786,8 @@ class ExperimentRegistry:
         execution_id: str | None = None,
         storage_receipts_sha256: str | None = None,
     ) -> dict[str, Any]:
-        if terminal_status not in TERMINAL_STATUSES:
-            raise ExperimentRegistryError("trial terminal_status is not in the closed status set")
+        if terminal_status not in TERMINAL_STATUSES or terminal_status == "completed_uncommitted":
+            raise ExperimentRegistryError("trial terminal_status is not in the closed status set; completed_uncommitted is reserved for verified historical imports")
         if not isinstance(actor, str) or not actor:
             raise ValueError("actor must be a non-empty string")
         if artifact_sha256 is not None and not _is_sha(artifact_sha256):
@@ -799,7 +799,7 @@ class ExperimentRegistry:
         if terminal_status == "succeeded":
             if result_sha256 is None:
                 raise ExperimentRegistryError("successful trial requires a result digest")
-        elif terminal_status != "completed_uncommitted" and (not isinstance(failure_code, str) or not failure_code):
+        elif not isinstance(failure_code, str) or not failure_code:
             raise ExperimentRegistryError("failed trial must retain a stable failure_code")
         with ledger_lock(self.events_path):
             snapshot = self._snapshot_unlocked()
