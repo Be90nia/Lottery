@@ -313,7 +313,11 @@ def _verify_registry_binding(
         if filename not in required_outputs or filename in seen_storage_names:
             raise G3EvidenceBuildError("storage commit receipt names are missing, duplicated, or unexpected")
         source_bytes = required_outputs[filename]
-        if (item.get("content_sha256") != _sha256(source_bytes)
+        expected_operation_id = hashlib.sha256(
+            f"{execution_id}:{filename}".encode("utf-8")
+        ).hexdigest()
+        if (item.get("operation_id") != expected_operation_id
+                or item.get("content_sha256") != _sha256(source_bytes)
                 or item.get("byte_length") != len(source_bytes)):
             raise G3EvidenceBuildError(f"storage receipt does not bind exact output bytes: {filename}")
         try:
