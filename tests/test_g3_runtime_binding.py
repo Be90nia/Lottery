@@ -52,7 +52,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.git_patch = patch.object(
             runner.subprocess,
             "run",
-            return_value=SimpleNamespace(stdout=CHECKED_OUT_SHA + "\\n"),
+            return_value=SimpleNamespace(stdout=CHECKED_OUT_SHA + "\n"),
         )
         self.git_patch.start()
 
@@ -103,7 +103,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
             }),
             encoding="utf-8",
         )
-        (self.output_dir / "model-artifacts.jsonl").write_bytes(b'{"artifact_id":"test"}\\n')
+        (self.output_dir / "model-artifacts.jsonl").write_bytes(b'{"artifact_id":"test"}\n')
 
         receipt = runner._finish_registered_execution(registry, binding, self.output_path)
         snapshot = registry.snapshot()
