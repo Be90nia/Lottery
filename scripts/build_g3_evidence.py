@@ -457,6 +457,10 @@ def build_g3_evidence_bundle(
     if not complete_scores:
         blockers.append("one or more terminal ledger rows are not scored")
     for zone in ZONES:
+        if (calibration_zones[zone]["ece"] > 0.05
+                or calibration_zones[zone]["max_abs_bin_gap"] > 0.05):
+            blockers.append(f"{zone} marginal-inclusion ECE/max-bin-gap exceeds the proposed 0.05 tolerance")
+    for zone in ZONES:
         item = baseline_zones[zone]
         if item["candidate_vs_uniform_ci95"] is None or item["candidate_vs_uniform_ci95"][1] >= 0:
             blockers.append(f"{zone} candidate-vs-uniform 95% interval does not lie wholly below zero")
