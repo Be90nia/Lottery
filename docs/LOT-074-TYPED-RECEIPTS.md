@@ -122,3 +122,13 @@ It does **not** mean the release is ready: the report still says
 `readiness=NOT_READY`, `shadow_authorized=false` and
 `production_ready=false`. Exit code 2 means missing, invalid or blocked
 receipt evidence.
+
+## G3 semantic evidence integration (2026-11-23)
+
+The G3 semantic verifier now cross-binds its terminal score ledger to a hash-verified LOT-055 run manifest, including the exact snapshot, target-list digest, experiment class/eligibility, bootstrap seed schedule, denominator/status counts, ledger bytes and all eight model × zone configuration identities. An exploratory run manifest cannot be relabeled as confirmatory by a G3 receipt.
+
+`scripts/build_g3_evidence.py` adapts a frozen snapshot, immutable run manifest, normalized terminal ledger and explicit registration into the six G3 evidence documents. It recomputes baseline means, paired moving-block intervals and Holm inputs from the terminal ledger. It requires a supplied calibration artifact and emits an explicit BLOCKED calibration document when none is available.
+
+The diagnostic adapter workflow is pinned to the existing completed run artifact `44996717511` and frozen snapshot commit `fb33963442170bd212d039f3debd07bde58feac6`. The run remains `exploratory_diagnostic`, `confirmatory_eligible=false`; the generated registration record preserves that boundary. This workflow is an evidence adaptation, not a new confirmatory evaluation and not a readiness authorization.
+
+Calibration remains an explicit G3 blocker: the existing LOT-055 preregistration did not define a testable calibration statistic/tolerance, and no real per-target calibration artifact exists. The synthetic `preregistered-randomized-pit-v1` fixture is not evidence for the historical run. Do not manufacture calibration values or change the historical experiment's status.
