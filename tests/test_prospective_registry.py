@@ -209,6 +209,13 @@ class RegistryScheduleTests(unittest.TestCase):
         with self.assertRaisesRegex(RegistryScheduleError, "training envelope disagrees"):
             self.build(lifecycle, target, inventory)
 
+    def test_training_date_must_precede_target_date_even_when_draw_ids_order(self):
+        lifecycle, target, inventory = fixture()
+        inventory["draw_dates"]["26130"] = "2026-11-22"
+        inventory = sealed({k: v for k, v in inventory.items() if k != "inventory_id"}, "inventory_id")
+        with self.assertRaisesRegex(RegistryScheduleError, "training cutoff date is not strictly before"):
+            self.build(lifecycle, target, inventory)
+
 
 if __name__ == "__main__":
     unittest.main()
