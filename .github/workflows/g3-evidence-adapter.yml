@@ -66,6 +66,9 @@ jobs:
             --ledger source-run/target-score-ledger.jsonl \
             --model-artifacts source-run/model-artifacts.jsonl \
             --registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json \
+            --registry-root source-run/experiment-registry \
+            --registry-run-receipt source-run/registry-run-receipt.json \
+            --artifact-provenance source-run/model-artifact-provenance.jsonl \
             --output-dir g3-evidence
       - name: Upload G3 diagnostic evidence and explicit blockers
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
