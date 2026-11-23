@@ -143,10 +143,13 @@ def build_registry_schedule(
     runtime: str | None = None,
     target_manifest_verifier: Callable[[dict[str, Any]], bool] | None = None,
     inventory_verifier: Callable[[dict[str, Any]], bool] | None = None,
+    schedule_attestor: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    schedule_verifier: Callable[[dict[str, Any]], bool] | None = None,
 ) -> dict[str, Any]:
     """Create Champion + validated challenger-shadow expectations, or fail before writes."""
-    if target_manifest_verifier is None or inventory_verifier is None:
-        raise RegistryScheduleError("protected target-manifest and inventory verifiers are required")
+    if (target_manifest_verifier is None or inventory_verifier is None
+            or schedule_attestor is None or schedule_verifier is None):
+        raise RegistryScheduleError("protected target, inventory and schedule signing/verifier callbacks are required")
     if target_manifest_verifier(target_manifest) is not True:
         raise RegistryScheduleError("target manifest authority verifier rejected the evidence")
     if inventory_verifier(inventory) is not True:
