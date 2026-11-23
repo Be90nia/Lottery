@@ -95,7 +95,9 @@ class TypedReadinessReceiptTests(unittest.TestCase):
 
     def test_complete_typed_receipt_inventory_derives_shadow_only(self):
         report = self.verify()
-        self.assertEqual(report["readiness"], "READY_FOR_SHADOW")
+        self.assertEqual(report["readiness"], "NOT_READY")
+        self.assertEqual(report["receipt_completeness"], "COMPLETE")
+        self.assertFalse(report["shadow_authorized"])
         self.assertFalse(report["production_ready"])
         self.assertIn("integrity only", report["authenticity_note"])
 
@@ -179,7 +181,10 @@ class TypedReadinessReceiptTests(unittest.TestCase):
                 "release_manifest_sha256",
                 "sha256:" + hashlib.sha256(canonicalize(self.manifest)).hexdigest(),
             ))
-        self.assertEqual(self.verify()["readiness"], "NOT_READY")
+        report = self.verify()
+        self.assertEqual(report["readiness"], "NOT_READY")
+        self.assertEqual(report["receipt_completeness"], "BLOCKED_LOT042")
+        self.assertFalse(report["shadow_authorized"])
 
 
 if __name__ == "__main__":
