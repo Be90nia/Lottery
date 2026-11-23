@@ -4,16 +4,42 @@ import unittest
 from pathlib import Path
 
 from lottery.experiment_registry import (
+    EVENT_SCHEMA,
     EXPERIMENT_SCHEMA,
     ExperimentApprovalError,
     ExperimentRegistry,
     ExperimentRegistryError,
 )
+from lottery.execution_context import execution_context_from_env
 from lottery.subset_model.artifact import canonicalize
 
 
 def digest(label):
     return hashlib.sha256(label.encode("utf-8")).hexdigest()
+
+
+def execution_context(*, attempt="1"):
+    repository = "Be90nia/Lottery"
+    workflow_path = ".github/workflows/subset-research.yml"
+    commit = "a" * 40
+    env = {
+        "GITHUB_REPOSITORY": repository,
+        "GITHUB_REPOSITORY_ID": "1461523125",
+        "GITHUB_WORKFLOW_REF": f"{repository}/{workflow_path}@refs/heads/feature",
+        "GITHUB_RUN_ID": "45130000000",
+        "GITHUB_RUN_ATTEMPT": attempt,
+        "GITHUB_JOB": "run-evaluation",
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REF": "refs/heads/feature",
+        "GITHUB_SHA": commit,
+        "GITHUB_ACTOR": "research-operator",
+    }
+    return execution_context_from_env(
+        env, checked_out_sha=commit,
+        expected_repository=repository,
+        expected_repository_id="1461523125",
+        expected_workflow_path=workflow_path,
+    )
 
 
 def experiment_spec(*, experiment_class="confirmatory", parent=None, outcomes_observed=False):
@@ -86,6 +112,41 @@ class ExperimentRegistryTests(unittest.TestCase):
         result = self.register_confirmatory()
         self.assertEqual(result["experiment_id"], result["spec_sha256"])
         self.assertEqual(len(self.registry.snapshot()["experiments"]), 1)
+
+    def test_trial_start_and_finish_bind_exact_approval_receipt(self):
+        registered = self.register_confirmatory()
+        experiment_id = registered["experiment_id"]
+        config = experiment_spec()["trial_plan"][0]
+        started = self.registry.start_trial(
+            experiment_id=experiment_id,
+            attempt_id="approval-bound-001",
+            config=config,
+            actor="test-suite",
+        )
+        self.assertEqual(started["approval_sha256"], registered["approval_sha256"])
+        finished = self.registry.finish_trial(
+            experiment_id=experiment_id,
+            attempt_id="approval-bound-001",
+            terminal_status="succeeded",
+            result_sha256=digest("approval-bound-result"),
+            artifact_sha256=digest("approval-bound-artifact"),
+            actor="test-suite",
+        )
+        self.assertEqual(finished["approval_sha256"], registered["approval_sha256"])
+
+    def test_new_event_writes_reject_unknown_fields(self):
+        event = {
+            "schema": EVENT_SCHEMA,
+            "event_id": "register:unknown-field-test",
+            "event_type": "experiment_registered",
+            "occurred_at_utc": "2026-11-23T00:00:00+00:00",
+            "actor": "test-suite",
+            "experiment_id": digest("unknown-field-experiment"),
+            "approval_sha256": None,
+            "untrusted_extra": "must fail",
+        }
+        with self.assertRaisesRegex(ExperimentRegistryError, "closed event schema"):
+            self.registry._append_event_locked(event)
 
     def test_registration_retry_is_idempotent(self):
         first = self.register_confirmatory()
@@ -172,6 +233,67 @@ class ExperimentRegistryTests(unittest.TestCase):
             artifact_sha256=digest("artifact"), actor="test-suite",
         )
         self.assertEqual(result["status"], "succeeded")
+
+    def test_execution_identity_is_bound_to_trial_start_and_terminal_event(self):
+        registered = self.register_confirmatory()
+        experiment_id = registered["experiment_id"]
+        config = experiment_spec()["trial_plan"][0]
+        context = execution_context()
+        started = self.registry.start_trial(
+            experiment_id=experiment_id,
+            attempt_id="actions-45130000000-attempt-1",
+            config=config,
+            actor="research-operator",
+            execution_context=context,
+            expected_repository="Be90nia/Lottery",
+            expected_repository_id="1461523125",
+            expected_workflow_path=".github/workflows/subset-research.yml",
+        )
+        self.assertEqual(started["execution_id"], context["execution_id"])
+        self.assertEqual(started["trial_id"], started["config_sha256"])
+        with self.assertRaisesRegex(ExperimentRegistryError, "does not match trial start"):
+            self.registry.finish_trial(
+                experiment_id=experiment_id,
+                attempt_id="actions-45130000000-attempt-1",
+                terminal_status="succeeded",
+                result_sha256=digest("result"),
+                artifact_sha256=digest("artifact"),
+                execution_id="f" * 64,
+                actor="research-operator",
+            )
+        with self.assertRaisesRegex(ExperimentRegistryError, "requires an artifact digest"):
+            self.registry.finish_trial(
+                experiment_id=experiment_id,
+                attempt_id="actions-45130000000-attempt-1",
+                terminal_status="succeeded",
+                result_sha256=digest("result"),
+                execution_id=context["execution_id"],
+                actor="research-operator",
+            )
+        finished = self.registry.finish_trial(
+            experiment_id=experiment_id,
+            attempt_id="actions-45130000000-attempt-1",
+            terminal_status="succeeded",
+            result_sha256=digest("result"),
+            artifact_sha256=digest("artifact"),
+            execution_id=context["execution_id"],
+            storage_commit_receipts_sha256=digest("storage receipts"),
+            actor="research-operator",
+        )
+        self.assertEqual(finished["execution_id"], context["execution_id"])
+        self.assertEqual(finished["storage_commit_receipts_sha256"], digest("storage receipts"))
+        self.assertEqual(finished["status"], "succeeded")
+
+    def test_execution_context_requires_explicit_workflow_allowlist(self):
+        registered = self.register_confirmatory()
+        with self.assertRaisesRegex(ExperimentRegistryError, "explicit repository/workflow allowlist"):
+            self.registry.start_trial(
+                experiment_id=registered["experiment_id"],
+                attempt_id="actions-no-allowlist",
+                config=experiment_spec()["trial_plan"][0],
+                actor="research-operator",
+                execution_context=execution_context(),
+            )
 
     def test_holdout_access_and_training_target_leakage_are_rejected(self):
         bad_holdout = experiment_spec()

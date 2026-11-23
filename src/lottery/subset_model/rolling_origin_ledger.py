@@ -4,9 +4,11 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import re
 import sys
 from pathlib import Path
 
+from lottery.execution_context import ExecutionContextError, validate_execution_context
 from lottery.subset_model.artifact import canonicalize, verify_artifact
 
 
@@ -67,8 +69,45 @@ def _model_identity(zone: str, name: str, m: int, k: int,
 
 
 def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
-                            output_path: Path) -> dict:
+                            output_path: Path, experiment_binding: dict | None = None) -> dict:
     """Validate and write one row per model × zone × target, plus artifacts/manifest."""
+    if experiment_binding is not None:
+        required_binding = {
+            "experiment_id", "spec_sha256", "approval_sha256", "trial_id",
+            "trial_config", "attempt_id", "execution_context",
+        }
+        if not isinstance(experiment_binding, dict) or set(experiment_binding) != required_binding:
+            raise ValueError("experiment binding fields do not match the closed run-binding schema")
+        experiment_id = experiment_binding["experiment_id"]
+        if (not isinstance(experiment_id, str) or not re.fullmatch(r"[0-9a-f]{64}", experiment_id)
+                or experiment_binding["spec_sha256"] != experiment_id):
+            raise ValueError("experiment binding does not match a content-addressed registration")
+        trial_config = experiment_binding["trial_config"]
+        if not isinstance(trial_config, dict) or hashlib.sha256(canonicalize(trial_config)).hexdigest() != experiment_binding["trial_id"]:
+            raise ValueError("experiment binding trial_id does not match the preregistered configuration")
+        if not isinstance(experiment_binding["attempt_id"], str) or re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", experiment_binding["attempt_id"]
+        ) is None:
+            raise ValueError("experiment binding attempt_id is malformed")
+        approval_sha256 = experiment_binding["approval_sha256"]
+        if approval_sha256 is not None and (
+            not isinstance(approval_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", approval_sha256) is None
+        ):
+            raise ValueError("experiment binding approval digest is malformed")
+        try:
+            execution_context = validate_execution_context(
+                experiment_binding["execution_context"],
+                expected_repository="Be90nia/Lottery",
+                expected_repository_id="1461523125",
+                expected_workflow_path=".github/workflows/subset-research.yml",
+            )
+        except ExecutionContextError as exc:
+            raise ValueError("experiment binding execution context is invalid") from exc
+        experiment_binding = {
+            **experiment_binding,
+            "execution_context": execution_context,
+            "execution_id": execution_context["execution_id"],
+        }
     code_revision = result["code_commit"]
     snapshot_digest = result["snapshot_sha256"]
     expected_seed_schedule = {
@@ -122,6 +161,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
 
     ledger = []
     artifact_lines = []
+    artifact_provenance_lines = []
     artifact_ids = set()
     expected = len(target_rows) * len(model_specs) * len(MODEL_ORDER)
     for zone in ("front", "back"):
@@ -190,6 +230,16 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                             artifact_bytes = canonicalize(verified)
                             if artifact_id not in artifact_ids:
                                 artifact_lines.append(artifact_bytes)
+                                if experiment_binding is not None:
+                                    artifact_provenance_lines.append(canonicalize({
+                                        "schema": "lottery.model-artifact-provenance/v1",
+                                        "artifact_id": artifact_id,
+                                        "experiment_id": experiment_binding["experiment_id"],
+                                        "trial_id": experiment_binding["trial_id"],
+                                        "attempt_id": experiment_binding["attempt_id"],
+                                        "execution_id": experiment_binding["execution_id"],
+                                        "evaluation_run_id": run_id,
+                                    }))
                                 artifact_ids.add(artifact_id)
                 if score is None and failure_reason is None:
                     failure_reason = str(solver_status)
@@ -224,6 +274,14 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                     "negative_log_score": score,
                     "pairing_key": pairing_key,
                 }
+                if experiment_binding is not None:
+                    row.update({
+                        "experiment_id": experiment_binding["experiment_id"],
+                        "trial_id": experiment_binding["trial_id"],
+                        "registry_attempt_id": experiment_binding["attempt_id"],
+                        "execution_id": experiment_binding["execution_id"],
+                        "approval_sha256": experiment_binding["approval_sha256"],
+                    })
                 row["record_sha256"] = _hash_object(row)
                 ledger.append(row)
 
@@ -238,6 +296,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
 
     ledger_bytes = b"".join(canonicalize(row) + b"\n" for row in ledger)
     artifact_file_bytes = b"".join(line + b"\n" for line in artifact_lines)
+    artifact_provenance_bytes = b"".join(line + b"\n" for line in artifact_provenance_lines)
     artifact_code_revisions = sorted({
         json.loads(line.decode("utf-8"))["code_revision"]
         for line in artifact_lines
@@ -270,6 +329,16 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
         "model_spec_revision": identity["model_spec_revision"],
         "preregistration_revision": identity["preregistration_revision"],
         "experiment_registration_revision": identity["experiment_registration_revision"],
+        "experiment_binding": ({
+            "schema": "lottery.experiment-run-binding/v1",
+            "experiment_id": experiment_binding["experiment_id"],
+            "spec_sha256": experiment_binding["spec_sha256"],
+            "approval_sha256": experiment_binding["approval_sha256"],
+            "trial_id": experiment_binding["trial_id"],
+            "registry_attempt_id": experiment_binding["attempt_id"],
+            "execution_id": experiment_binding["execution_id"],
+            "execution_context": experiment_binding["execution_context"],
+        } if experiment_binding is not None else None),
         "runtime": {
             "python_version": sys.version,
             "python_implementation": platform.python_implementation(),
@@ -305,11 +374,22 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
         "status": "complete" if all(row["terminal_status"] == "scored" for row in ledger) else "complete_with_explicit_failures",
     }
     manifest["manifest_sha256"] = _hash_object(manifest)
+    if experiment_binding is not None:
+        manifest["output_files"]["model-artifact-provenance.jsonl"] = {
+            "sha256": _sha256(artifact_provenance_bytes),
+            "bytes": len(artifact_provenance_bytes),
+        }
+        manifest["model_artifact_provenance_count"] = len(artifact_provenance_lines)
+        manifest["manifest_sha256"] = _hash_object({
+            key: value for key, value in manifest.items() if key != "manifest_sha256"
+        })
     output_dir = output_path.parent
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "run_manifest.json").write_bytes(canonicalize(manifest) + b"\n")
     (output_dir / "target-score-ledger.jsonl").write_bytes(ledger_bytes)
     (output_dir / "model-artifacts.jsonl").write_bytes(artifact_file_bytes)
+    if experiment_binding is not None:
+        (output_dir / "model-artifact-provenance.jsonl").write_bytes(artifact_provenance_bytes)
     return {
         "run_id": run_id,
         "manifest_sha256": manifest["manifest_sha256"],

@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from lottery.experiment_registry import ExperimentRegistry, ExperimentRegistryError
+from lottery.storage import FileSystemObjectStore, StorageError
 from lottery.subset_model.artifact import canonicalize
 
 GATE_TYPES = {
@@ -33,7 +35,7 @@ GATE_REQUIRED_CHECKS = {
     "G0": ("source_commit", "workflow_action_pins", "dependency_lock", "runtime_toolchain", "sbom", "security_scan"),
     "G1": ("canonical_snapshot", "raw_source_bytes", "source_authority", "parser_lineage", "outcome_validation", "coverage"),
     "G2": ("full_support", "normalization", "exact_subset_probability", "conditional_poisson", "deterministic_sampler", "numerical_stability"),
-    "G3": ("preregistration", "chronological_targets", "complete_denominator", "baseline_comparison", "multiplicity_control", "calibration"),
+    "G3": ("preregistration", "chronological_targets", "complete_denominator", "baseline_comparison", "multiplicity_control", "calibration", "registry_execution_binding"),
     "G4": ("row_level_labels", "regime_adjudication", "minimum_history", "same_target_comparison", "no_cross_regime_merge"),
     "G5": ("three_slot_registry", "single_registry_generation", "front_back_pairing", "immutable_artifacts", "sampler_cardinality", "no_fit_on_request"),
     "G6": ("frozen_forecast", "official_outcome_validation", "append_only_corrections", "statistical_unit", "monitoring_thresholds"),
@@ -260,9 +262,40 @@ def _verify_g3_evidence_bundle(
     expected_ids = {
         "preregistration", "chronological_targets", "complete_denominator",
         "baseline_comparison", "multiplicity_control", "calibration",
+        "registry_execution_binding",
     }
     require(set(raw_by_check) == expected_ids, "evidence inventory mismatch")
     reports = {key: _strict_json(raw, "G3 " + key) for key, raw in raw_by_check.items()}
+    registry_binding = reports["registry_execution_binding"]
+    require(set(registry_binding) == {
+        "schema", "status", "registry_experiment_id", "trial_id", "attempt_id",
+        "execution_id", "approval_sha256", "registry_event_count",
+        "event_chain_head_sha256", "registry_run_receipt_sha256",
+        "artifact_provenance_sha256", "storage_commit_receipts_sha256",
+        "storage_commit_count",
+    }, "registry execution binding fields invalid")
+    require(
+        registry_binding["schema"] == "lottery.g3-registry-binding/v1"
+        and registry_binding["status"] == "VERIFIED"
+        and isinstance(registry_binding["registry_experiment_id"], str)
+        and SHA256.fullmatch(registry_binding["registry_experiment_id"])
+        and isinstance(registry_binding["trial_id"], str)
+        and SHA256.fullmatch(registry_binding["trial_id"])
+        and isinstance(registry_binding["attempt_id"], str)
+        and registry_binding["attempt_id"]
+        and isinstance(registry_binding["execution_id"], str)
+        and SHA256.fullmatch(registry_binding["execution_id"])
+        and (registry_binding["approval_sha256"] is None
+             or (isinstance(registry_binding["approval_sha256"], str)
+                 and SHA256.fullmatch(registry_binding["approval_sha256"])))
+        and type(registry_binding["registry_event_count"]) is int
+        and registry_binding["registry_event_count"] >= 3
+        and all(isinstance(registry_binding[key], str) and SHA256.fullmatch(registry_binding[key])
+                for key in ("event_chain_head_sha256", "registry_run_receipt_sha256",
+                            "artifact_provenance_sha256", "storage_commit_receipts_sha256"))
+        and registry_binding["storage_commit_count"] == 4,
+        "G3 execution is not bound to a verified LOT-064 registry and LOT-065 output receipts",
+    )
     prereg = reports["preregistration"]
     require(set(prereg) == {
         "schema", "protocol_id", "experiment_id", "experiment_class",
@@ -465,6 +498,61 @@ def _verify_g3_evidence_bundle(
         and cutoff_ids == snapshot_cutoff_ids
         and cutoff_dates == snapshot_cutoff_dates,
         "G3 chronology evidence does not match actual canonical snapshot rows and predecessor cutoffs",
+    )
+    run_binding = run_manifest.get("experiment_binding")
+    require(
+        isinstance(run_binding, dict)
+        and run_binding.get("schema") == "lottery.experiment-run-binding/v1"
+        and run_binding.get("experiment_id") == registry_binding["registry_experiment_id"]
+        and run_binding.get("spec_sha256") == registry_binding["registry_experiment_id"]
+        and run_binding.get("trial_id") == registry_binding["trial_id"]
+        and run_binding.get("registry_attempt_id") == registry_binding["attempt_id"]
+        and run_binding.get("execution_id") == registry_binding["execution_id"]
+        and run_binding.get("approval_sha256") == registry_binding["approval_sha256"],
+        "run manifest does not bind the verified registry/trial/execution identities",
+    )
+    try:
+        registry_receipt_raw = (root / "registry-run-receipt.json").read_bytes()
+        provenance_raw = (root / "model-artifact-provenance.jsonl").read_bytes()
+        storage_receipt_raw = (root / "storage-commit-receipts.json").read_bytes()
+        storage_bundle = _strict_json(storage_receipt_raw, "G3 storage receipt bundle")
+        registry_receipt = _strict_json(registry_receipt_raw, "G3 registry run receipt")
+    except (OSError, ValueError, TypeError) as exc:
+        raise ReceiptVerificationError("G3: registry or durable receipt evidence is missing/invalid") from exc
+    require(
+        hashlib.sha256(registry_receipt_raw).hexdigest() == registry_binding["registry_run_receipt_sha256"]
+        and hashlib.sha256(provenance_raw).hexdigest() == registry_binding["artifact_provenance_sha256"]
+        and hashlib.sha256(storage_receipt_raw).hexdigest() == registry_binding["storage_commit_receipts_sha256"]
+        and (root / "experiment-registry").is_dir()
+        and (root / "durable-store").is_dir(),
+        "registry receipt, artifact provenance, storage receipt, or durable store bytes are missing/tampered",
+    )
+    require(
+        canonicalize(registry_receipt) + b"\n" == registry_receipt_raw
+        and registry_receipt.get("schema") == "lottery.experiment-run-receipt/v1"
+        and registry_receipt.get("experiment_id") == registry_binding["registry_experiment_id"]
+        and registry_receipt.get("trial_id") == registry_binding["trial_id"]
+        and registry_receipt.get("attempt_id") == registry_binding["attempt_id"]
+        and registry_receipt.get("execution_id") == registry_binding["execution_id"]
+        and registry_receipt.get("event_count") == registry_binding["registry_event_count"]
+        and registry_receipt.get("event_chain_head_sha256") == registry_binding["event_chain_head_sha256"]
+        and registry_receipt.get("storage_commit_receipts_sha256") == registry_binding["storage_commit_receipts_sha256"]
+        and registry_receipt.get("run_manifest_sha256") == hashlib.sha256(run_manifest_raw).hexdigest()
+        and registry_receipt.get("model_artifacts_sha256") == hashlib.sha256(model_artifacts_raw).hexdigest(),
+        "registry run receipt does not match the run manifest, artifacts, or event-chain summary",
+    )
+    require(
+        canonicalize(storage_bundle) + b"\n" == storage_receipt_raw
+        and storage_bundle.get("schema") == "lottery.storage-commit-receipts/v1"
+        and storage_bundle.get("experiment_id") == registry_binding["registry_experiment_id"]
+        and storage_bundle.get("trial_id") == registry_binding["trial_id"]
+        and storage_bundle.get("attempt_id") == registry_binding["attempt_id"]
+        and storage_bundle.get("execution_id") == registry_binding["execution_id"]
+        and isinstance(storage_bundle.get("receipts"), list)
+        and len(storage_bundle["receipts"]) == registry_binding["storage_commit_count"] == 4
+        and {item.get("filename") for item in storage_bundle["receipts"] if isinstance(item, dict)}
+            == {"run_manifest.json", "target-score-ledger.jsonl", "model-artifacts.jsonl", "model-artifact-provenance.jsonl"},
+        "LOT-065 storage receipt bundle does not match registry execution",
     )
     require(
         run_manifest.get("schema") == "lot-055-run-manifest-v1"

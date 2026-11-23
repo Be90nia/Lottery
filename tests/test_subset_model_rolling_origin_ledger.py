@@ -6,7 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from lottery.subset_model.artifact import create_artifact
+from lottery.execution_context import execution_context_from_env
+from lottery.subset_model.artifact import create_artifact, canonicalize
 from lottery.subset_model.rolling_origin_ledger import (
     MODEL_ORDER,
     _hash_object,
@@ -260,6 +261,83 @@ class ImmutableRollingOriginLedgerTests(unittest.TestCase):
             )
             artifact_records = artifacts_path.read_text().splitlines()
             self.assertEqual(len(artifact_records), 6)
+
+    def test_registered_trial_identity_binds_manifest_ledger_and_artifact_provenance(self):
+        rows, result = _fixture()
+        repository = "Be90nia/Lottery"
+        workflow_path = ".github/workflows/subset-research.yml"
+        commit = "a" * 40
+        env = {
+            "GITHUB_REPOSITORY": repository,
+            "GITHUB_REPOSITORY_ID": "1461523125",
+            "GITHUB_WORKFLOW_REF": f"{repository}/{workflow_path}@refs/heads/feature",
+            "GITHUB_RUN_ID": "45130000000",
+            "GITHUB_RUN_ATTEMPT": "2",
+            "GITHUB_JOB": "run-evaluation",
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "GITHUB_REF": "refs/heads/feature",
+            "GITHUB_SHA": commit,
+            "GITHUB_ACTOR": "research-operator",
+        }
+        context = execution_context_from_env(
+            env, checked_out_sha=commit,
+            expected_repository=repository,
+            expected_repository_id="1461523125",
+            expected_workflow_path=workflow_path,
+        )
+        trial_config = {"protocol": "LOT-055", "candidate": "complete_subset_exponential"}
+        trial_id = hashlib.sha256(canonicalize(trial_config)).hexdigest()
+        experiment_id = hashlib.sha256(b"registered-experiment").hexdigest()
+        binding = {
+            "experiment_id": experiment_id,
+            "spec_sha256": experiment_id,
+            "approval_sha256": None,
+            "trial_id": trial_id,
+            "trial_config": trial_config,
+            "attempt_id": "exec-" + context["execution_id"],
+            "execution_context": context,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "result.json"
+            write_immutable_outputs(
+                result, rows, Path("snapshot.jsonl"), output,
+                experiment_binding=binding,
+            )
+            manifest = json.loads((output.parent / "run_manifest.json").read_text())
+            ledger = [json.loads(line) for line in
+                      (output.parent / "target-score-ledger.jsonl").read_text().splitlines()]
+            provenance_path = output.parent / "model-artifact-provenance.jsonl"
+            provenance = [json.loads(line) for line in provenance_path.read_text().splitlines()]
+            self.assertEqual(manifest["experiment_binding"]["experiment_id"], experiment_id)
+            self.assertEqual(manifest["experiment_binding"]["trial_id"], trial_id)
+            self.assertEqual(manifest["experiment_binding"]["execution_id"], context["execution_id"])
+            self.assertTrue(all(row["experiment_id"] == experiment_id for row in ledger))
+            self.assertTrue(all(row["trial_id"] == trial_id for row in ledger))
+            self.assertTrue(all(row["execution_id"] == context["execution_id"] for row in ledger))
+            self.assertEqual(len(provenance), 6)
+            self.assertTrue(all(item["execution_id"] == context["execution_id"] for item in provenance))
+            self.assertEqual(
+                manifest["output_files"]["model-artifact-provenance.jsonl"]["sha256"],
+                hashlib.sha256(provenance_path.read_bytes()).hexdigest(),
+            )
+
+    def test_writer_rejects_trial_id_that_does_not_match_config(self):
+        rows, result = _fixture()
+        binding = {
+            "experiment_id": hashlib.sha256(b"registered-experiment").hexdigest(),
+            "spec_sha256": hashlib.sha256(b"registered-experiment").hexdigest(),
+            "approval_sha256": None,
+            "trial_id": "f" * 64,
+            "trial_config": {"protocol": "LOT-055"},
+            "attempt_id": "attempt-001",
+            "execution_context": {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "trial_id does not match"):
+                write_immutable_outputs(
+                    result, rows, Path("snapshot.jsonl"), Path(directory) / "result.json",
+                    experiment_binding=binding,
+                )
 
     def test_failed_fit_is_explicit_and_never_gets_a_score(self):
         rows, result = _fixture(fail_candidate=True)

@@ -5,15 +5,247 @@ import unittest
 from datetime import date, timedelta
 from pathlib import Path
 
+from lottery.execution_context import execution_context_from_env
+from lottery.experiment_registry import EXPERIMENT_SCHEMA, ExperimentRegistry
+from lottery.storage import FileSystemObjectStore
+from lottery.subset_model.artifact import canonicalize
 from scripts.build_g3_evidence import (
     G3EvidenceBuildError,
     _holm,
+    _legacy_label_digest,
     _read_snapshot,
     _strict_json,
+    _verify_registry_binding,
 )
 
 
 class G3EvidenceAdapterTests(unittest.TestCase):
+    def test_legacy_label_digest_is_not_a_registry_identity(self):
+        manifest = {"experiment_id": "LOT055-OPT-DIAG-20261120"}
+        digest = _legacy_label_digest(manifest)
+        self.assertEqual(
+            digest,
+            "4eceab2eab2cc9cdd2961634815f5ed586ddd9f54df5496d7d2754f60039a12a",
+        )
+        self.assertNotEqual(digest, manifest["experiment_id"])
+
+    def test_legacy_run_is_explicitly_unbound(self):
+        binding = _verify_registry_binding(
+            run_manifest={"experiment_id": "LOT055-OPT-DIAG-20261120"},
+            run_manifest_raw=b"{}\\n",
+            model_artifacts_raw=b"",
+            registration_raw=b"{}",
+            registry_root=None,
+            registry_run_receipt_path=None,
+            artifact_provenance_path=None,
+            durable_store_root=None,
+            storage_commit_receipts_path=None,
+            ledger_path=Path("unused-ledger.jsonl"),
+        )
+        self.assertEqual(binding["status"], "UNBOUND_LEGACY")
+        self.assertIsNone(binding["registry_experiment_id"])
+
+    def test_registry_receipt_binds_trial_execution_and_every_artifact(self):
+        repository = "Be90nia/Lottery"
+        workflow_path = ".github/workflows/subset-research.yml"
+        commit = "a" * 40
+        env = {
+            "GITHUB_REPOSITORY": repository,
+            "GITHUB_REPOSITORY_ID": "1461523125",
+            "GITHUB_WORKFLOW_REF": f"{repository}/{workflow_path}@refs/heads/feature",
+            "GITHUB_RUN_ID": "45130000000",
+            "GITHUB_RUN_ATTEMPT": "1",
+            "GITHUB_JOB": "run-evaluation",
+            "GITHUB_EVENT_NAME": "workflow_dispatch",
+            "GITHUB_REF": "refs/heads/feature",
+            "GITHUB_SHA": commit,
+            "GITHUB_ACTOR": "research-operator",
+        }
+        execution = execution_context_from_env(
+            env, checked_out_sha=commit,
+            expected_repository=repository,
+            expected_repository_id="1461523125",
+            expected_workflow_path=workflow_path,
+        )
+        registration_raw = b'{"schema":"lottery.g3-preregistration/v1"}'
+        trial_config = {"protocol": "LOT-055", "candidate": "diagnostic"}
+        trial_id = hashlib.sha256(canonicalize(trial_config)).hexdigest()
+        attempt_id = "exec-" + execution["execution_id"]
+        spec = {
+            "schema": EXPERIMENT_SCHEMA,
+            "experiment_name": "retrospective-g3-binding-test",
+            "experiment_class": "exploratory",
+            "parent_experiment_id": None,
+            "hypothesis": "retrospective provenance binding only",
+            "model_family": "LOT055_multi_model_evaluation",
+            "population_key": "pooled_equipment_blind",
+            "zone": "joint",
+            "training_snapshot_sha256": "a" * 64,
+            "training_cutoff_draw_id": "09053",
+            "target_draw_ids": ["09054"],
+            "target_manifest_sha256": "b" * 64,
+            "source_evidence_sha256": hashlib.sha256(registration_raw).hexdigest(),
+            "feature_schema_sha256": "c" * 64,
+            "trial_plan": [trial_config],
+            "primary_metric": "exact_set_nll",
+            "multiplicity_family": ["candidate_vs_uniform:front", "candidate_vs_uniform:back"],
+            "bootstrap_replicates": 1000,
+            "block_length": 50,
+            "seed_commitment_sha256": "d" * 64,
+            "holdout_accessed": False,
+            "outcomes_observed": True,
+            "population_claim": "pooled",
+            "population_evidence_sha256": None,
+        }
+        artifact_id = "e" * 64
+        model_artifacts_raw = canonicalize({"artifact_id": artifact_id}) + b"\n"
+        run_manifest = {
+            "run_id": "lot055-binding-test",
+            "experiment_binding": {
+                "schema": "lottery.experiment-run-binding/v1",
+                "experiment_id": None,
+                "spec_sha256": None,
+                "approval_sha256": None,
+                "trial_id": trial_id,
+                "registry_attempt_id": attempt_id,
+                "execution_id": execution["execution_id"],
+                "execution_context": execution,
+            },
+            "model_artifact_provenance_count": 1,
+            "output_files": {},
+        }
+        provenance = {
+            "schema": "lottery.model-artifact-provenance/v1",
+            "artifact_id": artifact_id,
+            "experiment_id": None,
+            "trial_id": trial_id,
+            "attempt_id": attempt_id,
+            "execution_id": execution["execution_id"],
+            "evaluation_run_id": run_manifest["run_id"],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry = ExperimentRegistry(root / "registry")
+            registered = registry.register_experiment(spec, actor=execution["actor"])
+            experiment_id = registered["experiment_id"]
+            run_manifest["experiment_binding"]["experiment_id"] = experiment_id
+            run_manifest["experiment_binding"]["spec_sha256"] = experiment_id
+            provenance["experiment_id"] = experiment_id
+            provenance_raw = canonicalize(provenance) + b"\n"
+            ledger_raw = canonicalize({"record": "test-ledger-row"}) + b"\n"
+            run_manifest["output_files"]["target-score-ledger.jsonl"] = {
+                "sha256": hashlib.sha256(ledger_raw).hexdigest(),
+                "bytes": len(ledger_raw),
+            }
+            run_manifest["output_files"]["model-artifact-provenance.jsonl"] = {
+                "sha256": hashlib.sha256(provenance_raw).hexdigest(),
+                "bytes": len(provenance_raw),
+            }
+            run_manifest_raw = canonicalize(run_manifest) + b"\n"
+            ledger_path = root / "target-score-ledger.jsonl"
+            ledger_path.write_bytes(ledger_raw)
+            provenance_path = root / "model-artifact-provenance.jsonl"
+            provenance_path.write_bytes(provenance_raw)
+            durable_store_root = root / "durable-store"
+            store = FileSystemObjectStore(durable_store_root)
+            committed = []
+            for filename, raw, schema_version in (
+                ("run_manifest.json", run_manifest_raw, "lot-055-run-manifest-v1"),
+                ("target-score-ledger.jsonl", ledger_raw, "lot-055-target-score-ledger-v1"),
+                ("model-artifacts.jsonl", model_artifacts_raw, "lottery.subset-probability-model/v1"),
+                ("model-artifact-provenance.jsonl", provenance_raw, "lottery.model-artifact-provenance/v1"),
+            ):
+                staged = store.stage(
+                    idempotency_key=f"{execution['execution_id']}:{filename}",
+                    content=raw,
+                    media_type="application/x-ndjson" if filename.endswith(".jsonl") else "application/json",
+                    schema_version=schema_version,
+                    producer_commit=commit,
+                    producer_runtime="python-test",
+                )
+                store.validate(
+                    operation_id=staged["operation_id"],
+                    validator=lambda content, expected=raw: content == expected,
+                    validator_id="test-exact-bytes/v1",
+                )
+                commit_receipt = store.commit(operation_id=staged["operation_id"])
+                store.verify_commit(operation_id=staged["operation_id"])
+                committed.append({
+                    "filename": filename,
+                    "operation_id": staged["operation_id"],
+                    "content_sha256": staged["content_sha256"],
+                    "byte_length": staged["byte_length"],
+                    "commit_receipt_sha256": hashlib.sha256(canonicalize(commit_receipt)).hexdigest(),
+                })
+            storage_bundle = {
+                "schema": "lottery.storage-commit-receipts/v1",
+                "experiment_id": experiment_id,
+                "trial_id": trial_id,
+                "attempt_id": attempt_id,
+                "execution_id": execution["execution_id"],
+                "store_root": "durable-store",
+                "receipts": committed,
+            }
+            storage_receipt_raw = canonicalize(storage_bundle) + b"\n"
+            storage_receipt_path = root / "storage-commit-receipts.json"
+            storage_receipt_path.write_bytes(storage_receipt_raw)
+            storage_receipts_sha256 = hashlib.sha256(storage_receipt_raw).hexdigest()
+            registry.start_trial(
+                experiment_id=experiment_id,
+                attempt_id=attempt_id,
+                config=trial_config,
+                actor=execution["actor"],
+                execution_context=execution,
+                expected_repository=repository,
+                expected_repository_id="1461523125",
+                expected_workflow_path=workflow_path,
+            )
+            registry.finish_trial(
+                experiment_id=experiment_id,
+                attempt_id=attempt_id,
+                terminal_status="succeeded",
+                result_sha256=hashlib.sha256(run_manifest_raw).hexdigest(),
+                artifact_sha256=hashlib.sha256(model_artifacts_raw).hexdigest(),
+                execution_id=execution["execution_id"],
+                storage_commit_receipts_sha256=storage_receipts_sha256,
+                actor=execution["actor"],
+            )
+            snapshot = registry.snapshot()
+            events = registry._read_events()
+            receipt = {
+                "schema": "lottery.experiment-run-receipt/v1",
+                "experiment_id": experiment_id,
+                "spec_sha256": experiment_id,
+                "approval_sha256": None,
+                "trial_id": trial_id,
+                "attempt_id": attempt_id,
+                "execution_id": execution["execution_id"],
+                "evaluation_run_id": run_manifest["run_id"],
+                "run_manifest_sha256": hashlib.sha256(run_manifest_raw).hexdigest(),
+                "model_artifacts_sha256": hashlib.sha256(model_artifacts_raw).hexdigest(),
+                "storage_commit_receipts_sha256": storage_receipts_sha256,
+                "event_count": snapshot["event_count"],
+                "event_chain_head_sha256": events[-1]["event_hash"],
+                "terminal_status": "succeeded",
+            }
+            receipt_path = root / "registry-run-receipt.json"
+            receipt_path.write_bytes(canonicalize(receipt) + b"\n")
+            report = _verify_registry_binding(
+                run_manifest=run_manifest,
+                run_manifest_raw=run_manifest_raw,
+                model_artifacts_raw=model_artifacts_raw,
+                registration_raw=registration_raw,
+                registry_root=registry.root,
+                registry_run_receipt_path=receipt_path,
+                artifact_provenance_path=provenance_path,
+                durable_store_root=durable_store_root,
+                storage_commit_receipts_path=storage_receipt_path,
+                ledger_path=ledger_path,
+            )
+            self.assertEqual(report["status"], "VERIFIED")
+            self.assertEqual(report["registry_experiment_id"], experiment_id)
+            self.assertEqual(report["execution_id"], execution["execution_id"])
+
     def test_holm_step_down_is_deterministic(self):
         adjusted = _holm({"front": 0.01, "back": 0.04})
         self.assertEqual(adjusted, {"front": 0.02, "back": 0.04})
