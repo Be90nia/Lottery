@@ -186,11 +186,16 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
             if artifact_id is not None and artifact_id not in artifact_ids:
                 raise ValueError(f"historical score ledger {key_name} references an absent model artifact")
     target_count = manifest["target_manifest"]["target_count_per_zone"]
+    manifest_terminal_counts = manifest["terminal_status_counts"]
+    observed_terminal_counts = {
+        status: terminal_counts.get(status, 0) for status in manifest_terminal_counts
+    }
     if (set(zone for zone, _ in zone_targets) != expected_zones
             or any(sum(1 for z, _ in zone_targets if z == zone) != target_count for zone in expected_zones)
             or any(count != len(expected_models) for count in target_model_counts.values())
             or sum(terminal_counts.values()) != len(ledger_lines)
-            or dict(terminal_counts) != manifest["terminal_status_counts"]):
+            or set(terminal_counts) - set(manifest_terminal_counts)
+            or observed_terminal_counts != manifest_terminal_counts):
         raise ValueError("historical score ledger model/zone denominators or terminal counts mismatch")
 
     return manifest, ledger_raw, artifacts_raw
