@@ -470,6 +470,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         "baseline comparison is not paired to the frozen target family",
     )
     mean_values: dict[str, dict[str, float]] = {}
+    replayed_primary_p_values: dict[str, float] = {}
     for zone in ("front", "back"):
         entry = baseline["zones"][zone]
         require(set(entry) == {
@@ -557,8 +558,6 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
             and abs(entry["candidate_vs_ewma_ci95_upper"] - ewma_ci[1]) <= 1e-10,
             f"{zone} moving-block bootstrap intervals do not replay from paired target ledger",
         )
-        if "replayed_primary_p_values" not in locals():
-            replayed_primary_p_values = {}
         replayed_primary_p_values[zone] = uniform_ci[2]
         require(
             entry["candidate_vs_expanding_ci95_upper"] <= 0
