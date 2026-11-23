@@ -56,7 +56,7 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
             "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
         },
         "multiplicity_family": ["candidate_vs_uniform:front", "candidate_vs_uniform:back"],
-        "alpha": 0.05, "calibration_method": "preregistered-randomized-pit-v1",
+        "alpha": 0.05, "calibration_method": "marginal-inclusion-ece-10-bin-v1",
         "calibration_tolerance": 0.05, "holdout_accessed": False,
     }
     chronology = {
@@ -220,10 +220,29 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
     }
     calibration = {
         "schema": "lottery.g3-calibration/v1", "target_ids_sha256": target_hash,
-        "method": "preregistered-randomized-pit-v1",
+        "method": "marginal-inclusion-ece-10-bin-v1",
         "zones": {
-            "front": {"target_count": 2649, "per_target_abs_errors": [0.01] * 2649, "max_abs_error": 0.01},
-            "back": {"target_count": 2649, "per_target_abs_errors": [0.01] * 2649, "max_abs_error": 0.01},
+            zone: {
+                "target_count": 2649,
+                "population_size": population_size,
+                "selection_size": selection_size,
+                "observation_count": 2649 * population_size,
+                "brier_score": 0.2,
+                "ece": 0.0,
+                "max_abs_bin_gap": 0.0,
+                "per_target_brier_scores": [0.2] * 2649,
+                "bins": [
+                    {
+                        "bin_index": index, "lower": index / 10, "upper": (index + 1) / 10,
+                        "count": (2649 * population_size) // 10 + (1 if index < (2649 * population_size) % 10 else 0),
+                        "mean_predicted_probability": (index + 0.5) / 10,
+                        "observed_frequency": (index + 0.5) / 10,
+                        "abs_gap": 0.0,
+                    }
+                    for index in range(10)
+                ],
+            }
+            for zone, population_size, selection_size in (("front", 35, 5), ("back", 12, 2))
         },
     }
     reports = {
