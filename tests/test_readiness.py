@@ -118,6 +118,13 @@ class ReadinessTests(unittest.TestCase):
         report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
         self.assertEqual(report["gate_states"]["G0"], "FAIL")
 
+    def test_nonportable_and_noncanonical_evidence_paths_are_rejected(self):
+        for path in ("receipt\\..\\outside", "receipt.txt//", "receipt.txt/./"):
+            with self.subTest(path=path):
+                self.gates[0]["evidence"] = [{"path": path, "sha256": self.proof_hash}]
+                report = self.evaluate(self.manifest, self.gates, self.faults, self.evidence)
+                self.assertEqual(report["gate_states"]["G0"], "FAIL")
+
     def test_fault_mismatch_or_uninjected_fault_is_not_a_pass(self):
         self.faults[0]["observed_state"] = "published_partial_output"
         self.faults[1]["injected"] = False
