@@ -114,6 +114,8 @@ class RegistryScheduleTests(unittest.TestCase):
             code_commit="e" * 40,
             target_manifest_verifier=lambda value: True,
             inventory_verifier=lambda value: True,
+            schedule_attestor=lambda value: {"key_id": "test-key", "signature": "fixture-signature", "payload_sha256": digest(value)},
+            schedule_verifier=lambda value: True,
             **kw,
         )
 
