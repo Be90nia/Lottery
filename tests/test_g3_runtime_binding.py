@@ -86,6 +86,10 @@ class G3RuntimeBindingTests(unittest.TestCase):
             config["legacy_child_registration_comment_url"],
             "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
         )
+        self.assertEqual(
+            config["legacy_child_registration_comment_sha256"],
+            "161a14dc087702780917ec020685f6c85f696e7f90f607d1ede9959abc8cb8c2",
+        )
         self.assertIn("no synthetic content-addressed parent ID", config["parent_lineage_disposition"])
 
     def test_registration_start_manifest_terminal_and_exact_event_hashes_bind(self):
@@ -122,6 +126,10 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertEqual(
             receipt["legacy_child_registration_comment_url"],
             "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
+        )
+        self.assertEqual(
+            receipt["legacy_child_registration_comment_sha256"],
+            "161a14dc087702780917ec020685f6c85f696e7f90f607d1ede9959abc8cb8c2",
         )
         receipt_bytes = (self.output_dir / "registry-run-receipt.json").read_bytes()
         replayed = runner._finish_registered_execution(registry, binding, self.output_path)
@@ -285,6 +293,10 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertEqual(
             provenance["legacy_child_registration_comment_url"],
             "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
+        )
+        self.assertEqual(
+            provenance["legacy_child_registration_comment_sha256"],
+            "161a14dc087702780917ec020685f6c85f696e7f90f607d1ede9959abc8cb8c2",
         )
 
     def test_caught_runner_exception_terminalizes_started_attempt(self):
