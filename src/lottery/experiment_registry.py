@@ -605,13 +605,22 @@ class ExperimentRegistry:
             if config_sha256 not in {_sha(canonicalize(item)) for item in spec["trial_plan"]}:
                 raise ExperimentRegistryError("historical import config was not in the immutable trial plan")
             existing = experiment["attempts"].get(attempt_id)
+            resume_partial_import = False
             if existing is not None:
-                if (existing.get("imported") is True
-                        and existing.get("source_metadata_sha256") == source_metadata_sha256
-                        and existing.get("source_verification_receipt_sha256") == verification_receipt_sha256
-                        and existing.get("status") == "completed_uncommitted"):
+                same_source = (
+                    existing.get("imported") is True
+                    and existing.get("source_metadata_sha256") == source_metadata_sha256
+                    and existing.get("source_verification_receipt_sha256") == verification_receipt_sha256
+                    and existing.get("execution_id") == context["execution_id"]
+                    and existing.get("config_sha256") == config_sha256
+                )
+                if not same_source:
+                    raise ExperimentRegistryError("historical attempt ID already exists with conflicting evidence")
+                if existing.get("status") == "completed_uncommitted":
                     return existing
-                raise ExperimentRegistryError("historical attempt ID already exists with conflicting evidence")
+                if existing.get("status") != "running":
+                    raise ExperimentRegistryError("historical attempt is in a non-recoverable terminal state")
+                resume_partial_import = True
             approval_sha256 = experiment["registration"].get("approval_sha256")
             if approval_sha256 is not None:
                 raise ExperimentRegistryError("exploratory historical import must not fabricate an approval receipt")
@@ -625,19 +634,20 @@ class ExperimentRegistry:
                 "source_run_url": source_metadata["source_run_url"],
                 "imported": True,
             }
-            self._append_event_locked({
-                "schema": EVENT_SCHEMA,
-                "event_id": start_event_id,
-                "event_type": "trial_started",
-                "occurred_at_utc": recorded_at,
-                "actor": actor,
-                "experiment_id": experiment_id,
-                "attempt_id": attempt_id,
-                "config_sha256": config_sha256,
-                "execution_context": context,
-                "approval_sha256": None,
-                **common,
-            })
+            if not resume_partial_import:
+                self._append_event_locked({
+                    "schema": EVENT_SCHEMA,
+                    "event_id": start_event_id,
+                    "event_type": "trial_started",
+                    "occurred_at_utc": recorded_at,
+                    "actor": actor,
+                    "experiment_id": experiment_id,
+                    "attempt_id": attempt_id,
+                    "config_sha256": config_sha256,
+                    "execution_context": context,
+                    "approval_sha256": None,
+                    **common,
+                })
             self._append_event_locked({
                 "schema": EVENT_SCHEMA,
                 "event_id": finish_event_id,
