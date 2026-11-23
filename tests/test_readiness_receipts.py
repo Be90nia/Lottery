@@ -144,8 +144,8 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         "schema": "lottery.g3-calibration/v1", "target_ids_sha256": target_hash,
         "method": "preregistered-randomized-pit-v1",
         "zones": {
-            "front": {"target_count": 2649, "max_abs_error": 0.01},
-            "back": {"target_count": 2649, "max_abs_error": 0.01},
+            "front": {"target_count": 2649, "per_target_abs_errors": [0.01] * 2649, "max_abs_error": 0.01},
+            "back": {"target_count": 2649, "per_target_abs_errors": [0.01] * 2649, "max_abs_error": 0.01},
         },
     }
     reports = {
