@@ -102,9 +102,9 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
                 "expanding": uniform_nll + 0.1, "ewma": uniform_nll + 0.1,
             },
             "candidate_vs_uniform_mean_delta": -0.2,
-            "candidate_vs_uniform_ci95": [-0.21, -0.19],
-            "candidate_vs_expanding_ci95_upper": -0.2,
-            "candidate_vs_ewma_ci95_upper": -0.2,
+            "candidate_vs_uniform_ci95": [-0.2, -0.2],
+            "candidate_vs_expanding_ci95_upper": -0.3,
+            "candidate_vs_ewma_ci95_upper": -0.3,
         }
     baseline = {
         "schema": "lottery.g3-baseline-comparison/v1", "target_ids_sha256": target_hash,
@@ -116,6 +116,10 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         "schema": "lottery.g3-holm-control/v1", "target_ids_sha256": target_hash,
         "bootstrap_replicates": 1000, "block_length": 50, "bootstrap_seed": 20261118,
         "bootstrap_seeds_by_zone": {"front": 20261118, "back": 20261119},
+        "bootstrap_seeds_by_zone_and_comparison": {
+            "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+            "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+        },
         "method": "holm-step-down-one-sided-centered-moving-block-bootstrap", "alpha": 0.05,
         "hypotheses": [
             {"hypothesis_id": "candidate_vs_uniform:front", "p_value": 0.001,
