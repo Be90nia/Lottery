@@ -73,8 +73,11 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
     """Validate and write one row per model × zone × target, plus artifacts/manifest."""
     if experiment_binding is not None:
         required_binding = {
-            "experiment_id", "spec_sha256", "approval_sha256", "trial_id",
-            "trial_config", "attempt_id", "execution_context",
+            "experiment_id", "spec_sha256", "experiment_class", "approval_sha256",
+            "approval_required", "approval_disposition", "approval_disposition_reason",
+            "legacy_parent_issue_url", "legacy_child_registration_comment_url",
+            "parent_lineage_disposition", "trial_id", "trial_config", "attempt_id",
+            "execution_context",
         }
         if not isinstance(experiment_binding, dict) or set(experiment_binding) != required_binding:
             raise ValueError("experiment binding fields do not match the closed run-binding schema")
@@ -94,6 +97,18 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             not isinstance(approval_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", approval_sha256) is None
         ):
             raise ValueError("experiment binding approval digest is malformed")
+        if experiment_binding["experiment_class"] != "exploratory":
+            raise ValueError("this G3 binding path is restricted to its exploratory child registration")
+        if (experiment_binding["approval_required"] is not False
+                or approval_sha256 is not None
+                or experiment_binding["approval_disposition"] != "not_required_exploratory"
+                or not isinstance(experiment_binding["approval_disposition_reason"], str)
+                or not experiment_binding["approval_disposition_reason"]):
+            raise ValueError("exploratory G3 approval disposition is inconsistent")
+        for field in ("legacy_parent_issue_url", "legacy_child_registration_comment_url",
+                      "parent_lineage_disposition"):
+            if not isinstance(experiment_binding[field], str) or not experiment_binding[field]:
+                raise ValueError(f"experiment binding {field} is required")
         try:
             execution_context = validate_execution_context(
                 experiment_binding["execution_context"],
@@ -238,6 +253,11 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                                         "trial_id": experiment_binding["trial_id"],
                                         "attempt_id": experiment_binding["attempt_id"],
                                         "execution_id": experiment_binding["execution_id"],
+                                        "approval_sha256": experiment_binding["approval_sha256"],
+                                        "approval_required": experiment_binding["approval_required"],
+                                        "approval_disposition": experiment_binding["approval_disposition"],
+                                        "legacy_parent_issue_url": experiment_binding["legacy_parent_issue_url"],
+                                        "legacy_child_registration_comment_url": experiment_binding["legacy_child_registration_comment_url"],
                                         "evaluation_run_id": run_id,
                                     }))
                                 artifact_ids.add(artifact_id)
@@ -281,6 +301,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                         "registry_attempt_id": experiment_binding["attempt_id"],
                         "execution_id": experiment_binding["execution_id"],
                         "approval_sha256": experiment_binding["approval_sha256"],
+                        "approval_required": experiment_binding["approval_required"],
+                        "approval_disposition": experiment_binding["approval_disposition"],
                     })
                 row["record_sha256"] = _hash_object(row)
                 ledger.append(row)
@@ -334,6 +356,13 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             "experiment_id": experiment_binding["experiment_id"],
             "spec_sha256": experiment_binding["spec_sha256"],
             "approval_sha256": experiment_binding["approval_sha256"],
+            "approval_required": experiment_binding["approval_required"],
+            "approval_disposition": experiment_binding["approval_disposition"],
+            "approval_disposition_reason": experiment_binding["approval_disposition_reason"],
+            "legacy_parent_issue_url": experiment_binding["legacy_parent_issue_url"],
+            "legacy_child_registration_comment_url": experiment_binding["legacy_child_registration_comment_url"],
+            "parent_lineage_disposition": experiment_binding["parent_lineage_disposition"],
+            "experiment_class": experiment_binding["experiment_class"],
             "trial_id": experiment_binding["trial_id"],
             "registry_attempt_id": experiment_binding["attempt_id"],
             "execution_id": experiment_binding["execution_id"],
