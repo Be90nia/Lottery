@@ -299,13 +299,21 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         and chronology["holdout_accessed"] is False,
         "frozen 2,649-target chronology, source identity or leakage boundary invalid",
     )
+    target_dates = chronology["target_dates"]
     cutoff_ids = chronology["training_cutoff_ids"]
+    cutoff_dates = chronology["training_cutoff_dates"]
     require(
-        isinstance(cutoff_ids, list) and len(cutoff_ids) == 2649
+        isinstance(target_dates, list) and len(target_dates) == 2649
+        and all(isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) for value in target_dates)
+        and target_dates == sorted(target_dates) and len(set(target_dates)) == 2649
+        and isinstance(cutoff_ids, list) and len(cutoff_ids) == 2649
         and all(isinstance(value, str) and re.fullmatch(r"\d{5}", value) for value in cutoff_ids)
-        and cutoff_ids[0] < target_ids[0]
-        and cutoff_ids[1:] == target_ids[:-1]
-        and all(cutoff_ids[index] < target_ids[index] for index in range(2649)),
+        and cutoff_ids[0] < target_ids[0] and cutoff_ids[1:] == target_ids[:-1]
+        and isinstance(cutoff_dates, list) and len(cutoff_dates) == 2649
+        and all(isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) for value in cutoff_dates)
+        and cutoff_dates[0] < target_dates[0] and cutoff_dates[1:] == target_dates[:-1]
+        and all(cutoff_ids[index] < target_ids[index] and cutoff_dates[index] < target_dates[index]
+                for index in range(2649)),
         "per-target training cutoffs do not match the frozen chronological predecessor sequence",
     )
     target_index = {target: index for index, target in enumerate(target_ids)}
@@ -342,6 +350,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     seen: set[tuple[str, str, str]] = set()
     scores: dict[tuple[str, str, str], float] = {}
     status_totals = {key: 0 for key in allowed_statuses}
+    run_id = None
     for line_number, line in enumerate(ledger_lines, 1):
         record = _strict_json(line, f"G3 terminal ledger line {line_number}")
         require(set(record) == {
@@ -376,7 +385,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
             and type(record["converged"]) is bool,
             f"terminal ledger line {line_number} violates target/cutoff/model identity",
         )
-        if "run_id" not in locals():
+        if run_id is None:
             run_id = record["run_id"]
         require(record["run_id"] == run_id, "terminal ledger mixes multiple run IDs")
         key = (model_id, zone, target)
