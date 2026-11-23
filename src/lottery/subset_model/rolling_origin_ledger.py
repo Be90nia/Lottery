@@ -329,8 +329,15 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
         "schema": "lot-055-run-manifest-v1",
         "run_id": run_id,
         "protocol": "LOT-055 frozen rolling-origin exact-subset evaluation",
-        "experiment_id": "LOT055-OPT-DIAG-20261120",
-        "experiment_class": "exploratory_diagnostic",
+        "experiment_id": (
+            experiment_binding["experiment_id"]
+            if experiment_binding is not None else "LOT055-OPT-DIAG-20261120"
+        ),
+        "legacy_experiment_label": "LOT055-OPT-DIAG-20261120",
+        "experiment_class": (
+            experiment_binding["experiment_class"]
+            if experiment_binding is not None else "exploratory_diagnostic"
+        ),
         "confirmatory_eligible": False,
         "confirmatory_ineligibility_reason": "post-outcome optimizer repair; see Issue #27 child registration",
         "snapshot": {
