@@ -103,6 +103,9 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
                 rows.append(row)
     ledger_raw = b"".join(canonicalize(row) + b"\n" for row in rows)
     ledger_path.write_bytes(ledger_raw)
+    model_artifacts_path = root / "G3-model-artifacts.jsonl"
+    model_artifacts_raw = b"{}\n" * 15894
+    model_artifacts_path.write_bytes(model_artifacts_raw)
     run_manifest_path = root / "G3-run-manifest.json"
     run_manifest = {
         "schema": "lot-055-run-manifest-v1",
@@ -140,6 +143,7 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
             for zone in ("front", "back")
             for role in ("candidate", "uniform", "expanding", "ewma")
         ],
+        "model_artifact_count": 15894,
         "expected_target_record_count": 21192,
         "actual_target_record_count": 21192,
         "terminal_status_counts": {
@@ -150,6 +154,10 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
             "target-score-ledger.jsonl": {
                 "sha256": hashlib.sha256(ledger_raw).hexdigest(),
                 "bytes": len(ledger_raw),
+            },
+            "model-artifacts.jsonl": {
+                "sha256": hashlib.sha256(model_artifacts_raw).hexdigest(),
+                "bytes": len(model_artifacts_raw),
             },
         },
     }
@@ -167,6 +175,10 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         "run_manifest": {
             "path": run_manifest_path.name,
             "sha256": hashlib.sha256(run_manifest_raw).hexdigest(),
+        },
+        "model_artifacts": {
+            "path": model_artifacts_path.name,
+            "sha256": hashlib.sha256(model_artifacts_raw).hexdigest(),
         },
     }
     zone_reports = {}
@@ -422,9 +434,8 @@ class TypedReadinessReceiptTests(unittest.TestCase):
                 path = "G3-run-manifest.json"
                 raw = (self.root / path).read_bytes()
             else:
-                raw = (collection + "\\n").encode()
-                path = "manifest-" + collection + ".bin"
-                (self.root / path).write_bytes(raw)
+                path = "G3-model-artifacts.jsonl"
+                raw = (self.root / path).read_bytes()
             evidence[collection] = [{"path": path, "sha256": hashlib.sha256(raw).hexdigest()}]
         self.manifest = {
             "schema": "lottery.release-manifest/v2", "release_id": "v2-release",
