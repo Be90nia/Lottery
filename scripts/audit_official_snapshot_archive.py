@@ -184,6 +184,10 @@ def audit_archive(
             if not isinstance(run_id, str) or not run_id:
                 raise AuditError(f"page {page_no}: run_id missing")
             run_ids.add(run_id)
+            payload = _json(raw, f"raw page {page_no}")
+            api_value = payload.get("value") if isinstance(payload, dict) else None
+            if not isinstance(api_value, dict):
+                raise AuditError(f"page {page_no}: raw API response value metadata missing")
             rows = _parse_page(raw, page_no, "sha256:" + digest)
             page_record_counts.append(len(rows))
             collection_page = collection_pages[page_no - 1]
@@ -201,6 +205,16 @@ def audit_archive(
                 or source_metadata.get("pages") != expected_pages
                 or source_metadata.get("pageNo") != page_no
                 or source_metadata.get("pageSize") != 100
+                or api_value.get("total") != expected_records
+                or api_value.get("pages") != expected_pages
+                or api_value.get("pageNo") != page_no
+                or api_value.get("pageSize") != 100
+                or source_metadata != {
+                    "total": api_value.get("total"),
+                    "pages": api_value.get("pages"),
+                    "pageNo": api_value.get("pageNo"),
+                    "pageSize": api_value.get("pageSize"),
+                }
             ):
                 raise AuditError(f"page {page_no}: collection manifest page inventory mismatch")
             for row in rows:
