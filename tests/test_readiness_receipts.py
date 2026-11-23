@@ -35,6 +35,11 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         "outcomes_observed_at_registration": False, "snapshot_sha256": snapshot_hash,
         "target_manifest_sha256": target_manifest_hash, "model_ids": model_ids,
         "bootstrap_replicates": 1000, "block_length": 50, "bootstrap_seed": 20261118,
+        "bootstrap_seeds_by_zone": {"front": 20261118, "back": 20261119},
+        "bootstrap_seeds_by_zone_and_comparison": {
+            "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+            "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+        },
         "multiplicity_family": ["candidate_vs_uniform:front", "candidate_vs_uniform:back"],
         "alpha": 0.05, "calibration_method": "preregistered-randomized-pit-v1",
         "calibration_tolerance": 0.05, "holdout_accessed": False,
