@@ -546,7 +546,7 @@ class ExperimentRegistry:
         required_source = {
             "source_run_url", "source_started_at_utc", "source_completed_at_utc",
             "source_artifact_id", "source_artifact_zip_sha256", "source_manifest_sha256",
-            "source_model_artifacts_sha256", "scientific_result_status", "confirmatory_eligible",
+            "source_model_artifacts_sha256", "source_evidence_sha256", "scientific_result_status", "confirmatory_eligible",
         }
         if not isinstance(source_metadata, dict) or set(source_metadata) != required_source:
             raise ExperimentRegistryError("historical source metadata fields do not match the closed import schema")
@@ -557,7 +557,7 @@ class ExperimentRegistry:
                 or not isinstance(source_metadata["scientific_result_status"], str)
                 or not source_metadata["scientific_result_status"]):
             raise ExperimentRegistryError("historical source metadata conflicts with the execution identity or exploratory boundary")
-        for field in ("source_artifact_zip_sha256", "source_manifest_sha256", "source_model_artifacts_sha256"):
+        for field in ("source_artifact_zip_sha256", "source_manifest_sha256", "source_model_artifacts_sha256", "source_evidence_sha256"):
             if not _is_sha(source_metadata[field]):
                 raise ExperimentRegistryError(f"{field} must be a lowercase SHA-256")
         parsed_times = []
@@ -575,13 +575,14 @@ class ExperimentRegistry:
         verification = metadata_verifier(source_metadata, context)
         verification_fields = {
             "schema", "verifier_id", "verified", "source_metadata_sha256",
-            "artifact_zip_sha256", "verified_at_utc",
+            "artifact_zip_sha256", "source_evidence_sha256", "verified_at_utc",
         }
         if (not isinstance(verification, dict) or set(verification) != verification_fields
                 or verification.get("schema") != "lottery.github-actions-verification/v1"
                 or verification.get("verified") is not True
                 or verification.get("source_metadata_sha256") != source_metadata_sha256
                 or verification.get("artifact_zip_sha256") != source_metadata["source_artifact_zip_sha256"]
+                or verification.get("source_evidence_sha256") != source_metadata["source_evidence_sha256"]
                 or not isinstance(verification.get("verifier_id"), str)
                 or not verification["verifier_id"]):
             raise ExperimentRegistryError("trusted GitHub metadata verifier did not attest the exact historical source")
