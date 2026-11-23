@@ -116,6 +116,16 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
             or manifest.get("confirmatory_eligible") is not False
             or manifest.get("snapshot_sha256") != evidence["scientific_result"]["snapshot_sha256"]):
         raise ValueError("historical run manifest scientific status or snapshot differs from evidence")
+    declared_outputs = manifest.get("output_files", {})
+    for filename, raw in (
+        ("target-score-ledger.jsonl", ledger_raw),
+        ("model-artifacts.jsonl", artifacts_raw),
+    ):
+        declaration = declared_outputs.get(filename)
+        if (not isinstance(declaration, dict)
+                or declaration.get("sha256") != _digest(raw)
+                or declaration.get("bytes") != len(raw)):
+            raise ValueError(f"historical manifest output declaration mismatch: {filename}")
 
     ledger_lines = [line for line in ledger_raw.splitlines() if line]
     artifact_lines = [line for line in artifacts_raw.splitlines() if line]
