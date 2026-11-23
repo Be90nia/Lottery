@@ -35,6 +35,25 @@ account, login, MFA, human identity provider, or KMS dependency.
 - All receipts bind the same immutable release manifest and source commit.
   Mutable release refs are rejected.
 
+## G2 numerical evidence semantics
+
+G2 no longer accepts arbitrary hash-valid text files for its numerical checks.
+The verifier parses strict JSON and validates:
+- Full-support counts against the exact front `C(35,5)=324632` and back
+  `C(12,2)=66) supports.
+- Probability normalization, nonnegative minimum probability and bounded
+  numerical error (at most `1e-12`) for both zones.
+- Exact probability oracle coverage over every legal subset in both zones.
+- Conditional-Poisson algorithm identity and finite probability/marginal oracle
+  errors.
+- Deterministic backward-DP sampler identity, fixed-seed replay and zero
+  invalid samples.
+- Numerical stress coverage with no non-finite outputs and bounded normalization
+  error.
+
+A hash-valid report with a probability sum of 0.5 is rejected. These are
+content/contract checks; evidence producer authenticity is still not claimed.
+
 ## Champion registry cross-check
 
 The lifecycle API also exposes a read-only
