@@ -25,6 +25,7 @@ def execution_context(*, attempt="1"):
     env = {
         "GITHUB_REPOSITORY": repository,
         "GITHUB_REPOSITORY_ID": "1461523125",
+        "LOTTERY_WORKFLOW_ID": "423307604",
         "GITHUB_WORKFLOW_REF": f"{repository}/{workflow_path}@refs/heads/feature",
         "GITHUB_RUN_ID": "45130000000",
         "GITHUB_RUN_ATTEMPT": attempt,
@@ -38,6 +39,7 @@ def execution_context(*, attempt="1"):
         env, checked_out_sha=commit,
         expected_repository=repository,
         expected_repository_id="1461523125",
+        expected_workflow_id=423307604,
         expected_workflow_path=workflow_path,
     )
 
@@ -247,6 +249,7 @@ class ExperimentRegistryTests(unittest.TestCase):
             execution_context=context,
             expected_repository="Be90nia/Lottery",
             expected_repository_id="1461523125",
+            expected_workflow_id=423307604,
             expected_workflow_path=".github/workflows/subset-research.yml",
         )
         self.assertEqual(started["execution_id"], context["execution_id"])
@@ -421,6 +424,7 @@ class ExperimentRegistryTests(unittest.TestCase):
                 metadata_verifier=verifier,
                 expected_repository="Be90nia/Lottery",
                 expected_repository_id="1461523125",
+                expected_workflow_id=423307604,
                 expected_workflow_path=".github/workflows/subset-research.yml",
             )
         self.registry._append_event_locked = original_append
