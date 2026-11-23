@@ -19,6 +19,7 @@ def issue_registered_forecast(
     *,
     now: datetime | None = None,
     evaluator: FrozenArtifactEvaluator | None = None,
+    schedule_verifier: Callable[[dict[str, Any]], bool] | None = None,
 ) -> dict[str, Any]:
     """Load both frozen distributions, verify normalization, and append one forecast."""
     records = validate_schedule(schedule)
