@@ -14,7 +14,7 @@ from lottery.readiness_receipts import (
 )
 
 
-_G3_FIXTURE_CACHE: tuple[dict[str, bytes], bytes] | None = None
+_G3_FIXTURE_CACHE: tuple[dict[str, bytes], bytes, bytes] | None = None
 
 
 def _build_g3_fixture(root: Path) -> dict[str, bytes]:
@@ -22,6 +22,7 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
     ledger_path = root / "G3-terminal-ledger.jsonl"
     if _G3_FIXTURE_CACHE is not None:
         ledger_path.write_bytes(_G3_FIXTURE_CACHE[1])
+        (root / "G3-run-manifest.json").write_bytes(_G3_FIXTURE_CACHE[2])
         return _G3_FIXTURE_CACHE[0]
     model_ids = {
         "candidate": "exponential_family", "uniform": "uniform",
@@ -36,10 +37,15 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
     cutoff_dates = [date(1999, 12, 31).isoformat(), *target_dates[:-1]]
     target_hash = hashlib.sha256(canonicalize(targets)).hexdigest()
     snapshot_hash = "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
-    target_manifest_hash = "b" * 64
+    target_manifest_hash = hashlib.sha256(canonicalize({
+        "targets": [
+            {"target_draw_id": target, "target_draw_date": target_dates[index]}
+            for index, target in enumerate(targets)
+        ]
+    })).hexdigest()
     prereg = {
         "schema": "lottery.g3-preregistration/v1", "protocol_id": "LOT-055-v1",
-        "experiment_id": "c" * 64, "experiment_class": "confirmatory",
+        "experiment_id": hashlib.sha256(b"g3-fixture-experiment").hexdigest(), "experiment_class": "confirmatory",
         "outcomes_observed_at_registration": False, "snapshot_sha256": snapshot_hash,
         "target_manifest_sha256": target_manifest_hash, "model_ids": model_ids,
         "bootstrap_replicates": 1000, "block_length": 50, "bootstrap_seed": 20261118,
@@ -97,12 +103,56 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
                 rows.append(row)
     ledger_raw = b"".join(canonicalize(row) + b"\n" for row in rows)
     ledger_path.write_bytes(ledger_raw)
+    run_manifest_path = root / "G3-run-manifest.json"
+    run_manifest = {
+        "schema": "lot-055-run-manifest-v1",
+        "run_id": "g3-fixture-run",
+        "experiment_id": "g3-fixture-experiment",
+        "experiment_class": "confirmatory",
+        "confirmatory_eligible": True,
+        "confirmatory_ineligibility_reason": None,
+        "snapshot": {"sha256": snapshot_hash, "row_count": 2949},
+        "target_manifest": {
+            "target_count_per_zone": 2649,
+            "first_target_draw_id": targets[0],
+            "last_target_draw_id": targets[-1],
+            "target_list_sha256": "sha256:" + target_manifest_hash,
+        },
+        "bootstrap": {
+            "replicates": 1000, "block_length": 50, "seed": 20261118,
+            "seeds_by_zone_and_comparison": {
+                "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+                "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+            },
+        },
+        "expected_target_record_count": 21192,
+        "actual_target_record_count": 21192,
+        "terminal_status_counts": {
+            "scored": 21192, "fit_failed": 0,
+            "artifact_invalid": 0, "probability_invalid": 0, "runner_error": 0,
+        },
+        "output_files": {
+            "target-score-ledger.jsonl": {
+                "sha256": hashlib.sha256(ledger_raw).hexdigest(),
+                "bytes": len(ledger_raw),
+            },
+        },
+    }
+    run_manifest["manifest_sha256"] = "sha256:" + hashlib.sha256(
+        canonicalize(run_manifest)
+    ).hexdigest()
+    run_manifest_raw = canonicalize(run_manifest) + b"\\n"
+    run_manifest_path.write_bytes(run_manifest_raw)
     denominator = {
         "schema": "lottery.g3-terminal-ledger-index/v1", "target_ids_sha256": target_hash,
         "model_ids": model_ids, "zones": ["front", "back"], "expected_target_count": 2649,
         "expected_record_count": 21192, "terminal_record_count": 21192,
         "status_counts": {"scored": 21192},
         "ledger": {"path": ledger_path.name, "sha256": hashlib.sha256(ledger_raw).hexdigest()},
+        "run_manifest": {
+            "path": run_manifest_path.name,
+            "sha256": hashlib.sha256(run_manifest_raw).hexdigest(),
+        },
     }
     zone_reports = {}
     for zone in ("front", "back"):
@@ -154,7 +204,7 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         "multiplicity_control": multiplicity, "calibration": calibration,
     }
     encoded = {key: canonicalize(value) for key, value in reports.items()}
-    _G3_FIXTURE_CACHE = (encoded, ledger_raw)
+    _G3_FIXTURE_CACHE = (encoded, ledger_raw, run_manifest_raw)
     return encoded
 
 
