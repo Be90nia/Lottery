@@ -45,5 +45,6 @@
   "parent_lineage_disposition": "external_issue_reference_only; no synthetic content-addressed parent ID is asserted",
   "approval_required": false,
   "approval_disposition": "not_required_exploratory",
-  "approval_disposition_reason": "The child registration is outcome-informed and exploratory; protected confirmatory approval is not applicable and no approval receipt is fabricated."
+  "approval_disposition_reason": "The child registration is outcome-informed and exploratory; protected confirmatory approval is not applicable and no approval receipt is fabricated.",
+  "legacy_child_registration_comment_sha256": "161a14dc087702780917ec020685f6c85f696e7f90f607d1ede9959abc8cb8c2"
 }
