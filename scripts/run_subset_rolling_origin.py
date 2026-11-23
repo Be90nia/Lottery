@@ -226,8 +226,8 @@ def _finish_registered_execution(
         try:
             if mode == "json":
                 value = json.loads(raw)
-                return canonicalize(value) + b"\\n" == raw
-            if not raw.endswith(b"\\n"):
+                return canonicalize(value) + b"\n" == raw
+            if not raw.endswith(b"\n"):
                 return False
             lines = raw.splitlines()
             if not lines:
@@ -286,7 +286,7 @@ def _finish_registered_execution(
         "store_root": "durable-store",
         "receipts": committed,
     }
-    storage_receipt_raw = canonicalize(storage_receipt_bundle) + b"\\n"
+    storage_receipt_raw = canonicalize(storage_receipt_bundle) + b"\n"
     storage_receipt_path = output_path.parent / "storage-commit-receipts.json"
     storage_receipt_path.write_bytes(storage_receipt_raw)
     storage_receipts_sha256 = hashlib.sha256(storage_receipt_raw).hexdigest()
