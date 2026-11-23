@@ -6,6 +6,13 @@ account, login, MFA, human identity provider, or KMS dependency.
 
 ## What is verified
 
+- The v2 release manifest pins the immutable source commit and references the
+  workflow policy, dependency lock, readiness policy, canonical snapshot,
+  source-evidence ledger, runtime/toolchain, SBOM, security scan, experiment
+  registration/evaluation manifests, Champion registry, model artifacts,
+  sampler/RNG identity, storage receipts, backup generation and independent
+  restore receipt. Every reference is resolved beneath the evidence root and
+  checked against actual bytes; duplicate paths are rejected.
 - Each G0-G8 result references one JSON receipt with a gate-specific
   `receipt_type`, exact `gate_id`, release ID, source commit and digest of the
   exact release manifest.
