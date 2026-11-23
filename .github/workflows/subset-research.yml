@@ -1,13 +1,16 @@
 name: exact-subset-research
 
 on:
-  # One-shot launch path for the explicitly requested frozen research run.
-  # Restrict to this exact PR branch and workflow-file changes only.
+  # One-shot frozen research launch for the preregistered branch and the
+  # explicit numerical-solver amendment branch. Never run on arbitrary pushes.
   push:
     branches:
       - feat/lot-055-preregistered-holm-inference
+      - feat/lot-063-prospective-score-ledger
     paths:
       - .github/workflows/subset-research.yml
+      - src/lottery/subset_model/artifact.py
+      - src/lottery/subset_model/conditional_poisson.py
       - src/lottery/subset_model/exponential.py
       - src/lottery/subset_model/artifact.py
       - src/lottery/subset_model/rolling_origin_ledger.py
@@ -143,7 +146,10 @@ jobs:
           python scripts/run_subset_rolling_origin.py \
             --snapshot data/processed/draws-20261118.jsonl \
             --output subset-model-rolling-origin.json \
-            --checkpoint-dir subset-model-checkpoints
+            --checkpoint-dir subset-model-checkpoints \
+            --registry-root experiment-registry \
+            --registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json \
+            --require-execution-binding
       - name: Upload full research result (including failure diagnostics)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -154,6 +160,9 @@ jobs:
             run_manifest.json
             target-score-ledger.jsonl
             model-artifacts.jsonl
+            model-artifact-provenance.jsonl
+            registry-run-receipt.json
+            experiment-registry/
             subset-model-checkpoints/
           if-no-files-found: warn
           retention-days: 90
