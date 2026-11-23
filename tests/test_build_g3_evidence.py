@@ -8,12 +8,22 @@ from pathlib import Path
 from scripts.build_g3_evidence import (
     G3EvidenceBuildError,
     _holm,
+    _legacy_label_digest,
     _read_snapshot,
     _strict_json,
 )
 
 
 class G3EvidenceAdapterTests(unittest.TestCase):
+    def test_legacy_label_digest_is_not_a_registry_identity(self):
+        manifest = {"experiment_id": "LOT055-OPT-DIAG-20261120"}
+        digest = _legacy_label_digest(manifest)
+        self.assertEqual(
+            digest,
+            "4eceab2eab2cc9cdd2961634815f5ed586ddd9f54df5496d7d2754f60039a12a",
+        )
+        self.assertNotEqual(digest, manifest["experiment_id"])
+
     def test_holm_step_down_is_deterministic(self):
         adjusted = _holm({"front": 0.01, "back": 0.04})
         self.assertEqual(adjusted, {"front": 0.02, "back": 0.04})
