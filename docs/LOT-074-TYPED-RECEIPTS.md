@@ -9,8 +9,13 @@ account, login, MFA, human identity provider, or KMS dependency.
 - Each G0-G8 result references one JSON receipt with a gate-specific
   `receipt_type`, exact `gate_id`, release ID, source commit and digest of the
   exact release manifest.
-- Gate receipts contain a non-empty set of unique checks; every check must
-  explicitly pass. The caller does not supply an authoritative PASS field.
+- Gate receipts must contain the complete gate-specific check inventory (for
+  example G0 pins source/workflow/dependencies/runtime/SBOM; G2 checks full
+  support, normalization, exact probabilities and numerical stability). Every
+  check explicitly passes and references its own evidence file and SHA-256.
+  The caller does not supply an authoritative PASS field.
+- Check evidence files are verified byte-for-byte, and cannot be reused across
+  checks, gates or fault receipts.
 - Each F01-F15 result references a fault-specific receipt binding the fault ID,
   injection method, expected and observed states, recovery action, runner
   commit, UTC timestamp, and evidence file digest.
