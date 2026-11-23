@@ -670,6 +670,13 @@ def build_g3_evidence_bundle(
     shutil.copyfile(ledger_path, staged_ledger)
     shutil.copyfile(run_manifest_path, staged_manifest)
     shutil.copyfile(model_artifacts_path, staged_artifacts)
+    if registry_binding.get("status") == "VERIFIED":
+        shutil.copyfile(registration_path, output_dir / "g3-registration-source.json")
+        shutil.copyfile(registry_run_receipt_path, output_dir / "registry-run-receipt.json")
+        shutil.copyfile(artifact_provenance_path, output_dir / "model-artifact-provenance.jsonl")
+        shutil.copyfile(storage_commit_receipts_path, output_dir / "storage-commit-receipts.json")
+        shutil.copytree(registry_root, output_dir / "experiment-registry", dirs_exist_ok=True)
+        shutil.copytree(durable_store_root, output_dir / "durable-store", dirs_exist_ok=True)
     denominator = {
         "schema": "lottery.g3-terminal-ledger-index/v1",
         "target_ids_sha256": target_ids_hash,
@@ -682,6 +689,14 @@ def build_g3_evidence_bundle(
         "ledger": {"path": staged_ledger.name, "sha256": ledger_digest},
         "run_manifest": {"path": staged_manifest.name, "sha256": _sha256(staged_manifest.read_bytes())},
         "model_artifacts": {"path": staged_artifacts.name, "sha256": _sha256(staged_artifacts.read_bytes())},
+        "registry_binding": {
+            "status": registry_binding.get("status"),
+            "experiment_id": registry_binding.get("registry_experiment_id"),
+            "trial_id": registry_binding.get("trial_id"),
+            "execution_id": registry_binding.get("execution_id"),
+            "registry_run_receipt_sha256": registry_binding.get("registry_run_receipt_sha256"),
+            "storage_commit_receipts_sha256": registry_binding.get("storage_commit_receipts_sha256"),
+        },
     }
 
     bootstrap = run_manifest.get("bootstrap", {})
