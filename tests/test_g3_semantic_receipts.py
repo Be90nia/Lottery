@@ -374,6 +374,18 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptVerificationError, "Holm adjusted p-values"):
             self.verify()
 
+    def test_calibration_ece_must_reconcile_with_all_reliability_bins(self):
+        self.calibration["zones"]["front"]["ece"] = 0.01
+        self.raw["calibration"] = canonicalize(self.calibration)
+        with self.assertRaisesRegex(ReceiptVerificationError, "marginal calibration fails"):
+            self.verify()
+
+    def test_unregistered_calibration_method_cannot_be_selected_by_receipt_author(self):
+        self.prereg["calibration_method"] = "arbitrary-self-asserted-method"
+        self.raw["preregistration"] = canonicalize(self.prereg)
+        with self.assertRaisesRegex(ReceiptVerificationError, "calibration policy invalid"):
+            self.verify()
+
     def test_calibration_requires_all_target_level_diagnostics(self):
         self.calibration["zones"]["front"]["per_target_brier_scores"].pop()
         self.raw["calibration"] = canonicalize(self.calibration)
