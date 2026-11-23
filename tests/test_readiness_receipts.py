@@ -125,6 +125,21 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
                 "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
             },
         },
+        "models": [
+            {
+                "zone": zone, "model_name": model_ids[role],
+                "model_family": {
+                    "candidate": "complete_subset_exponential",
+                    "uniform": "uniform_analytic",
+                    "expanding": "conditional_poisson",
+                    "ewma": "conditional_poisson",
+                }[role],
+                "model_configuration_hash": "sha256:" + "d" * 64,
+                "feature_schema_hash": "sha256:" + "e" * 64,
+            }
+            for zone in ("front", "back")
+            for role in ("candidate", "uniform", "expanding", "ewma")
+        ],
         "expected_target_record_count": 21192,
         "actual_target_record_count": 21192,
         "terminal_status_counts": {
