@@ -42,6 +42,7 @@ BOOTSTRAP_BLOCK = 50
 BOOTSTRAP_SEED = 20261118
 EXPECTED_REPOSITORY = "Be90nia/Lottery"
 EXPECTED_REPOSITORY_ID = "1461523125"
+EXPECTED_WORKFLOW_ID = 423307604
 EXPECTED_WORKFLOW_PATH = ".github/workflows/subset-research.yml"
 
 
@@ -233,6 +234,7 @@ def _start_registered_execution(
         checked_out_sha=checked_out_sha,
         expected_repository=EXPECTED_REPOSITORY,
         expected_repository_id=EXPECTED_REPOSITORY_ID,
+        expected_workflow_id=EXPECTED_WORKFLOW_ID,
         expected_workflow_path=EXPECTED_WORKFLOW_PATH,
     )
     spec, trial_config = _build_g3_registry_spec(rows, snapshot_digest, registration_path)
