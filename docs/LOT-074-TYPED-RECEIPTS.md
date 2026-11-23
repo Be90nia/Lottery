@@ -37,12 +37,14 @@ requires the relevant source evidence and independent data checks. No login,
 MFA, approval portal, KMS, cloud identity or signed attestation service is
 required for the offline MVP receipt contract.
 
-The helper returns `READY_FOR_SHADOW` only when the full typed receipt inventory
-is present and valid and LOT-042 is explicitly isolated. This is a receipt
-contract result, not authorization to enable scheduled collectors, serving,
-promotion, rollback or production. The existing LOT-067 evaluator remains the
-release-state authority until the v2 manifest and gate-specific contracts are
-fully integrated and reviewed. Production readiness remains disabled.
+The helper never returns a readiness authorization. When all typed receipt
+files are present and valid it reports `receipt_completeness=COMPLETE`, while
+`readiness=NOT_READY`, `shadow_authorized=false` and
+`production_ready=false`. LOT-042 access changes completeness to
+`BLOCKED_LOT042`. This avoids treating self-authored, hash-valid receipts as
+proof that a gate is operationally satisfied. The existing LOT-067 evaluator
+remains the release-state authority until the v2 manifest, gate-specific
+evidence semantics and source provenance are fully integrated and reviewed.
 
 ## Files
 
