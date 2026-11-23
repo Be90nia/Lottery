@@ -33,11 +33,16 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         self.cutoff_dates = [(date(1999, 12, 31)).isoformat(), *self.target_dates[:-1]]
         self.target_hash = hashlib.sha256(canonicalize(self.targets)).hexdigest()
         self.snapshot_hash = "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
-        self.target_manifest_hash = "b" * 64
+        self.target_manifest_hash = hashlib.sha256(canonicalize({
+            "targets": [
+                {"target_draw_id": target, "target_draw_date": self.target_dates[index]}
+                for index, target in enumerate(self.targets)
+            ]
+        })).hexdigest()
         self.prereg = {
             "schema": "lottery.g3-preregistration/v1",
             "protocol_id": "LOT-055-v1",
-            "experiment_id": "c" * 64,
+            "experiment_id": hashlib.sha256(b"g3-fixture-experiment").hexdigest(),
             "experiment_class": "confirmatory",
             "outcomes_observed_at_registration": False,
             "snapshot_sha256": self.snapshot_hash,
@@ -123,6 +128,46 @@ class G3SemanticEvidenceTests(unittest.TestCase):
                     rows.append(row)
         self.ledger_raw = b"".join(canonicalize(row) + b"\n" for row in rows)
         self.ledger_path.write_bytes(self.ledger_raw)
+        self.run_manifest_path = self.root / "g3-run-manifest.json"
+        self.run_manifest = {
+            "schema": "lot-055-run-manifest-v1",
+            "run_id": "g3-fixture-run",
+            "experiment_id": "g3-fixture-experiment",
+            "experiment_class": "confirmatory",
+            "confirmatory_eligible": True,
+            "confirmatory_ineligibility_reason": None,
+            "snapshot": {"sha256": self.snapshot_hash, "row_count": 2949},
+            "target_manifest": {
+                "target_count_per_zone": 2649,
+                "first_target_draw_id": self.targets[0],
+                "last_target_draw_id": self.targets[-1],
+                "target_list_sha256": "sha256:" + self.target_manifest_hash,
+            },
+            "bootstrap": {
+                "replicates": 1000, "block_length": 50, "seed": 20261118,
+                "seeds_by_zone_and_comparison": {
+                    "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+                    "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+                },
+            },
+            "expected_target_record_count": 2649 * 4 * 2,
+            "actual_target_record_count": 2649 * 4 * 2,
+            "terminal_status_counts": {
+                "scored": 2649 * 4 * 2, "fit_failed": 0,
+                "artifact_invalid": 0, "probability_invalid": 0, "runner_error": 0,
+            },
+            "output_files": {
+                "target-score-ledger.jsonl": {
+                    "sha256": hashlib.sha256(self.ledger_raw).hexdigest(),
+                    "bytes": len(self.ledger_raw),
+                },
+            },
+        }
+        self.run_manifest["manifest_sha256"] = "sha256:" + hashlib.sha256(
+            canonicalize(self.run_manifest)
+        ).hexdigest()
+        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\\n"
+        self.run_manifest_path.write_bytes(self.run_manifest_raw)
         self.denominator = {
             "schema": "lottery.g3-terminal-ledger-index/v1",
             "target_ids_sha256": self.target_hash,
@@ -135,6 +180,10 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             "ledger": {
                 "path": self.ledger_path.name,
                 "sha256": hashlib.sha256(self.ledger_raw).hexdigest(),
+            },
+            "run_manifest": {
+                "path": self.run_manifest_path.name,
+                "sha256": hashlib.sha256(self.run_manifest_raw).hexdigest(),
             },
         }
         zones = {}
