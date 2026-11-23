@@ -199,8 +199,18 @@ def verify_receipt_set(
     """Verify complete, non-reused typed receipt inventory and derive readiness."""
     if manifest.get("schema") != "lottery.release-manifest/v1":
         raise ReceiptVerificationError("unsupported release manifest schema")
-    if not isinstance(manifest.get("release_id"), str) or not isinstance(manifest.get("source_commit"), str):
-        raise ReceiptVerificationError("manifest release identity missing")
+    if (
+        not isinstance(manifest.get("release_id"), str) or not manifest["release_id"]
+        or not isinstance(manifest.get("source_commit"), str)
+        or not GIT_SHA.fullmatch(manifest["source_commit"])
+        or manifest.get("release_ref") != manifest.get("source_commit")
+    ):
+        raise ReceiptVerificationError("manifest release identity/ref is invalid or mutable")
+    for field in ("workflow_policy_sha256", "dependency_lock_sha256", "readiness_policy_sha256", "snapshot_sha256"):
+        if not isinstance(manifest.get(field), str) or not SHA256.fullmatch(manifest[field]):
+            raise ReceiptVerificationError(f"manifest {field} must be a lowercase SHA-256")
+    if type(manifest.get("lot042_accessed")) is not bool:
+        raise ReceiptVerificationError("manifest LOT-042 isolation must be explicit")
     gates = {item.get("gate_id"): item for item in gate_results if isinstance(item, dict)}
     faults = {item.get("fault_id"): item for item in fault_results if isinstance(item, dict)}
     if len(gates) != len(gate_results) or set(gates) != set(GATE_TYPES):
