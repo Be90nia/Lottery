@@ -62,6 +62,69 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
         self.assertTrue(ledger)
         self.assertTrue(artifacts)
 
+    def test_live_github_run_job_step_and_artifact_metadata_are_pinned(self):
+        from pathlib import Path
+        evidence = json.loads(
+            Path("docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json").read_text(encoding="utf-8")
+        )
+        expected = evidence["run"]
+        run = {
+            "id": expected["id"],
+            "run_attempt": expected["run_attempt"],
+            "run_number": expected["run_number"],
+            "workflow_id": expected["workflow_id"],
+            "name": expected["workflow_name"],
+            "path": expected["workflow_path"],
+            "head_branch": expected["head_branch"],
+            "head_sha": expected["head_sha"],
+            "event": expected["event"],
+            "status": expected["status"],
+            "conclusion": expected["conclusion"],
+            "run_started_at": expected["run_started_at_utc"],
+            "html_url": expected["run_url"],
+            "repository": {"id": 1461523125},
+            "actor": {"login": expected["actor"]},
+        }
+        expected_job = evidence["job"]
+        job = {
+            "id": expected_job["id"],
+            "name": expected_job["name"],
+            "status": expected_job["status"],
+            "conclusion": expected_job["conclusion"],
+            "started_at": expected_job["started_at_utc"],
+            "completed_at": expected_job["completed_at_utc"],
+            "run_attempt": expected["run_attempt"],
+            "head_sha": expected["head_sha"],
+            "steps": [{
+                "name": "Run full frozen 2,649-target exact-subset evaluation",
+                "started_at": expected_job["evaluator_step_started_at_utc"],
+                "completed_at": expected_job["evaluator_step_completed_at_utc"],
+                "conclusion": "success",
+            }],
+        }
+        expected_artifact = evidence["artifact"]
+        artifact = {
+            "id": expected_artifact["id"],
+            "name": expected_artifact["name"],
+            "size_in_bytes": expected_artifact["size_in_bytes"],
+            "digest": expected_artifact["digest"],
+            "created_at": expected_artifact["created_at_utc"],
+            "expires_at": expected_artifact["expires_at_utc"],
+            "expired": False,
+            "workflow_run": {
+                "id": expected["id"],
+                "repository_id": 1461523125,
+                "head_sha": expected["head_sha"],
+            },
+        }
+        with patch.object(
+            importer, "_api_json",
+            side_effect=[run, {"jobs": [job]}, {"artifacts": [artifact]}],
+        ):
+            verified_run, verified_artifact = importer._verify_github_sources(evidence, "test-token")
+        self.assertEqual(verified_run["id"], expected["id"])
+        self.assertEqual(verified_artifact["id"], expected_artifact["id"])
+
     def test_archive_tampering_fails_before_historical_import(self):
         evidence, archive_raw = self.build_archive()
         tampered = archive_raw + b"tampered"
