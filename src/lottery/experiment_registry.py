@@ -268,6 +268,43 @@ class ExperimentRegistry:
             handle.flush()
             os.fsync(handle.fileno())
 
+    def _verify_historical_import_evidence(
+        self, *, source_metadata_sha256: str, source_verification_receipt_sha256: str,
+        execution_context: dict[str, Any], source_started_at_utc: str,
+        source_completed_at_utc: str | None = None, source_artifact_id: int | None = None,
+        source_artifact_zip_sha256: str | None = None,
+        scientific_result_status: str | None = None,
+    ) -> None:
+        if not _is_sha(source_metadata_sha256) or not _is_sha(source_verification_receipt_sha256):
+            raise ExperimentRegistryError("historical import evidence references malformed digests")
+        try:
+            source_metadata = _read_canonical(
+                self.root / "historical-source-metadata" / f"{source_metadata_sha256}.json"
+            )
+            verification = _read_canonical(
+                self.root / "github-actions-verification" / f"{source_verification_receipt_sha256}.json"
+            )
+        except ExperimentRegistryError as exc:
+            raise ExperimentRegistryError("historical import source metadata or verification receipt is missing/invalid") from exc
+        if (_sha(canonicalize(source_metadata)) != source_metadata_sha256
+                or _sha(canonicalize(verification)) != source_verification_receipt_sha256
+                or verification.get("schema") != "lottery.github-actions-verification/v1"
+                or verification.get("verified") is not True
+                or verification.get("source_metadata_sha256") != source_metadata_sha256
+                or verification.get("artifact_zip_sha256") != source_metadata.get("source_artifact_zip_sha256")
+                or verification.get("source_evidence_sha256") != source_metadata.get("source_evidence_sha256")
+                or source_metadata.get("source_run_url") != execution_context.get("run_url")
+                or source_metadata.get("source_started_at_utc") != source_started_at_utc
+                or source_metadata.get("confirmatory_eligible") is not False):
+            raise ExperimentRegistryError("historical import evidence does not resolve to the exact execution/source identity")
+        if source_completed_at_utc is not None and (
+            source_metadata.get("source_completed_at_utc") != source_completed_at_utc
+            or source_metadata.get("source_artifact_id") != source_artifact_id
+            or source_metadata.get("source_artifact_zip_sha256") != source_artifact_zip_sha256
+            or source_metadata.get("scientific_result_status") != scientific_result_status
+        ):
+            raise ExperimentRegistryError("historical import terminal event conflicts with its immutable source metadata")
+
     def _snapshot_unlocked(self) -> dict[str, Any]:
         events = self._read_events()
         experiments: dict[str, dict[str, Any]] = {}
