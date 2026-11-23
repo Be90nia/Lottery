@@ -528,7 +528,7 @@ def _verify_g3_evidence_bundle(
         "registry receipt, artifact provenance, storage receipt, or durable store bytes are missing/tampered",
     )
     require(
-        canonicalize(registry_receipt) + b"\\n" == registry_receipt_raw
+        canonicalize(registry_receipt) + b"\n" == registry_receipt_raw
         and registry_receipt.get("schema") == "lottery.experiment-run-receipt/v1"
         and registry_receipt.get("experiment_id") == registry_binding["registry_experiment_id"]
         and registry_receipt.get("trial_id") == registry_binding["trial_id"]
@@ -542,7 +542,7 @@ def _verify_g3_evidence_bundle(
         "registry run receipt does not match the run manifest, artifacts, or event-chain summary",
     )
     require(
-        canonicalize(storage_bundle) + b"\\n" == storage_receipt_raw
+        canonicalize(storage_bundle) + b"\n" == storage_receipt_raw
         and storage_bundle.get("schema") == "lottery.storage-commit-receipts/v1"
         and storage_bundle.get("experiment_id") == registry_binding["registry_experiment_id"]
         and storage_bundle.get("trial_id") == registry_binding["trial_id"]
