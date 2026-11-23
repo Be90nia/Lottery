@@ -26,6 +26,17 @@ GATE_TYPES = {
     "G8": "security-operations",
 }
 FAULTS = tuple(f"F{i:02d}" for i in range(1, 16))
+GATE_REQUIRED_CHECKS = {
+    "G0": ("source_commit", "workflow_action_pins", "dependency_lock", "runtime_toolchain", "sbom", "security_scan"),
+    "G1": ("canonical_snapshot", "raw_source_bytes", "source_authority", "parser_lineage", "outcome_validation", "coverage"),
+    "G2": ("full_support", "normalization", "exact_subset_probability", "conditional_poisson", "deterministic_sampler", "numerical_stability"),
+    "G3": ("preregistration", "chronological_targets", "complete_denominator", "baseline_comparison", "multiplicity_control", "calibration"),
+    "G4": ("row_level_labels", "regime_adjudication", "minimum_history", "same_target_comparison", "no_cross_regime_merge"),
+    "G5": ("three_slot_registry", "single_registry_generation", "front_back_pairing", "immutable_artifacts", "sampler_cardinality", "no_fit_on_request"),
+    "G6": ("frozen_forecast", "official_outcome_validation", "append_only_corrections", "statistical_unit", "monitoring_thresholds"),
+    "G7": ("conditional_create", "readback_hash", "fencing_tokens", "immutable_registry", "independent_backup", "restore_drill", "measured_rpo_rto"),
+    "G8": ("least_privilege", "secret_scan", "incident_response", "artifact_integrity", "rollback_drill", "operational_monitoring"),
+}
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 GIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 
@@ -97,19 +108,33 @@ def _utc_timestamp(value: Any, label: str) -> None:
         raise ReceiptVerificationError(f"{label}: timestamp must be UTC")
 
 
-def _checks_pass(checks: Any, label: str) -> None:
-    if not isinstance(checks, list) or not checks:
-        raise ReceiptVerificationError(f"{label}: checks must be a non-empty array")
-    seen: set[str] = set()
+def _checks_pass(checks: Any, label: str, root: Path) -> list[dict[str, str]]:
+    required = GATE_REQUIRED_CHECKS[label]
+    if not isinstance(checks, list):
+        raise ReceiptVerificationError(f"{label}: checks must be an array")
+    indexed: dict[str, dict[str, Any]] = {}
     for check in checks:
-        if not isinstance(check, dict) or set(check) != {"check_id", "status"}:
+        if not isinstance(check, dict) or set(check) != {"check_id", "status", "evidence"}:
             raise ReceiptVerificationError(f"{label}: check shape invalid")
         check_id = check["check_id"]
-        if not isinstance(check_id, str) or not check_id or check_id in seen:
+        if not isinstance(check_id, str) or check_id in indexed:
             raise ReceiptVerificationError(f"{label}: check ID missing or duplicated")
-        seen.add(check_id)
+        indexed[check_id] = check
+    if set(indexed) != set(required):
+        raise ReceiptVerificationError(f"{label}: required check inventory mismatch")
+    verified: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    for check_id in required:
+        check = indexed[check_id]
         if check["status"] != "PASS":
             raise ReceiptVerificationError(f"{label}: check {check_id} did not pass")
+        _, digest = _safe_file(root, check["evidence"], label + " " + check_id)
+        path = check["evidence"]["path"]
+        if path in seen_paths:
+            raise ReceiptVerificationError(f"{label}: check evidence must be unique")
+        seen_paths.add(path)
+        verified.append({"path": path, "sha256": digest})
+    return verified
 
 
 def verify_gate_receipt(
@@ -143,9 +168,12 @@ def verify_gate_receipt(
         raise ReceiptVerificationError(f"{gate_id}: receipt does not bind this release and gate")
     if not GIT_SHA.fullmatch(str(receipt["source_commit"])):
         raise ReceiptVerificationError(f"{gate_id}: source commit must be full Git SHA")
-    _checks_pass(receipt["checks"], gate_id)
+    check_evidence = _checks_pass(receipt["checks"], gate_id, root)
     _utc_timestamp(receipt["generated_at_utc"], gate_id)
-    return {"gate_id": gate_id, "receipt_sha256": digest, "status": "PASS"}
+    return {
+        "gate_id": gate_id, "receipt_sha256": digest, "status": "PASS",
+        "check_evidence": check_evidence,
+    }
 
 
 def verify_fault_receipt(
@@ -236,8 +264,24 @@ def verify_receipt_set(
     identities = [item["receipt_sha256"] for item in verified_gates + verified_faults]
     paths = [gates[key]["receipt"]["path"] for key in GATE_TYPES]
     paths += [faults[key]["receipt"]["path"] for key in FAULTS]
-    if len(set(identities)) != len(identities) or len(set(paths)) != len(paths):
-        raise ReceiptVerificationError("receipt files must be unique per gate and fault")
+    evidence_paths = [
+        entry["path"]
+        for gate in verified_gates for entry in gate["check_evidence"]
+    ]
+    evidence_paths += [
+        faults[key]["receipt"]["path"] for key in FAULTS
+    ]
+    evidence_paths += [
+        json.loads(_safe_file(Path(evidence_root).resolve(strict=True), faults[key]["receipt"], key)[0])["evidence"]["path"]
+        for key in FAULTS
+    ]
+    if (
+        len(set(identities)) != len(identities)
+        or len(set(paths)) != len(paths)
+        or len(set(evidence_paths)) != len(evidence_paths)
+        or set(evidence_paths) & set(paths)
+    ):
+        raise ReceiptVerificationError("receipt and check evidence files must be unique per gate and fault")
     if manifest.get("lot042_accessed") is not False:
         readiness = "NOT_READY"
     else:
