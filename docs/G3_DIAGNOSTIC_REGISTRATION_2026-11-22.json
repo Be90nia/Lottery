@@ -1,7 +1,6 @@
 {
   "schema": "lottery.g3-preregistration/v1",
   "protocol_id": "LOT-055-v1",
-  "experiment_id": "4eceab2eab2cc9cdd2961634815f5ed586ddd9f54df5496d7d2754f60039a12a",
   "experiment_class": "exploratory_diagnostic",
   "outcomes_observed_at_registration": true,
   "snapshot_sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa",
@@ -46,5 +45,7 @@
   "approval_required": false,
   "approval_disposition": "not_required_exploratory",
   "approval_disposition_reason": "The child registration is outcome-informed and exploratory; protected confirmatory approval is not applicable and no approval receipt is fabricated.",
-  "legacy_child_registration_comment_sha256": "161a14dc087702780917ec020685f6c85f696e7f90f607d1ede9959abc8cb8c2"
+  "legacy_child_registration_comment_sha256": "161a14dc087702780917ec020685f6c85f696e7f90f607d1ede9959abc8cb8c2",
+  "legacy_experiment_label": "LOT055-OPT-DIAG-20261120",
+  "legacy_experiment_label_sha256": "4eceab2eab2cc9cdd2961634815f5ed586ddd9f54df5496d7d2754f60039a12a"
 }
