@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from math import comb, log
+from copy import deepcopy
 from lottery.subset_model import ExponentialFamily, build_uniform_feature_table
 import unittest
 
@@ -16,7 +17,7 @@ class FakeLifecycle:
         self.artifact = artifact
 
     def _load_artifact(self, artifact_id):
-        return self.artifact
+        return deepcopy(self.artifact)
 
 
 def conditional_artifact():
@@ -124,6 +125,21 @@ class FrozenArtifactEvaluatorTests(unittest.TestCase):
         forecast["zone"] = "back"
         with self.assertRaisesRegex(FrozenArtifactEvaluationError, "normalization"):
             evaluator.evaluate(forecast, [1, 2])
+
+    def test_cached_distribution_cannot_hide_later_immutable_artifact_tampering(self):
+        artifact = conditional_artifact()
+        evaluator = FrozenArtifactEvaluator(FakeLifecycle(artifact))
+        forecast = {
+            "artifact_sha256": "a" * 64,
+            "zone": "back",
+            "model_family": "conditional_poisson",
+            "training_snapshot_sha256": "b" * 64,
+            "training_last_draw_id": "26130",
+        }
+        evaluator.evaluate(forecast, [1, 12])
+        artifact["parameters"]["centered_log_weights"][0] = 0.25
+        with self.assertRaisesRegex(FrozenArtifactEvaluationError, "changed after initial verification"):
+            evaluator.evaluate(forecast, [1, 12])
 
 
 if __name__ == "__main__":
