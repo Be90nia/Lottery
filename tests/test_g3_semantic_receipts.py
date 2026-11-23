@@ -155,7 +155,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             },
             "models": [
                 {
-                    "zone": zone, "model_name": model_ids[role],
+                    "zone": zone, "model_name": self.model_ids[role],
                     "model_family": {
                         "candidate": "complete_subset_exponential",
                         "uniform": "uniform_analytic",
