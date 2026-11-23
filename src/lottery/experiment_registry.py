@@ -274,6 +274,7 @@ class ExperimentRegistry:
         source_completed_at_utc: str | None = None, source_artifact_id: int | None = None,
         source_artifact_zip_sha256: str | None = None,
         scientific_result_status: str | None = None,
+        source_result_sha256: str | None = None, source_artifact_sha256: str | None = None,
     ) -> None:
         if not _is_sha(source_metadata_sha256) or not _is_sha(source_verification_receipt_sha256):
             raise ExperimentRegistryError("historical import evidence references malformed digests")
@@ -302,6 +303,8 @@ class ExperimentRegistry:
             or source_metadata.get("source_artifact_id") != source_artifact_id
             or source_metadata.get("source_artifact_zip_sha256") != source_artifact_zip_sha256
             or source_metadata.get("scientific_result_status") != scientific_result_status
+            or source_metadata.get("source_manifest_sha256") != source_result_sha256
+            or source_metadata.get("source_model_artifacts_sha256") != source_artifact_sha256
         ):
             raise ExperimentRegistryError("historical import terminal event conflicts with its immutable source metadata")
 
@@ -416,6 +419,8 @@ class ExperimentRegistry:
                         source_artifact_id=event["source_artifact_id"],
                         source_artifact_zip_sha256=event["source_artifact_zip_sha256"],
                         scientific_result_status=event["scientific_result_status"],
+                        source_result_sha256=event["result_sha256"],
+                        source_artifact_sha256=event["artifact_sha256"],
                     )
                 if terminal_status == "succeeded" and attempt.get("execution_context") is not None:
                     storage_digest = event.get("storage_receipts_sha256")
