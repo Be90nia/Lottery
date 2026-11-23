@@ -29,14 +29,14 @@ The repository's archive-layout note distinguishes the incoming ZIP, immutable r
 - ZIP CRC/readability, safe member paths, exact page/sidecar/collection-manifest inventory.
 - 30 contiguous page numbers and expected 2,949-record pagination (29 × 100 plus 49).
 - Every raw page's SHA-256 against its filename and sidecar.
-- Sidecar source name, HTTPS host/path, gameNo=85, pageNo, HTTP 200, JSON content type, parser version, run ID and timezone-aware retrieval timestamp.
+- Sidecar source name, HTTPS host/path, gameNo=85, pageNo, HTTP 200, JSON content type, collector version (`raw-snapshot-collector/1.0.0`), run ID and timezone-aware retrieval timestamp. The importer parser is separately recorded as `0.1.0`; these are different stages and must not be conflated.
 - A single collection run and bounded retrieval interval.
 - Raw page parsing through the repository ingestion parser.
 - Raw-page SHA-256 inventory against the processed manifest.
 - Byte-for-byte rebuilding of the processed JSONL from the raw response bodies.
 - Crosswalk row agreement with the canonical processed dataset.
 
-CI now invokes this audit and includes its JSON report in the research artifact bundle. The CI run associated with the current branch head is the acceptance evidence; until it completes successfully, this implementation is pending validation.
+CI now invokes this audit and includes its JSON report in the research artifact bundle. The first CI attempt exposed an incorrect assumption in the new audit: sidecars identify the collection tool as `raw-snapshot-collector/1.0.0`, while `0.1.0` is the later offline importer parser. The verifier and fixture were corrected to validate these as separate versions. The current-head CI run is the acceptance evidence; until it completes successfully, this implementation is pending validation.
 
 ## Official announcement crosswalk sample
 
