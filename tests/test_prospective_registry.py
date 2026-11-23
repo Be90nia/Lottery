@@ -173,6 +173,13 @@ class RegistryScheduleTests(unittest.TestCase):
         with self.assertRaisesRegex(RegistryScheduleError, "changed while schedule"):
             self.build(lifecycle, target, inventory)
 
+    def test_schedule_attestation_rejects_payload_tampering(self):
+        lifecycle, target, inventory = fixture()
+        schedule = self.build(lifecycle, target, inventory)
+        schedule["expected_forecasts"][0]["runtime"] = "tampered"
+        with self.assertRaisesRegex(RegistryScheduleError, "attestation"):
+            assert_registry_unchanged(lifecycle, schedule, schedule_verifier=lambda value: True)
+
     def test_schedule_is_rejected_if_registry_changes_after_build(self):
         lifecycle, target, inventory = fixture()
         schedule = self.build(lifecycle, target, inventory)
