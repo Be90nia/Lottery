@@ -46,6 +46,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             "bootstrap_replicates": 1000,
             "block_length": 50,
             "bootstrap_seed": 20261118,
+            "bootstrap_seeds_by_zone": {"front": 20261118, "back": 20261119},
             "multiplicity_family": [
                 "candidate_vs_uniform:front", "candidate_vs_uniform:back"
             ],
