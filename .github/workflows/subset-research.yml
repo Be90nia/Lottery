@@ -162,6 +162,8 @@ jobs:
             model-artifacts.jsonl
             model-artifact-provenance.jsonl
             registry-run-receipt.json
+            storage-commit-receipts.json
+            durable-store/
             experiment-registry/
             subset-model-checkpoints/
           if-no-files-found: warn
