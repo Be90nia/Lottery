@@ -143,14 +143,10 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
         record_hash = row.pop("record_sha256", None)
         if record_hash not in (_digest(canonicalize(row)), "sha256:" + _digest(canonicalize(row))):
             raise ValueError("historical score-ledger record hash mismatch")
-        for key, value in row.items():
-            if key.endswith("artifact_id") and isinstance(value, str) and value.startswith("sha256:"):
-                if value not in artifact_ids:
-                    raise ValueError("historical score ledger references an absent model artifact")
-            if key.endswith("artifact_ids") and isinstance(value, dict):
-                for artifact_id in value.values():
-                    if artifact_id is not None and artifact_id not in artifact_ids:
-                        raise ValueError("historical score ledger references an absent model artifact")
+        for key in ("artifact_id", "diagnostic_ref"):
+            artifact_id = row.get(key)
+            if artifact_id is not None and artifact_id not in artifact_ids:
+                raise ValueError(f"historical score ledger {key} references an absent model artifact")
 
     return manifest, ledger_raw, artifacts_raw
 
