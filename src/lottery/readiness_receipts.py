@@ -405,10 +405,23 @@ def _verify_g3_evidence_bundle(
         ]
     })).hexdigest()
     expected_snapshot_digest = None
+    run_manifest_already_bound_by_release = False
     if isinstance(release_manifest, dict):
         if release_manifest.get("schema") == "lottery.release-manifest/v2":
-            snapshot_ref = release_manifest.get("evidence", {}).get("canonical_snapshot", {})
+            release_evidence = release_manifest.get("evidence", {})
+            snapshot_ref = release_evidence.get("canonical_snapshot", {})
             expected_snapshot_digest = snapshot_ref.get("sha256") if isinstance(snapshot_ref, dict) else None
+            evaluation_refs = release_evidence.get("evaluation_manifests", [])
+            run_manifest_already_bound_by_release = any(
+                isinstance(item, dict)
+                and item.get("path") == denominator["run_manifest"].get("path")
+                and item.get("sha256") == run_manifest_digest
+                for item in evaluation_refs
+            )
+            require(
+                run_manifest_already_bound_by_release,
+                "G3 run manifest must also be included in the immutable release evaluation-manifest inventory",
+            )
         else:
             expected_snapshot_digest = release_manifest.get("snapshot_sha256")
     require(
@@ -747,10 +760,12 @@ def _verify_g3_evidence_bundle(
             and 0 <= entry["max_abs_error"] <= prereg["calibration_tolerance"],
             f"{zone} calibration evidence fails the preregistered tolerance or target coverage",
         )
-    return [
-        {"path": denominator["ledger"]["path"], "sha256": ledger_digest},
-        {"path": denominator["run_manifest"]["path"], "sha256": run_manifest_digest},
-    ]
+    nested = [{"path": denominator["ledger"]["path"], "sha256": ledger_digest}]
+    if not run_manifest_already_bound_by_release:
+        nested.append({
+            "path": denominator["run_manifest"]["path"], "sha256": run_manifest_digest,
+        })
+    return nested
 
 
 
