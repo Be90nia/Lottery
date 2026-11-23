@@ -976,7 +976,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     }
 
 
-def run(
+def _run_impl(
     snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = None,
     *, registry_root: Path | None = None, registration_path: Path | None = None,
     require_execution_binding: bool = False,
@@ -1160,6 +1160,60 @@ def run(
         "confirmatory_candidate_pass": result["confirmatory_candidate_pass"], "production_ready": False,
     }, sort_keys=True))
     return result
+
+
+
+def run(
+    snapshot_path: Path, output_path: Path, checkpoint_dir: Path | None = None,
+    *, registry_root: Path | None = None, registration_path: Path | None = None,
+    require_execution_binding: bool = False,
+) -> dict:
+    """Run evaluation and append a runner_error terminal if a bound attempt aborts."""
+    try:
+        return _run_impl(
+            snapshot_path, output_path, checkpoint_dir,
+            registry_root=registry_root,
+            registration_path=registration_path,
+            require_execution_binding=require_execution_binding,
+        )
+    except Exception as exc:
+        if require_execution_binding:
+            try:
+                checked_out_sha = subprocess.run(
+                    ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True,
+                ).stdout.strip()
+                execution = execution_context_from_env(
+                    os.environ,
+                    checked_out_sha=checked_out_sha,
+                    expected_repository=EXPECTED_REPOSITORY,
+                    expected_repository_id=EXPECTED_REPOSITORY_ID,
+                    expected_workflow_path=EXPECTED_WORKFLOW_PATH,
+                )
+                root = registry_root or output_path.parent / "experiment-registry"
+                registry = ExperimentRegistry(root)
+                snapshot = registry.snapshot()
+                for experiment_id, experiment in snapshot["experiments"].items():
+                    for attempt_id, attempt in experiment["attempts"].items():
+                        if (attempt.get("execution_id") == execution["execution_id"]
+                                and attempt.get("status") == "running"):
+                            registry.finish_trial(
+                                experiment_id=experiment_id,
+                                attempt_id=attempt_id,
+                                terminal_status="runner_error",
+                                failure_code=type(exc).__name__,
+                                execution_id=execution["execution_id"],
+                                actor=execution["actor"],
+                            )
+                            return_failure_recorded = True
+                            break
+                    else:
+                        continue
+                    break
+            except Exception:
+                # Preserve the original exception. A later read-only reconciler
+                # must report any attempt that could not be terminalized here.
+                pass
+        raise
 
 
 def main() -> int:
