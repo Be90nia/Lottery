@@ -321,7 +321,7 @@ def _finish_registered_execution(
             validator_id="lottery.g3-json-object-or-jsonl/v1",
         )
         commit = storage.commit(operation_id=operation["operation_id"])
-        pointer_name = f"g3-{execution['run_id']}-{index}"
+        pointer_name = f"g3-{execution['run_id']}-{execution['run_attempt']}-{index}"
         pointer = storage.publish_pointer(
             name=pointer_name,
             operation_id=operation["operation_id"],
