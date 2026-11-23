@@ -122,7 +122,7 @@ class RegistryScheduleTests(unittest.TestCase):
         schedule = self.build(lifecycle, target, inventory)
         rows = schedule["expected_forecasts"]
         self.assertEqual(len(rows), 4)
-        self.assertEqual({r["lifecycle_state"] for r in rows}, {"champion", "challenger_shadow"})
+        self.assertEqual({r["lifecycle_state"] for r in rows}, {"champion", "shadow"})
         self.assertEqual({r["zone"] for r in rows}, {"front", "back"})
         self.assertEqual({r["registry_generation"] for r in rows}, {9})
         self.assertTrue(all(r["training_last_draw_date"] == "2026-11-20" for r in rows))
