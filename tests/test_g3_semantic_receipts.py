@@ -349,6 +349,18 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             {"path": self.ledger_path.name, "sha256": hashlib.sha256(self.ledger_raw).hexdigest()},
         ])
 
+    def test_self_consistent_but_fabricated_target_date_is_rejected(self):
+        chronology = json.loads(self.raw["chronological_targets"])
+        shifted = (date.fromisoformat(chronology["target_dates"][0]) + timedelta(days=1)).isoformat()
+        chronology["target_dates"][0] = shifted
+        chronology["training_cutoff_dates"][1] = shifted
+        self.raw["chronological_targets"] = canonicalize(chronology)
+        with self.assertRaisesRegex(
+            ReceiptVerificationError,
+            "G3 chronology evidence does not match actual canonical snapshot",
+        ):
+            self.verify()
+
     def test_canonical_snapshot_bytes_are_required_and_hash_bound(self):
         original = self.snapshot_path.read_bytes()
         self.snapshot_path.write_bytes(original + b" ")
