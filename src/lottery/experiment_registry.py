@@ -762,7 +762,6 @@ class ExperimentRegistry:
                 "object_sha256": entry["content_sha256"],
                 "operation_id": operation_id,
                 "previous_object_sha256": pointer.get("previous_object_sha256"),
-                "published_at_utc": pointer.get("published_at_utc"),
             }
             checks = {
                 "stage_operation_id": stage.get("operation_id") == operation_id,
