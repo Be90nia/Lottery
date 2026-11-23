@@ -1,0 +1,38 @@
+name: G3 historical execution import
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  import-historical-execution:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      PYTHONPATH: src
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Verify GitHub run, job, artifact and import historical execution
+        run: >-
+          python scripts/import_g3_historical_execution.py
+          --evidence docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json
+          --snapshot data/processed/draws-20261118.jsonl
+          --registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
+          --registry-root experiment-registry
+      - name: Upload append-only historical registry import
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: g3-historical-registry-import
+          path: experiment-registry/
+          if-no-files-found: error
+          retention-days: 90
