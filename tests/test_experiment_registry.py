@@ -292,6 +292,120 @@ class ExperimentRegistryTests(unittest.TestCase):
                 actor="research-operator",
             )
 
+    def test_historical_import_preserves_source_times_and_stays_uncommitted(self):
+        spec = experiment_spec(experiment_class="exploratory", outcomes_observed=True)
+        registered = self.registry.register_experiment(spec, actor="test-suite")
+        context = execution_context()
+        source = {
+            "source_run_url": context["run_url"],
+            "source_started_at_utc": "2026-11-20T06:06:49Z",
+            "source_completed_at_utc": "2026-11-20T08:07:33Z",
+            "source_artifact_id": 12345,
+            "source_artifact_zip_sha256": digest("artifact-zip"),
+            "source_manifest_sha256": digest("manifest"),
+            "source_model_artifacts_sha256": digest("model-artifacts"),
+            "scientific_result_status": "complete_with_explicit_failures",
+            "confirmatory_eligible": False,
+        }
+
+        def verifier(metadata, execution):
+            self.assertEqual(execution["execution_id"], context["execution_id"])
+            return {
+                "schema": "lottery.github-actions-verification/v1",
+                "verifier_id": "test-github-actions-verifier/v1",
+                "verified": True,
+                "source_metadata_sha256": hashlib.sha256(canonicalize(metadata)).hexdigest(),
+                "artifact_zip_sha256": metadata["source_artifact_zip_sha256"],
+                "verified_at_utc": "2026-11-23T09:00:00Z",
+            }
+
+        imported = self.registry.import_completed_trial(
+            experiment_id=registered["experiment_id"],
+            attempt_id="imported-actions-45130000000-attempt-1",
+            config=spec["trial_plan"][0],
+            actor="historical-importer",
+            execution_context=context,
+            source_metadata=source,
+            metadata_verifier=verifier,
+            expected_repository="Be90nia/Lottery",
+            expected_repository_id="1461523125",
+            expected_workflow_path=".github/workflows/subset-research.yml",
+        )
+        self.assertEqual(imported["status"], "completed_uncommitted")
+        self.assertTrue(imported["imported"])
+        self.assertEqual(imported["source_started_at_utc"], source["source_started_at_utc"])
+        self.assertEqual(imported["source_completed_at_utc"], source["source_completed_at_utc"])
+        self.assertNotEqual(imported["started_at_utc"], source["source_started_at_utc"])
+        self.assertNotEqual(imported["finished_at_utc"], source["source_completed_at_utc"])
+        self.assertIsNone(imported["storage_receipts_sha256"])
+        replayed = self.registry.import_completed_trial(
+            experiment_id=registered["experiment_id"],
+            attempt_id="imported-actions-45130000000-attempt-1",
+            config=spec["trial_plan"][0],
+            actor="historical-importer",
+            execution_context=context,
+            source_metadata=source,
+            metadata_verifier=verifier,
+            expected_repository="Be90nia/Lottery",
+            expected_repository_id="1461523125",
+            expected_workflow_path=".github/workflows/subset-research.yml",
+        )
+        self.assertEqual(replayed, imported)
+        self.assertEqual(self.registry.snapshot()["event_count"], 3)
+
+    def test_historical_import_requires_trusted_verifier_and_exact_source_digest(self):
+        spec = experiment_spec(experiment_class="exploratory", outcomes_observed=True)
+        registered = self.registry.register_experiment(spec, actor="test-suite")
+        context = execution_context()
+        source = {
+            "source_run_url": context["run_url"],
+            "source_started_at_utc": "2026-11-20T06:06:49Z",
+            "source_completed_at_utc": "2026-11-20T08:07:33Z",
+            "source_artifact_id": 12345,
+            "source_artifact_zip_sha256": digest("artifact-zip"),
+            "source_manifest_sha256": digest("manifest"),
+            "source_model_artifacts_sha256": digest("model-artifacts"),
+            "scientific_result_status": "complete_with_explicit_failures",
+            "confirmatory_eligible": False,
+        }
+        with self.assertRaisesRegex(ExperimentRegistryError, "trusted GitHub metadata verifier"):
+            self.registry.import_completed_trial(
+                experiment_id=registered["experiment_id"],
+                attempt_id="imported-actions-no-verifier",
+                config=spec["trial_plan"][0],
+                actor="historical-importer",
+                execution_context=context,
+                source_metadata=source,
+                metadata_verifier=None,
+                expected_repository="Be90nia/Lottery",
+                expected_repository_id="1461523125",
+                expected_workflow_path=".github/workflows/subset-research.yml",
+            )
+
+        def bad_verifier(metadata, execution):
+            return {
+                "schema": "lottery.github-actions-verification/v1",
+                "verifier_id": "test-verifier",
+                "verified": True,
+                "source_metadata_sha256": digest("wrong-metadata"),
+                "artifact_zip_sha256": metadata["source_artifact_zip_sha256"],
+                "verified_at_utc": "2026-11-23T09:00:00Z",
+            }
+
+        with self.assertRaisesRegex(ExperimentRegistryError, "did not attest"):
+            self.registry.import_completed_trial(
+                experiment_id=registered["experiment_id"],
+                attempt_id="imported-actions-bad-attestation",
+                config=spec["trial_plan"][0],
+                actor="historical-importer",
+                execution_context=context,
+                source_metadata=source,
+                metadata_verifier=bad_verifier,
+                expected_repository="Be90nia/Lottery",
+                expected_repository_id="1461523125",
+                expected_workflow_path=".github/workflows/subset-research.yml",
+            )
+
     def test_execution_context_requires_explicit_workflow_allowlist(self):
         registered = self.register_confirmatory()
         with self.assertRaisesRegex(ExperimentRegistryError, "explicit repository/workflow allowlist"):
