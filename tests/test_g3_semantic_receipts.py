@@ -209,7 +209,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         lines = self.ledger_raw.splitlines()
         row = json.loads(lines[2649 * 2])
         row["nll"] += 0.01
-        lines[2649] = canonicalize(row)
+        lines[2649 * 2] = canonicalize(row)
         changed = b"\n".join(lines) + b"\n"
         self.ledger_path.write_bytes(changed)
         self.denominator["ledger"]["sha256"] = hashlib.sha256(changed).hexdigest()
