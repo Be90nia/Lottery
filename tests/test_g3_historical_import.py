@@ -15,7 +15,7 @@ def sha(raw):
 
 class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
     def build_archive(self):
-        ledger_row = {"record_type": "target", "target_draw_id": "26131"}
+        ledger_row = {"record_type": "target", "zone": "front", "target_draw_id": "26131", "model_name": "uniform", "terminal_status": "scored", "training_dates_strictly_before_target": True, "training_last_draw_id": "26130", "training_row_count": 300, "artifact_id": None, "diagnostic_ref": None}
         ledger_row["record_sha256"] = sha(canonicalize(ledger_row))
         ledger_raw = canonicalize(ledger_row) + b"\n"
         artifact_raw = b'{"artifact_id":"sha256:' + b"a" * 64 + b'"}\n'
@@ -35,6 +35,7 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
                 "last_target_draw_id": "26131",
                 "target_count_per_zone": 1,
             },
+            "models": [{"model_name": "uniform", "zone": "front"}],
             "output_files": {
                 "target-score-ledger.jsonl": {"sha256": sha(ledger_raw), "bytes": len(ledger_raw)},
                 "model-artifacts.jsonl": {"sha256": sha(artifact_raw), "bytes": len(artifact_raw)},
