@@ -813,6 +813,8 @@ def _verify_g3_evidence_bundle(
         computed_ece = weighted_gap / entry["observation_count"]
         require(
             expected_count == entry["observation_count"]
+            and type(entry["ece"]) in (int, float) and math.isfinite(entry["ece"])
+            and type(entry["max_abs_bin_gap"]) in (int, float) and math.isfinite(entry["max_abs_bin_gap"])
             and abs(entry["ece"] - computed_ece) <= 1e-12
             and abs(entry["max_abs_bin_gap"] - max(gaps)) <= 1e-12
             and entry["ece"] <= prereg["calibration_tolerance"]
