@@ -262,6 +262,7 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        g3_evidence = _build_g3_fixture(self.root)
         scalar_names = (
             "workflow_policy", "dependency_lock", "readiness_policy", "source_evidence_ledger",
             "runtime_toolchain", "sbom", "security_scan", "experiment_registration",
@@ -300,7 +301,6 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         }
         self.gates = []
         self.faults = []
-        g3_evidence = _build_g3_fixture(self.root)
         for gate_id, receipt_type in GATE_TYPES.items():
             name = gate_id + ".json"
             receipt = {
