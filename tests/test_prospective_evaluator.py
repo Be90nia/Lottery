@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from math import comb, log
+from math import comb, log\nfrom lottery.subset_model import ExponentialFamily, build_uniform_feature_table
 import unittest
 
 from lottery.prospective_evaluator import (
@@ -61,6 +61,50 @@ class FrozenArtifactEvaluatorTests(unittest.TestCase):
             evaluator.distribution_sha256("sha256:" + "a" * 64),
             distribution_identity("sha256:" + "a" * 64, artifact),
         )
+
+    def test_exponential_family_rebuilds_feature_schema_and_full_support(self):
+        table = build_uniform_feature_table(12, 2, include_gap_variance=False)
+        family = ExponentialFamily(table)
+        theta = [0.0] * table.stats.dimension
+        artifact = {
+            "artifact_id": "sha256:" + "c" * 64,
+            "artifact_schema": "lottery.subset-probability-model/v1",
+            "model_family": "complete_subset_exponential",
+            "zone": "back",
+            "population_size": 12,
+            "selection_size": 2,
+            "support": {
+                "population_size": 12, "selection_size": 2,
+                "support_count": comb(12, 2), "subset_order": "lexicographic_ascending",
+            },
+            "feature_schema": {
+                "version": table.stats.feature_schema_version,
+                "names": list(table.stats.feature_names),
+                "candidate_names": list(table.stats.candidate_feature_names),
+                "uniform_means": list(table.stats.all_means),
+                "uniform_population_stds": list(table.stats.all_standard_deviations),
+                "zero_variance_features": list(table.stats.zero_variance_features),
+            },
+            "parameters": {"theta": theta},
+            "normalization": {
+                "method": "full_support_logsumexp",
+                "log_partition": family.log_partition(theta),
+                "numeric_dtype": "float64",
+            },
+            "training_snapshot_sha256": "d" * 64,
+            "training_cutoff_draw_id": "26130",
+        }
+        evaluator = FrozenArtifactEvaluator(FakeLifecycle(artifact))
+        forecast = {
+            "artifact_sha256": "c" * 64,
+            "zone": "back",
+            "model_family": "complete_subset_exponential",
+            "training_snapshot_sha256": "d" * 64,
+            "training_last_draw_id": "26130",
+        }
+        result = evaluator.evaluate(forecast, [1, 12])
+        self.assertTrue(result["normalization_verified"])
+        self.assertAlmostEqual(result["log_probability"], -log(comb(12, 2)), places=12)
 
     def test_zone_training_and_normalization_mismatch_fail_closed(self):
         artifact = conditional_artifact()
