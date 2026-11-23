@@ -279,6 +279,12 @@ def _finish_registered_execution(
         actor=execution["actor"],
     )
     snapshot = registry.snapshot()
+    attempt = snapshot["experiments"][binding["experiment_id"]]["attempts"][binding["attempt_id"]]
+    if (attempt.get("status") != "succeeded"
+            or attempt.get("execution_id") != execution["execution_id"]
+            or attempt.get("result_sha256") != manifest_sha256
+            or attempt.get("artifact_sha256") != artifacts_sha256):
+        raise ValueError("terminal registry attempt does not match the completed run outputs")
     events = registry._read_events()
     start_event_id = hashlib.sha256(
         f"{binding['experiment_id']}:{binding['attempt_id']}:start".encode("utf-8")
