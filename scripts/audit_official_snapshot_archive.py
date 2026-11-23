@@ -108,8 +108,27 @@ def audit_archive(
         collection = _json(collection_raw, "collection manifest")
         if not isinstance(collection, dict):
             raise AuditError("collection manifest must be an object")
-        if collection.get("total_pages") != expected_pages or collection.get("total_records") != expected_records:
-            raise AuditError("collection manifest totals do not match the audited snapshot")
+        if (
+            collection.get("source") != "Sporttery public historical draw API"
+            or collection.get("endpoint") != "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry"
+            or collection.get("gameNo") != "85"
+            or collection.get("collector_version") != COLLECTOR_VERSION
+            or collection.get("page_size") != 100
+            or collection.get("total_pages") != expected_pages
+            or collection.get("total_records") != expected_records
+            or collection.get("status") != "complete_short_page"
+        ):
+            raise AuditError("collection manifest source, endpoint, version, pagination or totals mismatch")
+        collection_run_id = collection.get("run_id")
+        if not isinstance(collection_run_id, str) or not collection_run_id:
+            raise AuditError("collection manifest run_id missing")
+        collection_started = _utc(collection.get("started_at"), "collection started_at")
+        collection_finished = _utc(collection.get("finished_at"), "collection finished_at")
+        collection_pages = collection.get("pages")
+        if not isinstance(collection_pages, list) or len(collection_pages) != expected_pages:
+            raise AuditError("collection manifest page inventory is incomplete")
+        if collection_finished < collection_started:
+            raise AuditError("collection manifest finished_at precedes started_at")
 
         sidecars_by_page: dict[int, tuple[str, dict[str, Any]]] = {}
         raw_hashes: list[str] = []
@@ -167,6 +186,23 @@ def audit_archive(
             run_ids.add(run_id)
             rows = _parse_page(raw, page_no, "sha256:" + digest)
             page_record_counts.append(len(rows))
+            collection_page = collection_pages[page_no - 1]
+            if not isinstance(collection_page, dict):
+                raise AuditError(f"page {page_no}: collection page entry must be an object")
+            source_metadata = collection_page.get("source_metadata")
+            if (
+                collection_page.get("page_no") != page_no
+                or collection_page.get("raw_file") != name.rsplit("/", 1)[-1]
+                or collection_page.get("sha256") != digest
+                or collection_page.get("record_count") != len(rows)
+                or collection_page.get("retrieved_at") != sidecar.get("retrieved_at")
+                or not isinstance(source_metadata, dict)
+                or source_metadata.get("total") != expected_records
+                or source_metadata.get("pages") != expected_pages
+                or source_metadata.get("pageNo") != page_no
+                or source_metadata.get("pageSize") != 100
+            ):
+                raise AuditError(f"page {page_no}: collection manifest page inventory mismatch")
             for row in rows:
                 _add_draw(parsed_rows, row)
             raw_hashes.append(digest)
@@ -174,10 +210,12 @@ def audit_archive(
 
         if set(sidecars_by_page) != set(range(1, expected_pages + 1)):
             raise AuditError("page numbers are not a complete 1..N sequence")
-        if len(run_ids) != 1:
-            raise AuditError("sidecars do not belong to one collection run")
+        if len(run_ids) != 1 or run_ids != {collection_run_id}:
+            raise AuditError("sidecars do not bind the collection manifest run_id")
         if len(retrieved) != expected_pages or (max(retrieved) - min(retrieved)).total_seconds() > 600:
             raise AuditError("retrieval timestamps are incomplete or span more than ten minutes")
+        if collection_started > min(retrieved) or collection_finished < max(retrieved):
+            raise AuditError("collection run timestamps do not bound the page retrieval interval")
         if sum(page_record_counts) != expected_records or len(parsed_rows) != expected_records:
             raise AuditError("raw page record total or unique draw count mismatch")
         if page_record_counts != [100] * (expected_pages - 1) + [expected_records - 100 * (expected_pages - 1)]:
