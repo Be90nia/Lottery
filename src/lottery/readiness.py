@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from lottery.subset_model.artifact import canonicalize
@@ -49,16 +49,20 @@ def _safe_evidence(root: Path, item: Any) -> tuple[bool, str]:
         return False, "evidence_entry_shape_invalid"
     rel = item.get("path")
     expected = item.get("sha256")
-    if not isinstance(rel, str) or not rel or Path(rel).is_absolute():
+    if not isinstance(rel, str) or not rel:
         return False, "evidence_path_not_relative"
     if not isinstance(expected, str) or not _SHA256.fullmatch(expected):
         return False, "evidence_sha256_invalid"
-    if "\\\\" in rel or ":" in rel:
+    if "\\" in rel or ":" in rel:
         return False, "evidence_path_has_nonportable_separator"
-    relative = Path(rel)
-    if any(part in ("", ".", "..") for part in relative.parts):
-        return False, "evidence_path_traversal"
-    candidate = root / relative
+    relative = PurePosixPath(rel)
+    if (
+        relative.is_absolute()
+        or any(part in ("", ".", "..") for part in relative.parts)
+        or relative.as_posix() != rel
+    ):
+        return False, "evidence_path_not_canonical_or_traversal"
+    candidate = root.joinpath(*relative.parts)
     current = root
     for part in relative.parts:
         current = current / part
