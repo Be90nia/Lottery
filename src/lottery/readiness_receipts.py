@@ -231,7 +231,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         "schema", "protocol_id", "experiment_id", "experiment_class",
         "outcomes_observed_at_registration", "snapshot_sha256",
         "target_manifest_sha256", "model_ids", "bootstrap_replicates",
-        "block_length", "bootstrap_seed", "multiplicity_family",
+        "block_length", "bootstrap_seed", "bootstrap_seeds_by_zone", "multiplicity_family",
         "alpha", "calibration_method", "calibration_tolerance",
         "holdout_accessed",
     }, "preregistration fields invalid")
@@ -263,6 +263,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         type(prereg["bootstrap_replicates"]) is int and prereg["bootstrap_replicates"] == 1000
         and type(prereg["block_length"]) is int and prereg["block_length"] == 50
         and type(prereg["bootstrap_seed"]) is int and prereg["bootstrap_seed"] >= 0
+        and prereg["bootstrap_seeds_by_zone"] == {"front": prereg["bootstrap_seed"], "back": prereg["bootstrap_seed"] + 1}
         and type(prereg["alpha"]) in (int, float) and prereg["alpha"] == 0.05
         and isinstance(prereg["multiplicity_family"], list)
         and prereg["multiplicity_family"] == [
@@ -503,7 +504,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     multiplicity = reports["multiplicity_control"]
     require(set(multiplicity) == {
         "schema", "target_ids_sha256", "bootstrap_replicates", "block_length",
-        "bootstrap_seed", "method", "alpha", "hypotheses",
+        "bootstrap_seed", "bootstrap_seeds_by_zone", "method", "alpha", "hypotheses",
     }, "multiplicity report fields invalid")
     require(
         multiplicity["schema"] == "lottery.g3-holm-control/v1"
@@ -511,6 +512,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         and multiplicity["bootstrap_replicates"] == prereg["bootstrap_replicates"]
         and multiplicity["block_length"] == prereg["block_length"]
         and multiplicity["bootstrap_seed"] == prereg["bootstrap_seed"]
+        and multiplicity["bootstrap_seeds_by_zone"] == prereg["bootstrap_seeds_by_zone"]
         and multiplicity["method"] == "holm-step-down-one-sided-centered-moving-block-bootstrap"
         and multiplicity["alpha"] == prereg["alpha"]
         and isinstance(multiplicity["hypotheses"], list) and len(multiplicity["hypotheses"]) == 2,
