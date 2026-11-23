@@ -21,6 +21,7 @@ from pathlib import Path
 from lottery.backtest import _probabilities
 from lottery.execution_context import execution_context_from_env
 from lottery.experiment_registry import EXPERIMENT_SCHEMA, ExperimentRegistry
+from lottery.storage import FileSystemObjectStore
 from lottery.subset_model.artifact import canonicalize, create_artifact, verify_artifact
 from lottery.subset_model.rolling_origin_ledger import write_immutable_outputs
 from lottery.subset_model import (
@@ -271,11 +272,89 @@ def _start_registered_execution(
 def _finish_registered_execution(
     registry: ExperimentRegistry, binding: dict, output_path: Path,
 ) -> dict:
-    manifest_raw = (output_path.parent / "run_manifest.json").read_bytes()
-    artifacts_raw = (output_path.parent / "model-artifacts.jsonl").read_bytes()
-    manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
-    artifacts_sha256 = hashlib.sha256(artifacts_raw).hexdigest()
+    output_dir = output_path.parent
+    manifest_raw = (output_dir / "run_manifest.json").read_bytes()
+    manifest = json.loads(manifest_raw)
     execution = binding["execution_context"]
+    output_files = manifest.get("output_files")
+    if not isinstance(output_files, dict) or not output_files:
+        raise ValueError("run manifest does not declare immutable output files")
+
+    # LOT-065: stage, semantically validate, commit and read back every
+    # manifest-declared output before the registry can record execution success.
+    storage = FileSystemObjectStore(registry.root.parent / "experiment-storage")
+    payloads = {"run_manifest.json": manifest_raw}
+    for filename, declaration in output_files.items():
+        if not isinstance(filename, str) or Path(filename).name != filename:
+            raise ValueError("manifest output filename is not a safe basename")
+        raw = (output_dir / filename).read_bytes()
+        if (not isinstance(declaration, dict)
+                or declaration.get("sha256") != hashlib.sha256(raw).hexdigest()
+                or declaration.get("bytes") != len(raw)):
+            raise ValueError(f"manifest output declaration does not match bytes: {filename}")
+        payloads[filename] = raw
+
+    storage_receipts = {}
+    for index, (filename, raw) in enumerate(sorted(payloads.items())):
+        operation = storage.stage(
+            idempotency_key=(
+                f"lot064-g3:{binding['experiment_id']}:{binding['trial_id']}:"
+                f"{execution['execution_id']}:{filename}"
+            ),
+            content=raw,
+            media_type="application/json" if filename.endswith(".json") else "application/x-ndjson",
+            schema_version="lottery.g3-run-output/v1",
+            producer_commit=execution["sha"],
+            producer_runtime=f"python/{platform.python_version()}",
+        )
+        def validate_payload(candidate: bytes, *, name: str = filename) -> bool:
+            try:
+                if name.endswith(".jsonl"):
+                    return all(isinstance(json.loads(line), dict) for line in candidate.splitlines())
+                return isinstance(json.loads(candidate), dict)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return False
+
+        validation = storage.validate(
+            operation_id=operation["operation_id"],
+            validator=validate_payload,
+            validator_id="lottery.g3-json-object-or-jsonl/v1",
+        )
+        commit = storage.commit(operation_id=operation["operation_id"])
+        pointer_name = f"g3-{execution['run_id']}-{index}"
+        pointer = storage.publish_pointer(
+            name=pointer_name,
+            operation_id=operation["operation_id"],
+            expected_generation=0,
+        )
+        read_back = storage.read_pointer(pointer_name)
+        object_path = storage._object_path(commit["content_sha256"])
+        read_back_bytes = storage._verify_bytes(
+            object_path, commit["content_sha256"], commit["byte_length"],
+        )
+        if read_back != pointer or read_back_bytes != raw:
+            raise ValueError(f"LOT-065 read-back verification failed: {filename}")
+        validation_raw = (storage._validation_path(operation["operation_id"])).read_bytes()
+        commit_raw = (storage._commit_path(operation["operation_id"])).read_bytes()
+        stage_raw = (storage._operation_path(operation["operation_id"])).read_bytes()
+        publication_path = storage.publications / f"{pointer_name}.{operation['operation_id']}.json"
+        publication_raw = publication_path.read_bytes()
+        storage_receipts[filename] = {
+            "operation_id": operation["operation_id"],
+            "content_sha256": commit["content_sha256"],
+            "byte_length": commit["byte_length"],
+            "stage_manifest_sha256": hashlib.sha256(stage_raw).hexdigest(),
+            "validation_receipt_sha256": hashlib.sha256(validation_raw).hexdigest(),
+            "commit_receipt_sha256": hashlib.sha256(commit_raw).hexdigest(),
+            "publication_receipt_sha256": hashlib.sha256(publication_raw).hexdigest(),
+            "pointer_name": pointer_name,
+            "read_back_verified": True,
+        }
+
+    storage_receipts_sha256 = hashlib.sha256(canonicalize(storage_receipts)).hexdigest()
+    manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
+    artifacts_raw = (output_dir / "model-artifacts.jsonl").read_bytes()
+    artifacts_sha256 = hashlib.sha256(artifacts_raw).hexdigest()
     registry.finish_trial(
         experiment_id=binding["experiment_id"],
         attempt_id=binding["attempt_id"],
@@ -283,6 +362,7 @@ def _finish_registered_execution(
         result_sha256=manifest_sha256,
         artifact_sha256=artifacts_sha256,
         execution_id=execution["execution_id"],
+        storage_receipts_sha256=storage_receipts_sha256,
         actor=execution["actor"],
     )
     snapshot = registry.snapshot()
@@ -290,8 +370,9 @@ def _finish_registered_execution(
     if (attempt.get("status") != "succeeded"
             or attempt.get("execution_id") != execution["execution_id"]
             or attempt.get("result_sha256") != manifest_sha256
-            or attempt.get("artifact_sha256") != artifacts_sha256):
-        raise ValueError("terminal registry attempt does not match the completed run outputs")
+            or attempt.get("artifact_sha256") != artifacts_sha256
+            or attempt.get("storage_receipts_sha256") != storage_receipts_sha256):
+        raise ValueError("terminal registry attempt does not match committed/read-back-verified outputs")
     events = registry._read_events()
     start_event_id = hashlib.sha256(
         f"{binding['experiment_id']}:{binding['attempt_id']}:start".encode("utf-8")
@@ -315,9 +396,11 @@ def _finish_registered_execution(
         "trial_id": binding["trial_id"],
         "attempt_id": binding["attempt_id"],
         "execution_id": execution["execution_id"],
-        "evaluation_run_id": json.loads(manifest_raw)["run_id"],
+        "evaluation_run_id": manifest["run_id"],
         "run_manifest_sha256": manifest_sha256,
         "model_artifacts_sha256": artifacts_sha256,
+        "storage_receipts_sha256": storage_receipts_sha256,
+        "storage_receipts": storage_receipts,
         "event_count_at_terminal": events.index(terminal_event) + 1,
         "start_event_id": start_event_id,
         "start_event_sha256": start_event["event_hash"],
@@ -326,8 +409,8 @@ def _finish_registered_execution(
         "event_chain_head_sha256": terminal_event["event_hash"],
         "terminal_status": "succeeded",
         "execution_status": "completed",
-        "scientific_result_status": json.loads(manifest_raw).get("status"),
-        "confirmatory_eligible": json.loads(manifest_raw).get("confirmatory_eligible"),
+        "scientific_result_status": manifest.get("status"),
+        "confirmatory_eligible": manifest.get("confirmatory_eligible"),
         "approval_required": binding["approval_required"],
         "approval_disposition": binding["approval_disposition"],
         "approval_disposition_reason": binding["approval_disposition_reason"],
@@ -337,8 +420,8 @@ def _finish_registered_execution(
         "parent_lineage_disposition": binding["parent_lineage_disposition"],
         "recorded_at_utc": terminal_event["occurred_at_utc"],
     }
-    receipt_path = output_path.parent / "registry-run-receipt.json"
-    _write_once_bytes(receipt_path, canonicalize(receipt) + b"\n")
+    receipt_path = output_dir / "registry-run-receipt.json"
+    _write_once_bytes(receipt_path, canonicalize(receipt) + b"\\n")
     return receipt
 
 
