@@ -280,18 +280,17 @@ class ExperimentRegistryTests(unittest.TestCase):
                 execution_id=context["execution_id"],
                 actor="research-operator",
             )
-        finished = self.registry.finish_trial(
-            experiment_id=experiment_id,
-            attempt_id="actions-45130000000-attempt-1",
-            terminal_status="succeeded",
-            result_sha256=digest("result"),
-            artifact_sha256=digest("artifact"),
-            execution_id=context["execution_id"],
-            storage_receipts_sha256=digest("storage-receipts"),
-            actor="research-operator",
-        )
-        self.assertEqual(finished["execution_id"], context["execution_id"])
-        self.assertEqual(finished["status"], "succeeded")
+        with self.assertRaisesRegex(ExperimentRegistryError, "storage receipts bundle"):
+            self.registry.finish_trial(
+                experiment_id=experiment_id,
+                attempt_id="actions-45130000000-attempt-1",
+                terminal_status="succeeded",
+                result_sha256=digest("result"),
+                artifact_sha256=digest("artifact"),
+                execution_id=context["execution_id"],
+                storage_receipts_sha256=digest("storage-receipts"),
+                actor="research-operator",
+            )
 
     def test_execution_context_requires_explicit_workflow_allowlist(self):
         registered = self.register_confirmatory()
