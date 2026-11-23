@@ -104,15 +104,26 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertFalse(binding["approval_required"])
         self.assertEqual(binding["approval_disposition"], "not_required_exploratory")
 
-        (self.output_dir / "run_manifest.json").write_text(
-            json.dumps({
-                "run_id": "lot055-test-evaluation-id",
-                "status": "complete_with_explicit_failures",
-                "confirmatory_eligible": False,
-            }),
-            encoding="utf-8",
-        )
-        (self.output_dir / "model-artifacts.jsonl").write_bytes(b'{"artifact_id":"test"}\n')
+        output_payloads = {
+            "target-score-ledger.jsonl": b'{"record_type":"target"}\\n',
+            "model-artifacts.jsonl": b'{"artifact_id":"test"}\\n',
+            "model-artifact-provenance.jsonl": b'{"artifact_id":"test","execution_id":"bound"}\\n',
+        }
+        for filename, raw in output_payloads.items():
+            (self.output_dir / filename).write_bytes(raw)
+        manifest = {
+            "run_id": "lot055-test-evaluation-id",
+            "status": "complete_with_explicit_failures",
+            "confirmatory_eligible": False,
+            "output_files": {
+                filename: {
+                    "sha256": runner.hashlib.sha256(raw).hexdigest(),
+                    "bytes": len(raw),
+                }
+                for filename, raw in output_payloads.items()
+            },
+        }
+        (self.output_dir / "run_manifest.json").write_bytes(runner.canonicalize(manifest) + b"\\n")
 
         receipt = runner._finish_registered_execution(registry, binding, self.output_path)
         snapshot = registry.snapshot()
@@ -122,6 +133,16 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertIsNone(attempt["approval_sha256"])
         self.assertEqual(receipt["execution_status"], "completed")
         self.assertEqual(receipt["scientific_result_status"], "complete_with_explicit_failures")
+        self.assertTrue(receipt["storage_receipts"])
+        self.assertEqual(
+            set(receipt["storage_receipts"]),
+            {"run_manifest.json", "target-score-ledger.jsonl", "model-artifacts.jsonl",
+             "model-artifact-provenance.jsonl"},
+        )
+        self.assertTrue(all(
+            item["read_back_verified"] for item in receipt["storage_receipts"].values()
+        ))
+        self.assertTrue(receipt["storage_receipts_sha256"])
         self.assertFalse(receipt["confirmatory_eligible"])
         self.assertEqual(receipt["approval_disposition"], "not_required_exploratory")
         self.assertTrue(receipt["start_event_sha256"])
