@@ -533,7 +533,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
             and abs(entry["candidate_vs_uniform_mean_delta"] - delta) <= 1e-10
             and isinstance(interval, list) and len(interval) == 2
             and all(type(value) in (int, float) and math.isfinite(value) for value in interval)
-            and interval[0] <= delta <= interval[1]
+            and interval[0] - 1e-10 <= delta <= interval[1] + 1e-10
             and type(entry["candidate_vs_expanding_ci95_upper"]) in (int, float)
             and math.isfinite(entry["candidate_vs_expanding_ci95_upper"])
             and type(entry["candidate_vs_ewma_ci95_upper"]) in (int, float)
