@@ -129,6 +129,96 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertEqual((self.output_dir / "registry-run-receipt.json").read_bytes(), receipt_bytes)
         self.assertTrue((self.output_dir / "registry-run-receipt.json").exists())
 
+    def test_manifest_and_every_score_row_carry_content_addressed_binding(self):
+        registry, binding = self.start_binding()
+        target_rows = self.rows[runner.MIN_TRAIN:]
+        target_hash = runner.hashlib.sha256(
+            runner.canonicalize({
+                "targets": [
+                    {"target_draw_id": row["draw_id"], "target_draw_date": row["draw_date"]}
+                    for row in target_rows
+                ]
+            })
+        ).hexdigest()
+        self.assertEqual(binding["trial_config"]["target_manifest_sha256"], target_hash)
+
+        def zone_result(zone):
+            m, k, number_key = (
+                (35, 5, "front_numbers") if zone == "front" else (12, 2, "back_numbers")
+            )
+            records = []
+            for offset, target in enumerate(target_rows):
+                training_count = runner.MIN_TRAIN + offset
+                records.append({
+                    "target_draw_id": target["draw_id"],
+                    "target_draw_date": target["draw_date"],
+                    "training_count": training_count,
+                    "training_first_draw_id": self.rows[0]["draw_id"],
+                    "training_last_draw_id": self.rows[training_count - 1]["draw_id"],
+                    "training_cutoff_draw_id": self.rows[training_count - 1]["draw_id"],
+                    "training_dates_strictly_before_target": True,
+                    "observed_subset": target[number_key],
+                    "fit_statuses": {
+                        "candidate": "line_search_failed",
+                        "expanding": "converged",
+                        "ewma": "converged",
+                    },
+                    "exact_set_nll": {
+                        "uniform": 1.0,
+                        "expanding": 1.1,
+                        "ewma": 1.2,
+                        "exponential_family": 1.3,
+                    },
+                    "model_artifacts": {},
+                })
+            return {
+                "population_size": m,
+                "selection_size": k,
+                "active_feature_names": ["sum"],
+                "candidate_feature_names": ["sum"],
+                "zero_variance_features": [],
+                "uniform_feature_means": [0.0],
+                "uniform_feature_standard_deviations": [1.0],
+                "target_records": records,
+            }
+
+        result = {
+            "code_commit": CHECKED_OUT_SHA,
+            "snapshot_sha256": self.snapshot_digest,
+            "snapshot_trust_status": "manifest_complete_not_officially_authenticated",
+            "snapshot_source_commit": "b" * 40,
+            "bootstrap": {
+                "replicates": 1000,
+                "block_length": 50,
+                "seed": 20261118,
+                "seeds_by_zone_and_comparison": {
+                    "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+                    "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+                },
+            },
+            "front": zone_result("front"),
+            "back": zone_result("back"),
+        }
+        runner.write_immutable_outputs(
+            result, self.rows,
+            Path("data/processed/draws-20261118.jsonl"),
+            self.output_path,
+            experiment_binding=binding,
+        )
+        manifest = json.loads((self.output_dir / "run_manifest.json").read_text(encoding="utf-8"))
+        ledger_first = json.loads((self.output_dir / "target-score-ledger.jsonl").read_text(encoding="utf-8").splitlines()[0])
+        self.assertEqual(manifest["experiment_id"], binding["experiment_id"])
+        self.assertEqual(manifest["legacy_experiment_label"], "LOT055-OPT-DIAG-20261120")
+        self.assertEqual(manifest["experiment_binding"]["trial_id"], binding["trial_id"])
+        self.assertEqual(manifest["experiment_binding"]["execution_id"], binding["execution_context"]["execution_id"])
+        self.assertFalse(manifest["experiment_binding"]["approval_required"])
+        self.assertEqual(manifest["experiment_binding"]["approval_disposition"], "not_required_exploratory")
+        self.assertEqual(ledger_first["experiment_id"], binding["experiment_id"])
+        self.assertEqual(ledger_first["trial_id"], binding["trial_id"])
+        self.assertEqual(ledger_first["execution_id"], binding["execution_context"]["execution_id"])
+        self.assertFalse(ledger_first["approval_required"])
+        self.assertEqual(ledger_first["approval_disposition"], "not_required_exploratory")
+
     def test_caught_runner_exception_terminalizes_started_attempt(self):
         registry, binding = self.start_binding()
         with patch.object(runner, "_run_impl", side_effect=RuntimeError("simulated runner failure")):
