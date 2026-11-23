@@ -11,6 +11,7 @@ from lottery.execution_context import (
 REPOSITORY = "Be90nia/Lottery"
 REPOSITORY_ID = "1461523125"
 WORKFLOW_PATH = ".github/workflows/subset-research.yml"
+WORKFLOW_ID = 423307604
 COMMIT = "a" * 40
 
 
@@ -18,6 +19,7 @@ def environment(*, run_id="45130000000", attempt="1", sha=COMMIT):
     return {
         "GITHUB_REPOSITORY": REPOSITORY,
         "GITHUB_REPOSITORY_ID": REPOSITORY_ID,
+        "LOTTERY_WORKFLOW_ID": str(WORKFLOW_ID),
         "GITHUB_WORKFLOW_REF": f"{REPOSITORY}/{WORKFLOW_PATH}@refs/heads/feature",
         "GITHUB_RUN_ID": run_id,
         "GITHUB_RUN_ATTEMPT": attempt,
@@ -36,6 +38,7 @@ class ExecutionContextTests(unittest.TestCase):
             checked_out_sha=kwargs.get("sha", COMMIT),
             expected_repository=REPOSITORY,
             expected_repository_id=REPOSITORY_ID,
+            expected_workflow_id=WORKFLOW_ID,
             expected_workflow_path=WORKFLOW_PATH,
         )
 
@@ -51,6 +54,7 @@ class ExecutionContextTests(unittest.TestCase):
                 context,
                 expected_repository=REPOSITORY,
                 expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
                 expected_workflow_path=WORKFLOW_PATH,
             ),
             context,
