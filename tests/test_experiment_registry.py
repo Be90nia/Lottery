@@ -354,6 +354,14 @@ class ExperimentRegistryTests(unittest.TestCase):
         )
         self.assertEqual(replayed, imported)
         self.assertEqual(self.registry.snapshot()["event_count"], 3)
+        verification_path = (
+            self.registry.root / "github-actions-verification"
+            / f"{imported['source_verification_receipt_sha256']}.json"
+        )
+        self.assertTrue(verification_path.exists())
+        verification_path.write_bytes(b"{}")
+        with self.assertRaisesRegex(ExperimentRegistryError, "historical import evidence"):
+            self.registry.snapshot()
 
     def test_historical_import_recovers_after_start_event_crash(self):
         spec = experiment_spec(experiment_class="exploratory", outcomes_observed=True)
