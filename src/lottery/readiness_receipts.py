@@ -449,8 +449,8 @@ def _verify_g3_evidence_bundle(
     snapshot_ids = [row.get("draw_id") for row in snapshot_rows]
     snapshot_dates = [row.get("draw_date") for row in snapshot_rows]
     require(
-        all(isinstance(value, str) and re.fullmatch(r"\\d{5}", value) for value in snapshot_ids)
-        and all(isinstance(value, str) and re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", value) for value in snapshot_dates)
+        all(isinstance(value, str) and re.fullmatch(r"\d{5}", value) for value in snapshot_ids)
+        and all(isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) for value in snapshot_dates)
         and snapshot_ids == sorted(set(snapshot_ids))
         and snapshot_dates == sorted(set(snapshot_dates)),
         "canonical snapshot draw IDs/dates are not strictly chronological",
