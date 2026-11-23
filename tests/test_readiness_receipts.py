@@ -115,6 +115,7 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
     multiplicity = {
         "schema": "lottery.g3-holm-control/v1", "target_ids_sha256": target_hash,
         "bootstrap_replicates": 1000, "block_length": 50, "bootstrap_seed": 20261118,
+        "bootstrap_seeds_by_zone": {"front": 20261118, "back": 20261119},
         "method": "holm-step-down-one-sided-centered-moving-block-bootstrap", "alpha": 0.05,
         "hypotheses": [
             {"hypothesis_id": "candidate_vs_uniform:front", "p_value": 0.001,
