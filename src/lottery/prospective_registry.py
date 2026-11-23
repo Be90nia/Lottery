@@ -97,12 +97,29 @@ def _training_fields(artifact: dict[str, Any], inventory: dict[str, Any]) -> dic
     dates = inventory["draw_dates"]
     if first_id not in dates or last_id not in dates:
         raise RegistryScheduleError("training draw ID has no canonical inventory date crosswalk")
+    if (
+        training.get("snapshot_sha256") != artifact.get("training_snapshot_sha256")
+        or training.get("row_count") != row_count
+        or training.get("cutoff_draw_id") != artifact.get("training_cutoff_draw_id")
+        or training.get("last_draw_id") != training.get("cutoff_draw_id")
+        or training.get("cutoff_inclusive") is not True
+    ):
+        raise RegistryScheduleError("artifact training envelope disagrees with its top-level lineage")
+    try:
+        first_date = date.fromisoformat(dates[first_id])
+        last_date = date.fromisoformat(dates[last_id])
+    except (TypeError, ValueError) as exc:
+        raise RegistryScheduleError("training draw dates must be canonical ISO dates") from exc
+    if first_date.isoformat() != dates[first_id] or last_date.isoformat() != dates[last_id]:
+        raise RegistryScheduleError("training draw dates must be canonical ISO dates")
+    if first_date > last_date:
+        raise RegistryScheduleError("training date crosswalk reverses the artifact training range")
     return {
         "training_snapshot_sha256": artifact["training_snapshot_sha256"],
         "training_first_draw_id": first_id,
         "training_last_draw_id": last_id,
         "training_row_count": row_count,
-        "training_last_draw_date": dates[last_id],
+        "training_last_draw_date": last_date.isoformat(),
     }
 
 
@@ -186,6 +203,15 @@ def build_registry_schedule(
             raise RegistryScheduleError("target chronology must satisfy generated/expected < cutoff < draw")
         if draw_id not in draw_dates:
             raise RegistryScheduleError(f"target draw {draw_id} is absent from canonical inventory")
+        try:
+            inventory_draw_date = date.fromisoformat(draw_dates[draw_id])
+        except (TypeError, ValueError) as exc:
+            raise RegistryScheduleError("target inventory date must be a canonical ISO date") from exc
+        if (
+            inventory_draw_date.isoformat() != draw_dates[draw_id]
+            or inventory_draw_date != draw_at.date()
+        ):
+            raise RegistryScheduleError("target draw time does not match the canonical inventory date")
         if not isinstance(target.get("target_cutoff_timezone_source"), str) or not target["target_cutoff_timezone_source"].strip():
             raise RegistryScheduleError("target cutoff timezone source is required")
         target_ids.append(draw_id)
@@ -236,6 +262,13 @@ def build_registry_schedule(
                 raise RegistryScheduleError("front/back artifacts use incompatible model families")
             if loaded["front"][1]["training_snapshot_sha256"] != loaded["back"][1]["training_snapshot_sha256"]:
                 raise RegistryScheduleError("front/back artifacts must bind the same training snapshot")
+            front_training = loaded["front"][2]
+            back_training = loaded["back"][2]
+            if any(front_training[field] != back_training[field] for field in (
+                "training_first_draw_id", "training_last_draw_id", "training_row_count",
+                "training_last_draw_date",
+            )):
+                raise RegistryScheduleError("front/back artifacts must bind the same training range and cutoff")
             model_spec = "sha256:" + _sha(canonicalize({
                 "front": _artifact_model_spec(loaded["front"][1]),
                 "back": _artifact_model_spec(loaded["back"][1]),
