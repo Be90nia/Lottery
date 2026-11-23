@@ -38,6 +38,9 @@ class G3EvidenceAdapterTests(unittest.TestCase):
             registry_root=None,
             registry_run_receipt_path=None,
             artifact_provenance_path=None,
+            durable_store_root=None,
+            storage_commit_receipts_path=None,
+            ledger_path=Path("unused-ledger.jsonl"),
         )
         self.assertEqual(binding["status"], "UNBOUND_LEGACY")
         self.assertIsNone(binding["registry_experiment_id"])
