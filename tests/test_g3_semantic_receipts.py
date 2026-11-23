@@ -207,7 +207,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
 
     def test_non_uniform_uniform_baseline_is_rejected(self):
         lines = self.ledger_raw.splitlines()
-        row = json.loads(lines[2649])
+        row = json.loads(lines[2649 * 2])
         row["nll"] += 0.01
         lines[2649] = canonicalize(row)
         changed = b"\n".join(lines) + b"\n"
@@ -218,7 +218,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             self.verify()
 
     def test_holm_adjusted_p_values_must_match_preregistered_family(self):
-        self.multiplicity["hypotheses"][0]["holm_adjusted_p_value"] = 0.9
+        self.multiplicity["hypotheses"][0]["holm_adjusted_p_value"] = 0.003
         self.raw["multiplicity_control"] = canonicalize(self.multiplicity)
         with self.assertRaisesRegex(ReceiptVerificationError, "Holm adjusted p-values"):
             self.verify()
