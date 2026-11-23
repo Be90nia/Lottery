@@ -23,16 +23,18 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             "expanding": "expanding",
             "ewma": "ewma",
         }
-        start, end, count = 9054, 26131, 2649
-        self.targets = [
-            f"{start + ((end - start) * index // (count - 1)):05d}"
-            for index in range(count)
-        ]
-        self.cutoffs = [f"{int(self.targets[0]) - 1:05d}", *self.targets[:-1]]
-        self.target_dates = [(date(2000, 1, 1) + timedelta(days=i)).isoformat() for i in range(count)]
-        self.cutoff_dates = [(date(1999, 12, 31)).isoformat(), *self.target_dates[:-1]]
+        source_snapshot = Path(__file__).resolve().parents[1] / "data/processed/draws-20261118.jsonl"
+        snapshot_raw = source_snapshot.read_bytes()
+        snapshot_rows = [json.loads(line) for line in snapshot_raw.splitlines()]
+        self.snapshot_path = self.root / "canonical-snapshot.jsonl"
+        self.snapshot_path.write_bytes(snapshot_raw)
+        self.targets = [row["draw_id"] for row in snapshot_rows[300:]]
+        self.cutoffs = [row["draw_id"] for row in snapshot_rows[299:-1]]
+        self.target_dates = [row["draw_date"] for row in snapshot_rows[300:]]
+        self.cutoff_dates = [row["draw_date"] for row in snapshot_rows[299:-1]]
         self.target_hash = hashlib.sha256(canonicalize(self.targets)).hexdigest()
-        self.snapshot_hash = "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
+        self.snapshot_hash = hashlib.sha256(snapshot_raw).hexdigest()
+        self.assertEqual(self.snapshot_hash, "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa")
         self.target_manifest_hash = hashlib.sha256(canonicalize({
             "targets": [
                 {"target_draw_id": target, "target_draw_date": self.target_dates[index]}
@@ -322,7 +324,24 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         self.raw["complete_denominator"] = canonicalize(self.denominator)
 
     def verify(self):
-        return _verify_g3_evidence_bundle(self.raw, self.root)
+        release_manifest = {
+            "schema": "lottery.release-manifest/v2",
+            "evidence": {
+                "canonical_snapshot": {
+                    "path": self.snapshot_path.name,
+                    "sha256": self.snapshot_hash,
+                },
+                "evaluation_manifests": [{
+                    "path": self.run_manifest_path.name,
+                    "sha256": hashlib.sha256(self.run_manifest_path.read_bytes()).hexdigest(),
+                }],
+                "model_artifacts": [{
+                    "path": self.model_artifacts_path.name,
+                    "sha256": hashlib.sha256(self.model_artifacts_path.read_bytes()).hexdigest(),
+                }],
+            },
+        }
+        return _verify_g3_evidence_bundle(self.raw, self.root, release_manifest=release_manifest)
 
     def test_complete_g3_evidence_reconciles_full_2649_target_ledger(self):
         verified = self.verify()
