@@ -69,6 +69,8 @@ jobs:
             --registry-root source-run/experiment-registry \
             --registry-run-receipt source-run/registry-run-receipt.json \
             --artifact-provenance source-run/model-artifact-provenance.jsonl \
+            --durable-store-root source-run/durable-store \
+            --storage-commit-receipts source-run/storage-commit-receipts.json \
             --output-dir g3-evidence
       - name: Upload G3 diagnostic evidence and explicit blockers
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
