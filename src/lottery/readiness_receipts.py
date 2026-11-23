@@ -311,10 +311,10 @@ def _verify_g3_evidence_bundle(
         and prereg["multiplicity_family"] == [
             "candidate_vs_uniform:front", "candidate_vs_uniform:back"
         ]
-        and isinstance(prereg["calibration_method"], str) and prereg["calibration_method"]
+        and prereg["calibration_method"] == "marginal-inclusion-ece-10-bin-v1"
         and type(prereg["calibration_tolerance"]) in (int, float)
         and math.isfinite(prereg["calibration_tolerance"])
-        and 0 < prereg["calibration_tolerance"] <= 1,
+        and 0 < prereg["calibration_tolerance"] <= 0.05,
         "frozen bootstrap, multiplicity or calibration policy invalid",
     )
 
@@ -763,19 +763,61 @@ def _verify_g3_evidence_bundle(
         and isinstance(calibration["zones"], dict) and set(calibration["zones"]) == {"front", "back"},
         "calibration report does not bind the preregistered method/targets",
     )
-    for zone in ("front", "back"):
+    for zone, population_size, selection_size in (("front", 35, 5), ("back", 12, 2)):
         entry = calibration["zones"][zone]
-        require(set(entry) == {"target_count", "per_target_abs_errors", "max_abs_error"}, f"{zone} calibration fields invalid")
-        errors = entry["per_target_abs_errors"]
+        require(set(entry) == {
+            "target_count", "population_size", "selection_size", "observation_count",
+            "brier_score", "ece", "max_abs_bin_gap", "bins", "per_target_brier_scores",
+        }, f"{zone} calibration fields invalid")
+        per_target = entry["per_target_brier_scores"]
+        bins = entry["bins"]
         require(
             entry["target_count"] == 2649
-            and isinstance(errors, list) and len(errors) == 2649
-            and all(type(value) in (int, float) and math.isfinite(value) and value >= 0 for value in errors)
-            and type(entry["max_abs_error"]) in (int, float)
-            and math.isfinite(entry["max_abs_error"])
-            and abs(entry["max_abs_error"] - max(errors)) <= 1e-12
-            and 0 <= entry["max_abs_error"] <= prereg["calibration_tolerance"],
-            f"{zone} calibration evidence fails the preregistered tolerance or target coverage",
+            and entry["population_size"] == population_size
+            and entry["selection_size"] == selection_size
+            and entry["observation_count"] == 2649 * population_size
+            and isinstance(per_target, list) and len(per_target) == 2649
+            and all(type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 1 for value in per_target)
+            and type(entry["brier_score"]) in (int, float)
+            and math.isfinite(entry["brier_score"])
+            and abs(entry["brier_score"] - sum(per_target) / len(per_target)) <= 1e-12
+            and isinstance(bins, list) and len(bins) == 10,
+            f"{zone} calibration target coverage/Brier score is invalid",
+        )
+        expected_count = 0
+        weighted_gap = 0.0
+        gaps = []
+        for bin_index, bin_entry in enumerate(bins):
+            require(isinstance(bin_entry, dict) and set(bin_entry) == {
+                "bin_index", "lower", "upper", "count", "mean_predicted_probability",
+                "observed_frequency", "abs_gap",
+            }, f"{zone} calibration bin {bin_index} fields invalid")
+            lower, upper = bin_index / 10, (bin_index + 1) / 10
+            mean_pred = bin_entry["mean_predicted_probability"]
+            observed = bin_entry["observed_frequency"]
+            gap = bin_entry["abs_gap"]
+            count = bin_entry["count"]
+            require(
+                bin_entry["bin_index"] == bin_index
+                and bin_entry["lower"] == lower and bin_entry["upper"] == upper
+                and type(count) is int and count >= 0
+                and all(type(value) in (int, float) and math.isfinite(value) and 0 <= value <= 1
+                        for value in (mean_pred, observed, gap))
+                and abs(gap - abs(mean_pred - observed)) <= 1e-12
+                and (count > 0 or (mean_pred == 0 and observed == 0 and gap == 0)),
+                f"{zone} calibration bin {bin_index} values invalid",
+            )
+            expected_count += count
+            weighted_gap += count * gap
+            gaps.append(gap)
+        computed_ece = weighted_gap / entry["observation_count"]
+        require(
+            expected_count == entry["observation_count"]
+            and abs(entry["ece"] - computed_ece) <= 1e-12
+            and abs(entry["max_abs_bin_gap"] - max(gaps)) <= 1e-12
+            and entry["ece"] <= prereg["calibration_tolerance"]
+            and entry["max_abs_bin_gap"] <= prereg["calibration_tolerance"],
+            f"{zone} marginal calibration fails the preregistered ECE/max-bin-gap tolerance",
         )
     nested = [{"path": denominator["ledger"]["path"], "sha256": ledger_digest}]
     if not run_manifest_already_bound_by_release:
