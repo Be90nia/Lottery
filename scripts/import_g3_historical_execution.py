@@ -121,8 +121,8 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
     if (manifest.get("status") != scientific["status"]
             or manifest.get("confirmatory_eligible") is not False
             or manifest.get("snapshot", {}).get("sha256") != scientific["snapshot_sha256"]
-            or manifest.get("expected_target_record_count") != 21192
-            or manifest.get("actual_target_record_count") != 21192
+            or manifest.get("expected_target_record_count") != evidence["artifact_contents"]["target_score_ledger"]["record_count"]
+            or manifest.get("actual_target_record_count") != evidence["artifact_contents"]["target_score_ledger"]["record_count"]
             or manifest.get("model_artifact_count") != evidence["artifact_contents"]["model_artifacts"]["record_count"]
             or manifest.get("terminal_status_counts") != scientific["terminal_counts"]
             or target_manifest.get("first_target_draw_id") != "09054"
