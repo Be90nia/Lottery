@@ -351,6 +351,33 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             {"path": self.model_artifacts_path.name, "sha256": hashlib.sha256(self.model_artifacts_raw).hexdigest()},
         ])
 
+    def test_canonical_snapshot_bytes_are_required_and_hash_bound(self):
+        original = self.snapshot_path.read_bytes()
+        self.snapshot_path.write_bytes(original + b" ")
+        with self.assertRaisesRegex(ReceiptVerificationError, "SHA-256 mismatch"):
+            self.verify()
+
+    def test_release_manifest_must_bind_snapshot_and_both_evaluation_ledgers(self):
+        release_manifest = {
+            "schema": "lottery.release-manifest/v2",
+            "evidence": {
+                "canonical_snapshot": {
+                    "path": self.snapshot_path.name,
+                    "sha256": "0" * 64,
+                },
+                "evaluation_manifests": [{
+                    "path": self.run_manifest_path.name,
+                    "sha256": hashlib.sha256(self.run_manifest_path.read_bytes()).hexdigest(),
+                }],
+                "model_artifacts": [{
+                    "path": self.model_artifacts_path.name,
+                    "sha256": hashlib.sha256(self.model_artifacts_path.read_bytes()).hexdigest(),
+                }],
+            },
+        }
+        with self.assertRaisesRegex(ReceiptVerificationError, "SHA-256 mismatch"):
+            _verify_g3_evidence_bundle(self.raw, self.root, release_manifest=release_manifest)
+
     def test_future_or_wrong_training_cutoff_is_rejected(self):
         lines = self.ledger_raw.splitlines()
         row = json.loads(lines[0])
