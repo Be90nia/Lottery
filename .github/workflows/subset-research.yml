@@ -39,6 +39,7 @@ jobs:
     env:
       PYTHONPATH: src
       RUN_FULL_SUBSET_RESEARCH: "1"
+      LOTTERY_WORKFLOW_ID: "423307604"
       RESEARCH_CODE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
       RESEARCH_SNAPSHOT_COMMIT: fb33963442170bd212d039f3debd07bde58feac6
       RESEARCH_SNAPSHOT_TRUST_STATUS: manifest_complete_not_officially_authenticated
