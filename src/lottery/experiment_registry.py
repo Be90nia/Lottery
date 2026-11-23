@@ -541,6 +541,7 @@ class ExperimentRegistry:
         execution_context: dict[str, Any] | None = None,
         expected_repository: str | None = None,
         expected_repository_id: str | None = None,
+        expected_workflow_id: int | None = None,
         expected_workflow_path: str | None = None,
     ) -> dict[str, Any]:
         if not _is_sha(experiment_id):
@@ -553,18 +554,19 @@ class ExperimentRegistry:
             raise ValueError("actor must be a non-empty string")
         config_hash = _sha(canonicalize(config))
         if execution_context is not None:
-            if not all((expected_repository, expected_repository_id, expected_workflow_path)):
+            if not all((expected_repository, expected_repository_id, expected_workflow_id, expected_workflow_path)):
                 raise ExperimentRegistryError("execution context requires an explicit repository/workflow allowlist")
             try:
                 execution_context = validate_execution_context(
                     execution_context,
                     expected_repository=expected_repository,
                     expected_repository_id=expected_repository_id,
+                    expected_workflow_id=expected_workflow_id,
                     expected_workflow_path=expected_workflow_path,
                 )
             except ExecutionContextError as exc:
                 raise ExperimentRegistryError("trial execution context is invalid") from exc
-        elif any((expected_repository, expected_repository_id, expected_workflow_path)):
+        elif any((expected_repository, expected_repository_id, expected_workflow_id, expected_workflow_path)):
             raise ExperimentRegistryError("execution allowlist cannot be supplied without an execution context")
         with ledger_lock(self.events_path):
             snapshot = self._snapshot_unlocked()
@@ -602,7 +604,7 @@ class ExperimentRegistry:
         actor: str, execution_context: dict[str, Any], source_metadata: dict[str, Any],
         metadata_verifier: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]],
         expected_repository: str, expected_repository_id: str,
-        expected_workflow_path: str,
+        expected_workflow_id: int, expected_workflow_path: str,
     ) -> dict[str, Any]:
         """Append an honest retrospective import; source times never replace registry times."""
         if not _is_sha(experiment_id):
@@ -620,6 +622,7 @@ class ExperimentRegistry:
                 execution_context,
                 expected_repository=expected_repository,
                 expected_repository_id=expected_repository_id,
+                expected_workflow_id=expected_workflow_id,
                 expected_workflow_path=expected_workflow_path,
             )
         except ExecutionContextError as exc:
