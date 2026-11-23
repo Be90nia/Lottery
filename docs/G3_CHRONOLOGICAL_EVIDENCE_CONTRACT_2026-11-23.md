@@ -44,6 +44,8 @@ The verifier currently enforces:
 - Each scored record has a finite nonnegative NLL; failed records must have null NLL, never an arbitrary penalty.
 - Uniform exact-set NLL is checked against `log(C(35,5))` and `log(C(12,2))` on every target.
 - Reported baseline means are recomputed from the full terminal ledger; paired target coverage must be 2,649 in each zone.
+- The verifier replays all six 1,000-replicate moving-block comparisons (uniform/expanding/EWMA × front/back) from the per-target score deltas using the preregistered per-zone/per-comparator seeds. It recomputes percentile intervals and the one-sided null-centered p-values before checking the Holm correction.
+- Calibration evidence must include 2,649 per-target absolute-error diagnostics in each zone; the reported maximum is recomputed from those values and compared with the preregistered method/tolerance. A summary-only calibration PASS is rejected.
 - The candidate's 95% interval must be below zero in both zones and the preregistered non-regression upper bounds against expanding/EWMA must be nonpositive.
 - The Holm family must contain exactly two hypotheses; adjusted p-values are recomputed from raw p-values and must match the step-down correction. Both co-primary tests and intervals must pass.
 - Calibration must use the preregistered method, cover all targets in both zones and remain within the registered tolerance.
@@ -68,4 +70,4 @@ The result is a useful complete exploratory diagnostic and a negative confirmato
 
 This code verifies the structure and arithmetic consistency of the supplied evidence. It does not independently rerun the model fitting, recompute every exact-set probability from source artifacts, or regenerate the moving-block bootstrap samples from per-target score deltas. Those require the separate exact-set evaluator/run artifacts and independent replay. The receipt verifier's SHA-256 checks establish byte integrity, not producer authenticity.
 
-The next implementation pass must connect this semantic contract to the actual LOT-055 frozen evaluator outputs, verify bootstrap resample lineage/replay, and generate real G3 evidence from a complete run. Do not label G3 PASS until those artifacts and a current-head CI run are verified.
+The next implementation pass must connect this semantic contract to the actual LOT-055 frozen evaluator outputs and generate real G3 evidence from a complete run. The bootstrap replay contract is now implemented and independently reproduces the stored full-run diagnostic intervals and p-values exactly. The existing full-run diagnostic still cannot be accepted as confirmatory and has no per-target calibration artifact; its negative statistical result remains a hard blocker. Do not label G3 PASS until those artifacts and a current-head CI run are verified.
