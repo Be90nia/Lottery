@@ -47,6 +47,10 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             "block_length": 50,
             "bootstrap_seed": 20261118,
             "bootstrap_seeds_by_zone": {"front": 20261118, "back": 20261119},
+            "bootstrap_seeds_by_zone_and_comparison": {
+                "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+                "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+            },
             "multiplicity_family": [
                 "candidate_vs_uniform:front", "candidate_vs_uniform:back"
             ],
@@ -145,9 +149,9 @@ class G3SemanticEvidenceTests(unittest.TestCase):
                     "ewma": uniform_nll + 0.1,
                 },
                 "candidate_vs_uniform_mean_delta": -0.2,
-                "candidate_vs_uniform_ci95": [-0.21, -0.19],
-                "candidate_vs_expanding_ci95_upper": -0.2,
-                "candidate_vs_ewma_ci95_upper": -0.2,
+                "candidate_vs_uniform_ci95": [-0.2, -0.2],
+                "candidate_vs_expanding_ci95_upper": -0.3,
+                "candidate_vs_ewma_ci95_upper": -0.3,
             }
         self.baseline = {
             "schema": "lottery.g3-baseline-comparison/v1",
@@ -173,17 +177,17 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             "hypotheses": [
                 {
                     "hypothesis_id": "candidate_vs_uniform:front",
-                    "p_value": 0.001,
-                    "holm_adjusted_p_value": 0.002,
-                    "ci95_lower": -0.21,
-                    "ci95_upper": -0.19,
+                    "p_value": 1 / 1001,
+                    "holm_adjusted_p_value": 2 / 1001,
+                    "ci95_lower": -0.2,
+                    "ci95_upper": -0.2,
                 },
                 {
                     "hypothesis_id": "candidate_vs_uniform:back",
-                    "p_value": 0.002,
-                    "holm_adjusted_p_value": 0.002,
-                    "ci95_lower": -0.21,
-                    "ci95_upper": -0.19,
+                    "p_value": 1 / 1001,
+                    "holm_adjusted_p_value": 2 / 1001,
+                    "ci95_lower": -0.2,
+                    "ci95_upper": -0.2,
                 },
             ],
         }
@@ -218,13 +222,16 @@ class G3SemanticEvidenceTests(unittest.TestCase):
     def test_future_or_wrong_training_cutoff_is_rejected(self):
         lines = self.ledger_raw.splitlines()
         row = json.loads(lines[0])
-        row["train_cutoff_draw_id"] = row["target_draw_id"]
+        row["training_last_draw_id"] = row["target_draw_id"]
+        row["record_sha256"] = "sha256:" + hashlib.sha256(canonicalize({
+            key: value for key, value in row.items() if key != "record_sha256"
+        })).hexdigest()
         lines[0] = canonicalize(row)
         changed = b"\n".join(lines) + b"\n"
         self.ledger_path.write_bytes(changed)
         self.denominator["ledger"]["sha256"] = hashlib.sha256(changed).hexdigest()
         self.raw["complete_denominator"] = canonicalize(self.denominator)
-        with self.assertRaisesRegex(ReceiptVerificationError, "violates target/cutoff pairing"):
+        with self.assertRaisesRegex(ReceiptVerificationError, "violates target/cutoff/model identity"):
             self.verify()
 
     def test_missing_terminal_record_is_rejected(self):
@@ -238,7 +245,11 @@ class G3SemanticEvidenceTests(unittest.TestCase):
     def test_non_uniform_uniform_baseline_is_rejected(self):
         lines = self.ledger_raw.splitlines()
         row = json.loads(lines[2649 * 2])
-        row["nll"] += 0.01
+        row["negative_log_score"] += 0.01
+        row["predicted_log_probability"] = -row["negative_log_score"]
+        row["record_sha256"] = "sha256:" + hashlib.sha256(canonicalize({
+            key: value for key, value in row.items() if key != "record_sha256"
+        })).hexdigest()
         lines[2649 * 2] = canonicalize(row)
         changed = b"\n".join(lines) + b"\n"
         self.ledger_path.write_bytes(changed)
@@ -248,7 +259,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             self.verify()
 
     def test_holm_adjusted_p_values_must_match_preregistered_family(self):
-        self.multiplicity["hypotheses"][0]["holm_adjusted_p_value"] = 0.003
+        self.multiplicity["hypotheses"][0]["holm_adjusted_p_value"] = 0.004
         self.raw["multiplicity_control"] = canonicalize(self.multiplicity)
         with self.assertRaisesRegex(ReceiptVerificationError, "Holm adjusted p-values"):
             self.verify()
