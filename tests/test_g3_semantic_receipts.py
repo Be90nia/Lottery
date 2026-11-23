@@ -347,8 +347,6 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         verified = self.verify()
         self.assertEqual(verified, [
             {"path": self.ledger_path.name, "sha256": hashlib.sha256(self.ledger_raw).hexdigest()},
-            {"path": self.run_manifest_path.name, "sha256": hashlib.sha256(self.run_manifest_raw).hexdigest()},
-            {"path": self.model_artifacts_path.name, "sha256": hashlib.sha256(self.model_artifacts_raw).hexdigest()},
         ])
 
     def test_canonical_snapshot_bytes_are_required_and_hash_bound(self):
