@@ -262,6 +262,19 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             "calibration": canonicalize(self.calibration),
         }
 
+    def _refresh_ledger_and_manifest_bindings(self):
+        self.denominator["ledger"]["sha256"] = hashlib.sha256(self.ledger_path.read_bytes()).hexdigest()
+        self.run_manifest["output_files"]["target-score-ledger.jsonl"] = {
+            "sha256": hashlib.sha256(self.ledger_path.read_bytes()).hexdigest(),
+            "bytes": len(self.ledger_path.read_bytes()),
+        }
+        body = {key: value for key, value in self.run_manifest.items() if key != "manifest_sha256"}
+        self.run_manifest["manifest_sha256"] = "sha256:" + hashlib.sha256(canonicalize(body)).hexdigest()
+        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\\n"
+        self.run_manifest_path.write_bytes(self.run_manifest_raw)
+        self.denominator["run_manifest"]["sha256"] = hashlib.sha256(self.run_manifest_raw).hexdigest()
+        self.raw["complete_denominator"] = canonicalize(self.denominator)
+
     def verify(self):
         return _verify_g3_evidence_bundle(self.raw, self.root)
 
@@ -282,16 +295,15 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         lines[0] = canonicalize(row)
         changed = b"\n".join(lines) + b"\n"
         self.ledger_path.write_bytes(changed)
-        self.denominator["ledger"]["sha256"] = hashlib.sha256(changed).hexdigest()
-        self.raw["complete_denominator"] = canonicalize(self.denominator)
+        self.ledger_path.write_bytes(changed)
+        self._refresh_ledger_and_manifest_bindings()
         with self.assertRaisesRegex(ReceiptVerificationError, "violates target/cutoff/model identity"):
             self.verify()
 
     def test_missing_terminal_record_is_rejected(self):
         changed = b"\n".join(self.ledger_raw.splitlines()[:-1]) + b"\n"
         self.ledger_path.write_bytes(changed)
-        self.denominator["ledger"]["sha256"] = hashlib.sha256(changed).hexdigest()
-        self.raw["complete_denominator"] = canonicalize(self.denominator)
+        self._refresh_ledger_and_manifest_bindings()
         with self.assertRaisesRegex(ReceiptVerificationError, "line count differs"):
             self.verify()
 
@@ -306,8 +318,7 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         lines[2649 * 2] = canonicalize(row)
         changed = b"\n".join(lines) + b"\n"
         self.ledger_path.write_bytes(changed)
-        self.denominator["ledger"]["sha256"] = hashlib.sha256(changed).hexdigest()
-        self.raw["complete_denominator"] = canonicalize(self.denominator)
+        self._refresh_ledger_and_manifest_bindings()
         with self.assertRaisesRegex(ReceiptVerificationError, "uniform exact-set baseline"):
             self.verify()
 
@@ -321,6 +332,29 @@ class G3SemanticEvidenceTests(unittest.TestCase):
         self.calibration["zones"]["front"]["per_target_abs_errors"].pop()
         self.raw["calibration"] = canonicalize(self.calibration)
         with self.assertRaisesRegex(ReceiptVerificationError, "calibration evidence fails"):
+            self.verify()
+
+    def test_exploratory_run_manifest_cannot_be_promoted_by_confirmatory_receipt(self):
+        self.run_manifest["experiment_class"] = "exploratory_diagnostic"
+        self.run_manifest["confirmatory_eligible"] = False
+        body = {key: value for key, value in self.run_manifest.items() if key != "manifest_sha256"}
+        self.run_manifest["manifest_sha256"] = "sha256:" + hashlib.sha256(canonicalize(body)).hexdigest()
+        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\\n"
+        self.run_manifest_path.write_bytes(self.run_manifest_raw)
+        self.denominator["run_manifest"]["sha256"] = hashlib.sha256(self.run_manifest_raw).hexdigest()
+        self.raw["complete_denominator"] = canonicalize(self.denominator)
+        with self.assertRaisesRegex(ReceiptVerificationError, "run manifest is missing, non-confirmatory"):
+            self.verify()
+
+    def test_run_manifest_ledger_digest_cannot_be_substituted(self):
+        self.run_manifest["output_files"]["target-score-ledger.jsonl"]["sha256"] = "0" * 64
+        body = {key: value for key, value in self.run_manifest.items() if key != "manifest_sha256"}
+        self.run_manifest["manifest_sha256"] = "sha256:" + hashlib.sha256(canonicalize(body)).hexdigest()
+        self.run_manifest_raw = canonicalize(self.run_manifest) + b"\\n"
+        self.run_manifest_path.write_bytes(self.run_manifest_raw)
+        self.denominator["run_manifest"]["sha256"] = hashlib.sha256(self.run_manifest_raw).hexdigest()
+        self.raw["complete_denominator"] = canonicalize(self.denominator)
+        with self.assertRaisesRegex(ReceiptVerificationError, "run manifest is missing, non-confirmatory"):
             self.verify()
 
     def test_posthoc_or_holdout_tainted_registration_is_rejected(self):
