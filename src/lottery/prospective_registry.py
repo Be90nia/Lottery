@@ -283,15 +283,34 @@ def build_registry_schedule(
         "inventory_id": inventory_id,
         "registry_snapshot_sha256": snapshot_hash,
     }
-    # provenance is part of the content-addressed schedule identity.
-    schedule.pop("schedule_id")
+    # A protected signer attests the exact schedule payload before the schedule
+    # content ID is calculated. A digest alone is not an authenticity proof.
+    signed_payload = dict(schedule)
+    attestation = schedule_attestor(signed_payload)
+    if (
+        not isinstance(attestation, dict)
+        or not isinstance(attestation.get("key_id"), str) or not attestation["key_id"]
+        or not isinstance(attestation.get("signature"), str) or not attestation["signature"]
+        or attestation.get("payload_sha256") != _sha(canonicalize(signed_payload))
+    ):
+        raise RegistryScheduleError("protected schedule attestor returned an invalid payload-bound signature")
+    schedule["trust_attestation"] = attestation
     schedule["schedule_id"] = "sha256:" + _sha(canonicalize(schedule))
     validate_schedule(schedule)
+    if schedule_verifier(schedule) is not True:
+        raise RegistryScheduleError("protected schedule signature verifier rejected the built schedule")
     return schedule
 
 
-def assert_registry_unchanged(lifecycle: ChampionLifecycle, schedule: dict[str, Any]) -> None:
-    """Call immediately before registration; reject a stale schedule snapshot."""
+def assert_registry_unchanged(
+    lifecycle: ChampionLifecycle,
+    schedule: dict[str, Any],
+    *,
+    schedule_verifier: Callable[[dict[str, Any]], bool] | None = None,
+) -> None:
+    """Verify signature and registry immediately before registration/issuance."""
+    if schedule_verifier is None or schedule_verifier(schedule) is not True:
+        raise RegistryScheduleError("protected schedule signature verifier is absent or rejected the schedule")
     provenance = schedule.get("provenance")
     if not isinstance(provenance, dict) or not re.fullmatch(
         r"[0-9a-f]{64}", str(provenance.get("registry_snapshot_sha256", ""))
