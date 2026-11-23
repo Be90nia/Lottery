@@ -62,6 +62,22 @@ class StorageCommitVerificationTests(unittest.TestCase):
             with self.assertRaisesRegex(StorageError, "cross-links"):
                 store.verify_commit(operation_id=operation_id)
 
+    def test_verifier_rejects_bytes_only_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = FileSystemObjectStore(Path(directory) / "objects")
+            staged = store.stage(
+                idempotency_key="execution-4:bytes-only.json",
+                content=b"{}",
+                media_type="application/json",
+                schema_version="lottery.run-manifest/v1",
+                producer_commit="d" * 40,
+                producer_runtime="python-test",
+            )
+            store.validate(operation_id=staged["operation_id"])
+            store.commit(operation_id=staged["operation_id"])
+            with self.assertRaisesRegex(StorageError, "validation receipt"):
+                store.verify_commit(operation_id=staged["operation_id"])
+
     def test_verifier_rejects_missing_commit_receipt(self):
         with tempfile.TemporaryDirectory() as directory:
             store = FileSystemObjectStore(Path(directory) / "objects")
