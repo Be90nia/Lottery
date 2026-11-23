@@ -84,3 +84,22 @@ This closes the G3 semantic-verifier implementation slice. It does not close G3 
 This code verifies the structure and arithmetic consistency of the supplied evidence. It does not independently rerun the model fitting, recompute every exact-set probability from source artifacts, or regenerate the moving-block bootstrap samples from per-target score deltas. Those require the separate exact-set evaluator/run artifacts and independent replay. The receipt verifier's SHA-256 checks establish byte integrity, not producer authenticity.
 
 The next implementation pass must connect this semantic contract to the actual LOT-055 frozen evaluator outputs and generate real G3 evidence from a complete run. The bootstrap replay contract is now implemented and independently reproduces the stored full-run diagnostic intervals and p-values exactly. The existing full-run diagnostic still cannot be accepted as confirmatory and has no per-target calibration artifact; its negative statistical result remains a hard blocker. Do not label G3 PASS until those artifacts and a current-head CI run are verified.
+
+## Run-manifest binding and evidence adapter — 2026-11-23
+
+The verifier now requires the normalized terminal ledger to be bound to the immutable LOT-055 run manifest, not only to a caller-supplied ledger hash. It checks:
+- The run-manifest file SHA-256 and its internal canonical manifest digest.
+- Experiment identity/class and `confirmatory_eligible`; an exploratory child run cannot be relabeled by a receipt.
+- Snapshot SHA-256 and row count against the release manifest and preregistration.
+- Target-list digest, target count and first/last target IDs against the exact ordered target IDs/dates in the chronology evidence.
+- The 1,000 × 50 bootstrap configuration and per-zone/per-comparator seed schedule.
+- Expected/actual denominator, terminal status counts, and the run manifest's target-ledger SHA-256 and byte count.
+- The exact eight model × zone configuration identities; every ledger row must match its model configuration and feature-schema hashes.
+
+Added `scripts/build_g3_evidence.py` to adapt immutable LOT-055 run outputs into the six G3 documents. The CLI requires explicit snapshot/run-manifest digests, the frozen snapshot, normalized ledger and a machine-readable registration. It copies the run manifest and ledger byte-for-byte into the evidence directory, computes paired baseline summaries and replayable bootstrap/Holm evidence from the ledger, and never fabricates a calibration result. Without a supplied target-level calibration artifact it emits an explicit `lottery.g3-calibration-blocked/v1` document.
+
+The diagnostic adapter workflow downloads the completed historical run artifact from Actions run `44996717511`, checks out the exact snapshot commit `fb33963442170bd212d039f3debd07bde58feac6`, and builds the evidence bundle. The associated registration record deliberately preserves `experiment_class=exploratory_diagnostic`, `outcomes_observed_at_registration=true`, and `UNSPECIFIED_NO_PREREGISTERED_METHOD` for calibration. It is not a confirmatory registration.
+
+**Important limitation:** LOT-055 Issue #18 asks for calibration diagnostics "where meaningful" but does not define a pre-outcome calibration statistic, randomization, binning, tolerance or acceptance rule. The existing `preregistered-randomized-pit-v1` value appears only in synthetic verifier fixtures; it is not a registered method for the real diagnostic run. The adapter therefore does not generate fake PIT errors or claim calibration PASS. A calibration method must be specified and registered before a future prospective evaluation; it cannot be retroactively attached to this post-outcome diagnostic.
+
+The historical diagnostic still has 21,192/21,192 scored rows but is explicitly exploratory, fails both co-primary candidate-vs-uniform Holm tests, and fails front-zone non-regression against EWMA. Its G3 evidence bundle is therefore expected to remain BLOCKED. No G3 PASS, model promotion, serving or LOT-042 access is authorized.
