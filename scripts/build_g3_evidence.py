@@ -252,17 +252,61 @@ def build_g3_evidence_bundle(
     if run_manifest.get("terminal_status_counts") != status_counts:
         raise G3EvidenceBuildError("run manifest terminal status counts do not match ledger")
 
+    run_model_specs = {
+        (item["zone"], item["model_name"]): item for item in run_manifest.get("models", [])
+        if isinstance(item, dict) and "zone" in item and "model_name" in item
+    }
+    cutoff_to_target = {
+        rows[index - 1]["draw_id"]: rows[index]["draw_id"]
+        for index in range(MIN_TRAIN, EXPECTED_ROWS)
+    }
     candidate_artifacts = {}
+    artifact_counts = {}
     for line_number, raw_artifact in enumerate(model_artifacts_raw.splitlines(), 1):
         try:
             artifact = _verify_historical_artifact(raw_artifact)
         except Exception as exc:
             raise G3EvidenceBuildError(f"model artifact line {line_number} failed historical content/schema verification: {exc}") from exc
-        if artifact.get("model_family") == "complete_subset_exponential":
-            key = (artifact.get("zone"), artifact.get("training_cutoff_draw_id"))
+        zone = artifact.get("zone")
+        family = artifact.get("model_family")
+        if family == "complete_subset_exponential":
+            model_name = "exponential_family"
+        elif family == "conditional_poisson":
+            model_name = artifact.get("model_configuration", {}).get("baseline")
+        else:
+            raise G3EvidenceBuildError(f"unsupported historical model family {family}")
+        spec = run_model_specs.get((zone, model_name))
+        if spec is None or (
+            artifact.get("model_configuration_hash") != spec.get("model_configuration_hash")
+            or artifact.get("feature_schema_hash") != spec.get("feature_schema_hash")
+            or artifact.get("training_snapshot_sha256") != expected_snapshot_sha256
+        ):
+            raise G3EvidenceBuildError(f"model artifact line {line_number} does not match immutable run model inventory")
+        cutoff = artifact.get("training_cutoff_draw_id")
+        target = cutoff_to_target.get(cutoff)
+        if target is None:
+            raise G3EvidenceBuildError(f"model artifact line {line_number} has unknown training cutoff")
+        ledger_record = indexed.get((model_name, zone, target))
+        if ledger_record is None or (
+            artifact.get("artifact_id") != ledger_record.get("artifact_id")
+            or artifact.get("training_row_count") != ledger_record.get("training_row_count")
+            or artifact.get("training_last_draw_id") != ledger_record.get("training_last_draw_id")
+        ):
+            raise G3EvidenceBuildError(f"model artifact line {line_number} does not match terminal ledger artifact identity")
+        artifact_counts[(zone, model_name)] = artifact_counts.get((zone, model_name), 0) + 1
+        if model_name == "exponential_family":
+            key = (zone, cutoff)
             if key in candidate_artifacts:
                 raise G3EvidenceBuildError(f"duplicate candidate model artifact for {key}")
             candidate_artifacts[key] = artifact
+    expected_artifact_keys = {
+        (zone, model_name)
+        for zone in ZONES for model_name in ("exponential_family", "expanding", "ewma")
+    }
+    if set(artifact_counts) != expected_artifact_keys or any(
+        artifact_counts[key] != TARGET_COUNT for key in expected_artifact_keys
+    ):
+        raise G3EvidenceBuildError("model-artifact inventory does not cover all non-uniform model × zone × target rows")
     if len(candidate_artifacts) != TARGET_COUNT * len(ZONES):
         raise G3EvidenceBuildError("candidate model-artifact inventory does not cover every target and zone")
 
