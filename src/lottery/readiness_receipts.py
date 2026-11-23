@@ -640,13 +640,17 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     )
     for zone in ("front", "back"):
         entry = calibration["zones"][zone]
-        require(set(entry) == {"target_count", "max_abs_error"}, f"{zone} calibration fields invalid")
+        require(set(entry) == {"target_count", "per_target_abs_errors", "max_abs_error"}, f"{zone} calibration fields invalid")
+        errors = entry["per_target_abs_errors"]
         require(
             entry["target_count"] == 2649
+            and isinstance(errors, list) and len(errors) == 2649
+            and all(type(value) in (int, float) and math.isfinite(value) and value >= 0 for value in errors)
             and type(entry["max_abs_error"]) in (int, float)
             and math.isfinite(entry["max_abs_error"])
+            and abs(entry["max_abs_error"] - max(errors)) <= 1e-12
             and 0 <= entry["max_abs_error"] <= prereg["calibration_tolerance"],
-            f"{zone} calibration evidence fails the preregistered tolerance",
+            f"{zone} calibration evidence fails the preregistered tolerance or target coverage",
         )
     return [{"path": denominator["ledger"]["path"], "sha256": ledger_digest}]
 
