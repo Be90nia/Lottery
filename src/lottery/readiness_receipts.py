@@ -9,6 +9,7 @@ import hashlib
 import json
 import math
 import re
+import random
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -231,7 +232,8 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         "schema", "protocol_id", "experiment_id", "experiment_class",
         "outcomes_observed_at_registration", "snapshot_sha256",
         "target_manifest_sha256", "model_ids", "bootstrap_replicates",
-        "block_length", "bootstrap_seed", "bootstrap_seeds_by_zone", "multiplicity_family",
+        "block_length", "bootstrap_seed", "bootstrap_seeds_by_zone",
+        "bootstrap_seeds_by_zone_and_comparison", "multiplicity_family",
         "alpha", "calibration_method", "calibration_tolerance",
         "holdout_accessed",
     }, "preregistration fields invalid")
@@ -264,6 +266,10 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         and type(prereg["block_length"]) is int and prereg["block_length"] == 50
         and type(prereg["bootstrap_seed"]) is int and prereg["bootstrap_seed"] >= 0
         and prereg["bootstrap_seeds_by_zone"] == {"front": prereg["bootstrap_seed"], "back": prereg["bootstrap_seed"] + 1}
+        and prereg["bootstrap_seeds_by_zone_and_comparison"] == {
+            "front": {"uniform": prereg["bootstrap_seed"], "expanding": prereg["bootstrap_seed"] + 1, "ewma": prereg["bootstrap_seed"] + 2},
+            "back": {"uniform": prereg["bootstrap_seed"] + 1, "expanding": prereg["bootstrap_seed"] + 2, "ewma": prereg["bootstrap_seed"] + 3},
+        }
         and type(prereg["alpha"]) in (int, float) and prereg["alpha"] == 0.05
         and isinstance(prereg["multiplicity_family"], list)
         and prereg["multiplicity_family"] == [
@@ -499,6 +505,61 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
             and math.isfinite(entry["candidate_vs_ewma_ci95_upper"]),
             f"{zone} paired uncertainty/non-regression report invalid",
         )
+        def bootstrap(values: list[float], seed: int) -> tuple[float, float, float]:
+            n = len(values)
+            if n < 50 or any(not math.isfinite(value) for value in values):
+                raise ReceiptVerificationError("G3: invalid paired values for moving-block bootstrap")
+            rng = random.Random(seed)
+            observed = sum(values) / n
+            centered = [value - observed for value in values]
+            means: list[float] = []
+            null_means: list[float] = []
+            for _ in range(1000):
+                indices: list[int] = []
+                while len(indices) < n:
+                    start = rng.randrange(0, n - 50 + 1)
+                    indices.extend(range(start, start + 50))
+                indices = indices[:n]
+                means.append(sum(values[index] for index in indices) / n)
+                null_means.append(sum(centered[index] for index in indices) / n)
+            ordered = sorted(means)
+            def percentile(probability: float) -> float:
+                position = (len(ordered) - 1) * probability
+                lower, upper = math.floor(position), math.ceil(position)
+                if lower == upper:
+                    return ordered[lower]
+                weight = position - lower
+                return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+            p_value = (1 + sum(value <= observed for value in null_means)) / 1001
+            return percentile(0.025), percentile(0.975), p_value
+
+        paired = {
+            role: [
+                scores[(model_ids["candidate"], zone, target)]
+                - scores[(model_ids[role], zone, target)]
+                for target in target_ids
+            ]
+            for role in ("uniform", "expanding", "ewma")
+        }
+        uniform_ci = bootstrap(
+            paired["uniform"], prereg["bootstrap_seeds_by_zone_and_comparison"][zone]["uniform"]
+        )
+        expanding_ci = bootstrap(
+            paired["expanding"], prereg["bootstrap_seeds_by_zone_and_comparison"][zone]["expanding"]
+        )
+        ewma_ci = bootstrap(
+            paired["ewma"], prereg["bootstrap_seeds_by_zone_and_comparison"][zone]["ewma"]
+        )
+        require(
+            abs(interval[0] - uniform_ci[0]) <= 1e-10
+            and abs(interval[1] - uniform_ci[1]) <= 1e-10
+            and abs(entry["candidate_vs_expanding_ci95_upper"] - expanding_ci[1]) <= 1e-10
+            and abs(entry["candidate_vs_ewma_ci95_upper"] - ewma_ci[1]) <= 1e-10,
+            f"{zone} moving-block bootstrap intervals do not replay from paired target ledger",
+        )
+        if "replayed_primary_p_values" not in locals():
+            replayed_primary_p_values = {}
+        replayed_primary_p_values[zone] = uniform_ci[2]
         require(
             entry["candidate_vs_expanding_ci95_upper"] <= 0
             and entry["candidate_vs_ewma_ci95_upper"] <= 0,
@@ -508,7 +569,8 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     multiplicity = reports["multiplicity_control"]
     require(set(multiplicity) == {
         "schema", "target_ids_sha256", "bootstrap_replicates", "block_length",
-        "bootstrap_seed", "bootstrap_seeds_by_zone", "method", "alpha", "hypotheses",
+        "bootstrap_seed", "bootstrap_seeds_by_zone", "bootstrap_seeds_by_zone_and_comparison",
+        "method", "alpha", "hypotheses",
     }, "multiplicity report fields invalid")
     require(
         multiplicity["schema"] == "lottery.g3-holm-control/v1"
@@ -517,6 +579,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         and multiplicity["block_length"] == prereg["block_length"]
         and multiplicity["bootstrap_seed"] == prereg["bootstrap_seed"]
         and multiplicity["bootstrap_seeds_by_zone"] == prereg["bootstrap_seeds_by_zone"]
+        and multiplicity["bootstrap_seeds_by_zone_and_comparison"] == prereg["bootstrap_seeds_by_zone_and_comparison"]
         and multiplicity["method"] == "holm-step-down-one-sided-centered-moving-block-bootstrap"
         and multiplicity["alpha"] == prereg["alpha"]
         and isinstance(multiplicity["hypotheses"], list) and len(multiplicity["hypotheses"]) == 2,
@@ -535,6 +598,10 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
                 and item["ci95_lower"] <= item["ci95_upper"], "Holm p-value/interval out of range")
         raw_p[hypothesis_id] = float(item["p_value"])
         zone = hypothesis_id.split(":")[1]
+        require(
+            abs(item["p_value"] - replayed_primary_p_values[zone]) <= 1e-12,
+            f"{zone} one-sided bootstrap p-value does not replay from paired target ledger",
+        )
         expected_interval = baseline["zones"][zone]["candidate_vs_uniform_ci95"]
         require(
             abs(item["ci95_lower"] - expected_interval[0]) <= 1e-12
