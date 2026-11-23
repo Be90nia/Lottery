@@ -276,6 +276,25 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptVerificationError, "SHA-256 mismatch"):
             self.verify()
 
+    def test_g2_rejects_hash_valid_but_non_normalized_probability_evidence(self):
+        gate = next(item for item in self.gates if item["gate_id"] == "G2")
+        receipt_path = self.root / gate["receipt"]["path"]
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        check = next(item for item in receipt["checks"] if item["check_id"] == "normalization")
+        evidence_path = self.root / check["evidence"]["path"]
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        evidence["zones"][0]["probability_sum"] = 0.5
+        raw = json.dumps(evidence, sort_keys=True, separators=(",", ":")).encode()
+        evidence_path.write_bytes(raw)
+        self.rewrite(
+            gate["receipt"],
+            lambda value: next(
+                item for item in value["checks"] if item["check_id"] == "normalization"
+            )["evidence"].__setitem__("sha256", hashlib.sha256(raw).hexdigest()),
+        )
+        with self.assertRaisesRegex(ReceiptVerificationError, "not normalized/nonnegative"):
+            self.verify()
+
     def test_gate_check_evidence_cannot_be_reused_across_gates(self):
         g0_path = self.root / self.gates[0]["receipt"]["path"]
         g0_receipt = json.loads(g0_path.read_text(encoding="utf-8"))
