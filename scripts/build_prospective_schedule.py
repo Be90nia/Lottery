@@ -23,7 +23,7 @@ from lottery.prospective_registry import (
 )
 from lottery.prospective_schedule import load_schedule, run_schedule
 from lottery.subset_model.artifact import canonicalize
-from lottery.subset_model.lifecycle import ChampionLifecycle
+from lottery.subset_model.lifecycle import ChampionLifecycle, LifecycleError
 
 
 def _write_once(path: Path, raw: bytes) -> None:
