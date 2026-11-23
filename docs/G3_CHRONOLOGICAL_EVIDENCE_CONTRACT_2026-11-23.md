@@ -66,6 +66,19 @@ The PR #98 full diagnostic rerun (Actions run `44996717511`, artifact `147492382
 
 The result is a useful complete exploratory diagnostic and a negative confirmatory signal, not a G3 PASS and not evidence of predictive advantage. No Champion promotion, serving, or LOT-042 access occurred.
 
+## Implementation verification — 2026-11-23
+
+The semantic verifier is wired into the LOT-074 typed G3 gate. Its terminal-ledger contract now matches the actual LOT-055 normalized ledger fields, including per-record content hashes, model/configuration identity, artifact references, pairing keys, training first/last draw IDs and strict target dates. It rejects missing/duplicate model × zone × target rows, invalid terminal statuses, altered uniform probabilities, score/probability disagreement, mixed run IDs and tampered row hashes.
+
+The verifier independently replays the six moving-block comparisons from the ledger and recorded seed schedule. It does not trust the report's p-values or confidence intervals. Calibration evidence is required to carry all 2,649 per-target diagnostics per zone, with the aggregate maximum recomputed before applying the pre-registered tolerance.
+
+GitHub Actions run #1365 (`45112291638`) passed on the current G3 implementation head:
+- 297 unit tests passed; one existing long-form test skipped.
+- Workflow security policy passed.
+- Windows ledger-lock tests passed.
+
+This closes the G3 semantic-verifier implementation slice. It does not close G3 acceptance: the full historical run is exploratory and fails the co-primary statistics/non-regression criteria, and the current rolling-origin evaluator does not yet emit the required per-target calibration artifact or a typed evidence bundle tied to an approved pre-outcome registration.
+
 ## Current boundary / remaining G3 work
 
 This code verifies the structure and arithmetic consistency of the supplied evidence. It does not independently rerun the model fitting, recompute every exact-set probability from source artifacts, or regenerate the moving-block bootstrap samples from per-target score deltas. Those require the separate exact-set evaluator/run artifacts and independent replay. The receipt verifier's SHA-256 checks establish byte integrity, not producer authenticity.
