@@ -156,7 +156,7 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
     run_manifest["manifest_sha256"] = "sha256:" + hashlib.sha256(
         canonicalize(run_manifest)
     ).hexdigest()
-    run_manifest_raw = canonicalize(run_manifest) + b"\\n"
+    run_manifest_raw = canonicalize(run_manifest) + b"\n"
     run_manifest_path.write_bytes(run_manifest_raw)
     denominator = {
         "schema": "lottery.g3-terminal-ledger-index/v1", "target_ids_sha256": target_hash,
