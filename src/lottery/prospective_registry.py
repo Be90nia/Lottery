@@ -312,6 +312,18 @@ def assert_registry_unchanged(
     schedule_verifier: Callable[[dict[str, Any]], bool] | None = None,
 ) -> None:
     """Verify signature and registry immediately before registration/issuance."""
+    attestation = schedule.get("trust_attestation")
+    unsigned_payload = {
+        key: value for key, value in schedule.items()
+        if key not in ("schedule_id", "trust_attestation")
+    }
+    if (
+        not isinstance(attestation, dict)
+        or not isinstance(attestation.get("key_id"), str) or not attestation["key_id"]
+        or not isinstance(attestation.get("signature"), str) or not attestation["signature"]
+        or attestation.get("payload_sha256") != _sha(canonicalize(unsigned_payload))
+    ):
+        raise RegistryScheduleError("schedule trust attestation is missing or not bound to the unsigned payload")
     if schedule_verifier is None or schedule_verifier(schedule) is not True:
         raise RegistryScheduleError("protected schedule signature verifier is absent or rejected the schedule")
     provenance = schedule.get("provenance")
