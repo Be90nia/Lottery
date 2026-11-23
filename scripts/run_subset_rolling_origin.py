@@ -99,6 +99,8 @@ def _build_g3_registry_spec(
         raise ValueError("G3 parent protocol lineage reference is missing or mismatched")
     if registration.get("legacy_child_registration_comment_url") != "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751":
         raise ValueError("G3 append-only child registration source reference is missing or mismatched")
+    if registration.get("legacy_child_registration_comment_sha256") != "161a14dc087702780917ec020685f6c85f696e7f90f607d1ede9959abc8cb8c2":
+        raise ValueError("G3 child registration comment digest is missing or mismatched")
     if registration.get("approval_required") is not False or registration.get("approval_disposition") != "not_required_exploratory":
         raise ValueError("exploratory G3 registration must explicitly declare that protected approval is not required")
     if not isinstance(registration.get("approval_disposition_reason"), str) or not registration["approval_disposition_reason"]:
@@ -177,6 +179,7 @@ def _build_g3_registry_spec(
         "legacy_registration_source_sha256": hashlib.sha256(registration_raw).hexdigest(),
         "legacy_parent_issue_url": registration["legacy_parent_issue_url"],
         "legacy_child_registration_comment_url": registration["legacy_child_registration_comment_url"],
+        "legacy_child_registration_comment_sha256": registration["legacy_child_registration_comment_sha256"],
         "parent_lineage_disposition": registration["parent_lineage_disposition"],
         "approval_required": registration["approval_required"],
         "approval_disposition": registration["approval_disposition"],
@@ -252,6 +255,7 @@ def _start_registered_execution(
         "approval_disposition_reason": trial_config["approval_disposition_reason"],
         "legacy_parent_issue_url": trial_config["legacy_parent_issue_url"],
         "legacy_child_registration_comment_url": trial_config["legacy_child_registration_comment_url"],
+        "legacy_child_registration_comment_sha256": trial_config["legacy_child_registration_comment_sha256"],
         "parent_lineage_disposition": trial_config["parent_lineage_disposition"],
         "trial_id": hashlib.sha256(canonicalize(trial_config)).hexdigest(),
         "trial_config": trial_config,
@@ -326,6 +330,7 @@ def _finish_registered_execution(
         "approval_disposition_reason": binding["approval_disposition_reason"],
         "legacy_parent_issue_url": binding["legacy_parent_issue_url"],
         "legacy_child_registration_comment_url": binding["legacy_child_registration_comment_url"],
+        "legacy_child_registration_comment_sha256": binding["legacy_child_registration_comment_sha256"],
         "parent_lineage_disposition": binding["parent_lineage_disposition"],
         "recorded_at_utc": terminal_event["occurred_at_utc"],
     }
