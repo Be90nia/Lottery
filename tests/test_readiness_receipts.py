@@ -92,6 +92,16 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptVerificationError, "invalid or mutable"):
             self.verify()
 
+    def test_malformed_inventory_identifiers_fail_closed_without_type_errors(self):
+        bad_gates = list(self.gates)
+        bad_gates[0] = {"gate_id": ["G0"], "receipt": self.gates[0]["receipt"]}
+        with self.assertRaisesRegex(ReceiptVerificationError, "malformed entry"):
+            verify_receipt_set(self.manifest, bad_gates, self.faults, self.root)
+        bad_faults = list(self.faults)
+        bad_faults[0] = {"fault_id": ["F01"], "receipt": self.faults[0]["receipt"]}
+        with self.assertRaisesRegex(ReceiptVerificationError, "malformed entry"):
+            verify_receipt_set(self.manifest, self.gates, bad_faults, self.root)
+
     def test_one_generic_receipt_cannot_be_reused_for_all_gates(self):
         for index in range(1, len(self.gates)):
             self.gates[index]["receipt"] = dict(self.gates[0]["receipt"])
