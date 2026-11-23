@@ -29,15 +29,17 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         "candidate": "exponential_family", "uniform": "uniform",
         "expanding": "expanding", "ewma": "ewma",
     }
-    targets = [
-        f"{9054 + (17077 * index // 2648):05d}" for index in range(2649)
-    ]
-    cutoffs = [f"{int(targets[0]) - 1:05d}", *targets[:-1]]
-    from datetime import date, timedelta
-    target_dates = [(date(2000, 1, 1) + timedelta(days=i)).isoformat() for i in range(2649)]
-    cutoff_dates = [date(1999, 12, 31).isoformat(), *target_dates[:-1]]
+    source_snapshot = Path(__file__).resolve().parents[1] / "data/processed/draws-20261118.jsonl"
+    snapshot_raw = source_snapshot.read_bytes()
+    snapshot_rows = [json.loads(line) for line in snapshot_raw.splitlines()]
+    snapshot_path = root / "G3-canonical-snapshot.jsonl"
+    snapshot_path.write_bytes(snapshot_raw)
+    targets = [row["draw_id"] for row in snapshot_rows[300:]]
+    cutoffs = [row["draw_id"] for row in snapshot_rows[299:-1]]
+    target_dates = [row["draw_date"] for row in snapshot_rows[300:]]
+    cutoff_dates = [row["draw_date"] for row in snapshot_rows[299:-1]]
     target_hash = hashlib.sha256(canonicalize(targets)).hexdigest()
-    snapshot_hash = "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
+    snapshot_hash = hashlib.sha256(snapshot_raw).hexdigest()
     target_manifest_hash = hashlib.sha256(canonicalize({
         "targets": [
             {"target_draw_id": target, "target_draw_date": target_dates[index]}
@@ -260,16 +262,41 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        scalar_names = (
+            "workflow_policy", "dependency_lock", "readiness_policy", "source_evidence_ledger",
+            "runtime_toolchain", "sbom", "security_scan", "experiment_registration",
+            "champion_registry_snapshot", "sampler_rng", "storage_commit_receipts",
+            "backup_generation", "independent_restore_receipt",
+        )
+        evidence = {}
+        for name in scalar_names:
+            raw = ("receipt-test:" + name).encode()
+            path = name + ".bin"
+            (self.root / path).write_bytes(raw)
+            evidence[name] = {"path": path, "sha256": hashlib.sha256(raw).hexdigest()}
+        snapshot_path = self.root / "G3-canonical-snapshot.jsonl"
+        snapshot_raw = snapshot_path.read_bytes()
+        evidence["canonical_snapshot"] = {
+            "path": snapshot_path.name,
+            "sha256": hashlib.sha256(snapshot_raw).hexdigest(),
+        }
+        g3_run_manifest = self.root / "G3-run-manifest.json"
+        g3_model_artifacts = self.root / "G3-model-artifacts.jsonl"
+        evidence["evaluation_manifests"] = [{
+            "path": g3_run_manifest.name,
+            "sha256": hashlib.sha256(g3_run_manifest.read_bytes()).hexdigest(),
+        }]
+        evidence["model_artifacts"] = [{
+            "path": g3_model_artifacts.name,
+            "sha256": hashlib.sha256(g3_model_artifacts.read_bytes()).hexdigest(),
+        }]
         self.manifest = {
-            "schema": "lottery.release-manifest/v1",
+            "schema": "lottery.release-manifest/v2",
             "release_id": "receipt-test-001",
             "release_ref": "a" * 40,
             "source_commit": "a" * 40,
-            "workflow_policy_sha256": "1" * 64,
-            "dependency_lock_sha256": "2" * 64,
-            "readiness_policy_sha256": "3" * 64,
-            "snapshot_sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa",
             "lot042_accessed": False,
+            "evidence": evidence,
         }
         self.gates = []
         self.faults = []
@@ -475,7 +502,7 @@ class TypedReadinessReceiptTests(unittest.TestCase):
                 r.__setitem__("source_commit", self.manifest["source_commit"]),
                 r.__setitem__("release_manifest_sha256", manifest_digest),
             ))
-        with self.assertRaisesRegex(ReceiptVerificationError, "run manifest is missing, non-confirmatory"):
+        with self.assertRaisesRegex(ReceiptVerificationError, "canonical snapshot bytes do not match"):
             verify_receipt_set(self.manifest, self.gates, self.faults, self.root)
 
     def test_malformed_inventory_identifiers_fail_closed_without_type_errors(self):
