@@ -23,6 +23,18 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
             "status": "complete_with_explicit_failures",
             "confirmatory_eligible": False,
             "snapshot": {"sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"},
+            "expected_target_record_count": 1,
+            "actual_target_record_count": 1,
+            "model_artifact_count": 1,
+            "terminal_status_counts": {
+                "scored": 1, "fit_failed": 0, "artifact_invalid": 0,
+                "probability_invalid": 0, "runner_error": 0,
+            },
+            "target_manifest": {
+                "first_target_draw_id": "26131",
+                "last_target_draw_id": "26131",
+                "target_count_per_zone": 1,
+            },
             "output_files": {
                 "target-score-ledger.jsonl": {"sha256": sha(ledger_raw), "bytes": len(ledger_raw)},
                 "model-artifacts.jsonl": {"sha256": sha(artifact_raw), "bytes": len(artifact_raw)},
@@ -51,6 +63,9 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
             "scientific_result": {
                 "status": "complete_with_explicit_failures",
                 "snapshot_sha256": manifest["snapshot"]["sha256"],
+                "target_count_per_zone": 1,
+                "zones": ["front"],
+                "terminal_counts": manifest["terminal_status_counts"],
             },
         }
         return evidence, zip_raw
