@@ -305,12 +305,12 @@ def _finish_registered_execution(
         "evaluation_run_id": json.loads(manifest_raw)["run_id"],
         "run_manifest_sha256": manifest_sha256,
         "model_artifacts_sha256": artifacts_sha256,
-        "event_count": snapshot["event_count"],
+        "event_count_at_terminal": events.index(terminal_event) + 1,
         "start_event_id": start_event_id,
         "start_event_sha256": start_event["event_hash"],
         "terminal_event_id": terminal_event_id,
         "terminal_event_sha256": terminal_event["event_hash"],
-        "event_chain_head_sha256": events[-1]["event_hash"] if events else None,
+        "event_chain_head_sha256": terminal_event["event_hash"],
         "terminal_status": "succeeded",
         "execution_status": "completed",
         "scientific_result_status": json.loads(manifest_raw).get("status"),
@@ -318,7 +318,10 @@ def _finish_registered_execution(
         "approval_required": binding["approval_required"],
         "approval_disposition": binding["approval_disposition"],
         "approval_disposition_reason": binding["approval_disposition_reason"],
-        "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+        "legacy_parent_issue_url": binding["legacy_parent_issue_url"],
+        "legacy_child_registration_comment_url": binding["legacy_child_registration_comment_url"],
+        "parent_lineage_disposition": binding["parent_lineage_disposition"],
+        "recorded_at_utc": terminal_event["occurred_at_utc"],
     }
     receipt_path = output_path.parent / "registry-run-receipt.json"
     _write_once_bytes(receipt_path, canonicalize(receipt) + b"\n")
@@ -1204,7 +1207,6 @@ def run(
                                 execution_id=execution["execution_id"],
                                 actor=execution["actor"],
                             )
-                            return_failure_recorded = True
                             break
                     else:
                         continue
