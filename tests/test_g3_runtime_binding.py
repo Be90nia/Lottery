@@ -149,6 +149,58 @@ class G3RuntimeBindingTests(unittest.TestCase):
             records = []
             for offset, target in enumerate(target_rows):
                 training_count = runner.MIN_TRAIN + offset
+                fit_statuses = {
+                    "candidate": "line_search_failed",
+                    "expanding": "converged",
+                    "ewma": "converged",
+                }
+                exact_scores = {
+                    "uniform": 1.0,
+                    "expanding": 1.1,
+                    "ewma": 1.2,
+                    "exponential_family": 1.3,
+                }
+                model_artifacts = {}
+                if zone == "front" and offset == 0:
+                    from lottery.subset_model.rolling_origin_ledger import _model_identity
+                    family, _, feature_schema = _model_identity(
+                        "front", "expanding", 35, 5, ["sum"], ["sum"], [], [0.0], [1.0]
+                    )
+                    feature_schema_hash = "sha256:" + runner.hashlib.sha256(
+                        runner.canonicalize(feature_schema)
+                    ).hexdigest()
+                    model_configuration = {
+                        "model_family": "conditional_poisson",
+                        "baseline": "expanding",
+                        "zone": "front",
+                        "population_size": 35,
+                        "selection_size": 5,
+                        "alpha": 100.0,
+                        "half_life": None,
+                        "weighting": "expanding",
+                        "feature_schema_hash": feature_schema_hash,
+                    }
+                    model_artifacts["expanding"] = runner._create_fit_failure_artifact(
+                        model_family=family,
+                        zone="front",
+                        population_size=35,
+                        selection_size=5,
+                        snapshot_digest=self.snapshot_digest,
+                        training_rows=self.rows[:training_count],
+                        code_revision=CHECKED_OUT_SHA,
+                        feature_schema=feature_schema,
+                        model_configuration=model_configuration,
+                        status="line_search_failed",
+                        reason="simulated test failure",
+                        objective=None,
+                        gradient_inf_norm=None,
+                        iterations=0,
+                        optimizer="conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+                        regularization_lambda=None,
+                        rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
+                    )
+                    fit_statuses["expanding"] = "line_search_failed"
+                    exact_scores["expanding"] = None
                 records.append({
                     "target_draw_id": target["draw_id"],
                     "target_draw_date": target["draw_date"],
@@ -158,18 +210,9 @@ class G3RuntimeBindingTests(unittest.TestCase):
                     "training_cutoff_draw_id": self.rows[training_count - 1]["draw_id"],
                     "training_dates_strictly_before_target": True,
                     "observed_subset": target[number_key],
-                    "fit_statuses": {
-                        "candidate": "line_search_failed",
-                        "expanding": "converged",
-                        "ewma": "converged",
-                    },
-                    "exact_set_nll": {
-                        "uniform": 1.0,
-                        "expanding": 1.1,
-                        "ewma": 1.2,
-                        "exponential_family": 1.3,
-                    },
-                    "model_artifacts": {},
+                    "fit_statuses": fit_statuses,
+                    "exact_set_nll": exact_scores,
+                    "model_artifacts": model_artifacts,
                 })
             return {
                 "population_size": m,
@@ -218,6 +261,20 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertEqual(ledger_first["execution_id"], binding["execution_context"]["execution_id"])
         self.assertFalse(ledger_first["approval_required"])
         self.assertEqual(ledger_first["approval_disposition"], "not_required_exploratory")
+        provenance_lines = (self.output_dir / "model-artifact-provenance.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+        self.assertEqual(len(provenance_lines), 1)
+        provenance = json.loads(provenance_lines[0])
+        self.assertEqual(provenance["experiment_id"], binding["experiment_id"])
+        self.assertEqual(provenance["trial_id"], binding["trial_id"])
+        self.assertEqual(provenance["execution_id"], binding["execution_context"]["execution_id"])
+        self.assertFalse(provenance["approval_required"])
+        self.assertEqual(provenance["approval_disposition"], "not_required_exploratory")
+        self.assertEqual(
+            provenance["legacy_child_registration_comment_url"],
+            "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
+        )
 
     def test_caught_runner_exception_terminalizes_started_attempt(self):
         registry, binding = self.start_binding()
