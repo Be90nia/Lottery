@@ -301,7 +301,7 @@ def import_historical_execution(
 
     expected_run = evidence["run"]
     context = {
-        "schema": "lottery.github-actions-execution/v1",
+        "schema": "lottery.github-actions-execution/v2",
         "repository": REPOSITORY,
         "repository_id": REPOSITORY_ID,
         "workflow_id": expected_run["workflow_id"],
