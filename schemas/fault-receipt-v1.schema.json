@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://be90nia.github.io/Lottery/schemas/fault-receipt-v1.schema.json",
+  "title": "Lottery typed fault receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "fault_id",
+    "release_id",
+    "source_commit",
+    "release_manifest_sha256",
+    "injection_method",
+    "expected_state",
+    "observed_state",
+    "recovery_action",
+    "output_publication",
+    "runner_commit",
+    "evidence",
+    "generated_at_utc"
+  ],
+  "properties": {
+    "schema": {
+      "const": "lottery.fault-receipt/v1"
+    },
+    "fault_id": {
+      "enum": [
+        "F01",
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F06",
+        "F07",
+        "F08",
+        "F09",
+        "F10",
+        "F11",
+        "F12",
+        "F13",
+        "F14",
+        "F15"
+      ]
+    },
+    "release_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "release_manifest_sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "injection_method": {
+      "type": "string",
+      "minLength": 1
+    },
+    "expected_state": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_state": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recovery_action": {
+      "type": "string",
+      "minLength": 1
+    },
+    "output_publication": {
+      "const": "none"
+    },
+    "runner_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    }
+  }
+}
