@@ -139,7 +139,7 @@ def _checks_pass(checks: Any, label: str, root: Path) -> list[dict[str, str]]:
 
 def verify_gate_receipt(
     manifest: dict[str, Any], gate_result: dict[str, Any], evidence_root: str | Path,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Verify one gate's typed receipt; gate status is derived, never caller-supplied."""
     if not isinstance(gate_result, dict):
         raise ReceiptVerificationError("gate result must be an object")
@@ -279,19 +279,19 @@ def verify_receipt_set(
         or set(evidence_paths) & set(paths)
     ):
         raise ReceiptVerificationError("receipt and check evidence files must be unique per gate and fault")
-    if manifest.get("lot042_accessed") is not False:
-        readiness = "NOT_READY"
-    else:
-        readiness = "READY_FOR_SHADOW"
     return {
         "schema": "lottery.readiness-receipt-verification/v1",
         "release_id": manifest["release_id"],
         "release_manifest_sha256": "sha256:" + hashlib.sha256(canonicalize(manifest)).hexdigest(),
-        "readiness": readiness,
+        "readiness": "NOT_READY",
+        "receipt_completeness": (
+            "COMPLETE" if manifest["lot042_accessed"] is False else "BLOCKED_LOT042"
+        ),
+        "shadow_authorized": False,
         "production_ready": False,
         "gate_receipts": verified_gates,
         "fault_receipts": verified_faults,
         "lot042_accessed": manifest["lot042_accessed"],
-        "authenticity_note": "SHA-256 verifies integrity only; receipt producer authenticity is not established by this offline verifier.",
+        "authenticity_note": "SHA-256 verifies integrity only; receipt producer authenticity and official-source authority are not established by this offline verifier.",
     }
 
