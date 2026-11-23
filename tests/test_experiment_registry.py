@@ -367,6 +367,7 @@ class ExperimentRegistryTests(unittest.TestCase):
             "source_artifact_zip_sha256": digest("artifact-zip"),
             "source_manifest_sha256": digest("manifest"),
             "source_model_artifacts_sha256": digest("model-artifacts"),
+            "source_evidence_sha256": digest("evidence"),
             "scientific_result_status": "complete_with_explicit_failures",
             "confirmatory_eligible": False,
         }
