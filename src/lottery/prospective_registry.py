@@ -286,8 +286,8 @@ def build_registry_schedule(
         "inventory_id": inventory_id,
         "registry_snapshot_sha256": snapshot_hash,
     }
-    # A protected signer attests the exact schedule payload before the schedule
-    # content ID is calculated. A digest alone is not an authenticity proof.
+    # Sign the substantive schedule payload, excluding the provisional content ID.
+    schedule.pop("schedule_id")
     signed_payload = dict(schedule)
     attestation = schedule_attestor(signed_payload)
     if (
