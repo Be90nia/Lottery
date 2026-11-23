@@ -118,7 +118,7 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
         raise ValueError("historical run manifest digest differs from pinned evidence")
     if (manifest.get("status") != evidence["scientific_result"]["status"]
             or manifest.get("confirmatory_eligible") is not False
-            or manifest.get("snapshot_sha256") != evidence["scientific_result"]["snapshot_sha256"]):
+            or manifest.get("snapshot", {}).get("sha256") != evidence["scientific_result"]["snapshot_sha256"]):
         raise ValueError("historical run manifest scientific status or snapshot differs from evidence")
     declared_outputs = manifest.get("output_files", {})
     for filename, raw in (
