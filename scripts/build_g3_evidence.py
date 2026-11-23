@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from lottery.subset_model.artifact import canonicalize, verify_artifact
+from lottery.subset_model.artifact import canonicalize
 from lottery.subset_model.exponential import ExponentialFamily
 from lottery.subset_model.uniform import build_uniform_feature_table
 from lottery.readiness_receipts import _g3_moving_block_bootstrap
@@ -41,6 +41,39 @@ class G3EvidenceBuildError(ValueError):
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _verify_historical_artifact(raw: bytes) -> dict[str, Any]:
+    """Verify content-addressed v1 artifact bytes without rewriting its historical schema."""
+    artifact = _strict_json(raw, "historical model artifact")
+    artifact_id = artifact.get("artifact_id")
+    model_config = artifact.get("model_configuration")
+    feature_schema = artifact.get("feature_schema")
+    if (
+        artifact.get("schema_version") != 1
+        or artifact.get("artifact_schema") != "lottery.subset-probability-model/v1"
+        or artifact.get("artifact_type") != "fitted_model"
+        or not isinstance(artifact_id, str)
+        or not artifact_id.startswith("sha256:")
+        or not isinstance(model_config, dict)
+        or not isinstance(feature_schema, dict)
+    ):
+        raise G3EvidenceBuildError("historical model artifact schema/identity invalid")
+    body = {key: value for key, value in artifact.items() if key != "artifact_id"}
+    if artifact_id != "sha256:" + _sha256(canonicalize(body)):
+        raise G3EvidenceBuildError("historical model artifact content digest mismatch")
+    if artifact.get("model_configuration_hash") != "sha256:" + _sha256(canonicalize(model_config)):
+        raise G3EvidenceBuildError("historical model configuration digest mismatch")
+    if artifact.get("feature_schema_hash") != "sha256:" + _sha256(canonicalize(feature_schema)):
+        raise G3EvidenceBuildError("historical feature schema digest mismatch")
+    if (
+        model_config.get("model_family") != artifact.get("model_family")
+        or model_config.get("zone") != artifact.get("zone")
+        or model_config.get("population_size") != artifact.get("population_size")
+        or model_config.get("selection_size") != artifact.get("selection_size")
+    ):
+        raise G3EvidenceBuildError("historical artifact model configuration identity mismatch")
+    return artifact
 
 
 def _strict_json(raw: bytes, label: str) -> dict[str, Any]:
@@ -222,9 +255,9 @@ def build_g3_evidence_bundle(
     candidate_artifacts = {}
     for line_number, raw_artifact in enumerate(model_artifacts_raw.splitlines(), 1):
         try:
-            artifact = verify_artifact(raw_artifact)
+            artifact = _verify_historical_artifact(raw_artifact)
         except Exception as exc:
-            raise G3EvidenceBuildError(f"model artifact line {line_number} failed content/schema verification: {exc}") from exc
+            raise G3EvidenceBuildError(f"model artifact line {line_number} failed historical content/schema verification: {exc}") from exc
         if artifact.get("model_family") == "complete_subset_exponential":
             key = (artifact.get("zone"), artifact.get("training_cutoff_draw_id"))
             if key in candidate_artifacts:
