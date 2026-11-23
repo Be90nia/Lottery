@@ -450,6 +450,35 @@ def _verify_g3_evidence_bundle(
             == prereg["experiment_id"],
         "preregistration experiment identity does not bind the run manifest",
     )
+    run_models = run_manifest.get("models")
+    expected_model_families = {
+        "uniform": "uniform_analytic",
+        "expanding": "conditional_poisson",
+        "ewma": "conditional_poisson",
+        "exponential_family": "complete_subset_exponential",
+    }
+    require(isinstance(run_models, list) and len(run_models) == 8, "run manifest model inventory must contain both zones × four models")
+    model_specs: dict[tuple[str, str], dict[str, str]] = {}
+    for item in run_models:
+        if not isinstance(item, dict):
+            raise ReceiptVerificationError("G3: run manifest model entry must be an object")
+        key = (item.get("zone"), item.get("model_name"))
+        require(
+            set(item) == {"zone", "model_name", "model_family", "model_configuration_hash", "feature_schema_hash"}
+            and key[0] in ("front", "back") and key[1] in model_ids.values()
+            and item.get("model_family") == expected_model_families.get(key[1])
+            and isinstance(item.get("model_configuration_hash"), str)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", item["model_configuration_hash"])
+            and isinstance(item.get("feature_schema_hash"), str)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", item["feature_schema_hash"])
+            and key not in model_specs,
+            "run manifest model configuration inventory is invalid or duplicated",
+        )
+        model_specs[key] = item
+    require(set(model_specs) == {
+        (zone, model_id) for zone in ("front", "back") for model_id in model_ids.values()
+    }, "run manifest model configuration inventory is incomplete")
+
     ledger_lines = ledger_raw.splitlines()
     require(len(ledger_lines) == expected_records, "terminal ledger line count differs from frozen denominator")
     seen: set[tuple[str, str, str]] = set()
@@ -486,10 +515,8 @@ def _verify_g3_evidence_bundle(
             and record["training_first_draw_id"] == "07001"
             and record["training_last_draw_id"] == cutoff_ids[index]
             and record["training_dates_strictly_before_target"] is True
-            and isinstance(record["model_configuration_hash"], str)
-            and record["model_configuration_hash"].startswith("sha256:")
-            and isinstance(record["feature_schema_hash"], str)
-            and record["feature_schema_hash"].startswith("sha256:")
+            and record["model_configuration_hash"] == model_specs[(zone, model_id)]["model_configuration_hash"]
+            and record["feature_schema_hash"] == model_specs[(zone, model_id)]["feature_schema_hash"]
             and isinstance(record["optimizer_solver_status"], str)
             and type(record["converged"]) is bool,
             f"terminal ledger line {line_number} violates target/cutoff/model identity",
