@@ -15,7 +15,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from lottery.subset_model.artifact import canonicalize
+from lottery.subset_model.artifact import canonicalize, verify_artifact
+from lottery.subset_model.exponential import ExponentialFamily
+from lottery.subset_model.uniform import build_uniform_feature_table
 from lottery.readiness_receipts import _g3_moving_block_bootstrap
 
 EXPECTED_SNAPSHOT_SHA256 = "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
@@ -217,6 +219,117 @@ def build_g3_evidence_bundle(
     if run_manifest.get("terminal_status_counts") != status_counts:
         raise G3EvidenceBuildError("run manifest terminal status counts do not match ledger")
 
+    candidate_artifacts = {}
+    for line_number, raw_artifact in enumerate(model_artifacts_raw.splitlines(), 1):
+        try:
+            artifact = verify_artifact(raw_artifact)
+        except Exception as exc:
+            raise G3EvidenceBuildError(f"model artifact line {line_number} failed content/schema verification: {exc}") from exc
+        if artifact.get("model_family") == "complete_subset_exponential":
+            key = (artifact.get("zone"), artifact.get("training_cutoff_draw_id"))
+            if key in candidate_artifacts:
+                raise G3EvidenceBuildError(f"duplicate candidate model artifact for {key}")
+            candidate_artifacts[key] = artifact
+    if len(candidate_artifacts) != TARGET_COUNT * len(ZONES):
+        raise G3EvidenceBuildError("candidate model-artifact inventory does not cover every target and zone")
+
+    calibration_zones = {}
+    calibration_method = "marginal-inclusion-ece-10-bin-v1"
+    for zone, population_size, selection_size in (("front", 35, 5), ("back", 12, 2)):
+        first_artifact = next(
+            artifact for (artifact_zone, _), artifact in candidate_artifacts.items()
+            if artifact_zone == zone
+        )
+        schema = first_artifact.get("feature_schema")
+        if not isinstance(schema, dict):
+            raise G3EvidenceBuildError(f"{zone}: candidate artifact feature schema missing")
+        candidate_names = schema.get("candidate_names")
+        include_gap_variance = isinstance(candidate_names, list) and "gap_variance" in candidate_names
+        table = build_uniform_feature_table(
+            population_size, selection_size,
+            include_gap_variance=include_gap_variance,
+            feature_schema_version=schema.get("version", "lot-051-symmetric-v1"),
+        )
+        if (
+            schema.get("candidate_names") != list(table.stats.candidate_feature_names)
+            or schema.get("names") != list(table.stats.feature_names)
+            or len(schema.get("uniform_means", [])) != len(table.stats.all_means)
+            or len(schema.get("uniform_population_stds", [])) != len(table.stats.all_standard_deviations)
+            or any(abs(float(left) - right) > 1e-12 for left, right in zip(schema["uniform_means"], table.stats.all_means))
+            or any(abs(float(left) - right) > 1e-12 for left, right in zip(schema["uniform_population_stds"], table.stats.all_standard_deviations))
+        ):
+            raise G3EvidenceBuildError(f"{zone}: candidate feature schema differs from exact support table")
+        model = ExponentialFamily(table)
+        bin_counts = [0] * 10
+        bin_predicted = [0.0] * 10
+        bin_observed = [0] * 10
+        per_target_brier = []
+        for target in target_ids:
+            record = indexed[(MODEL_IDS["candidate"], zone, target)]
+            artifact = candidate_artifacts.get((zone, record.get("training_last_draw_id")))
+            if artifact is None:
+                raise G3EvidenceBuildError(f"{zone}/{target}: candidate fitted artifact missing")
+            if (
+                artifact.get("artifact_id") != record.get("artifact_id")
+                or artifact.get("artifact_type") != "fitted_model"
+                or artifact.get("training_snapshot_sha256") != expected_snapshot_sha256
+                or artifact.get("training_cutoff_draw_id") != record.get("training_last_draw_id")
+                or artifact.get("training_row_count") != record.get("training_row_count")
+                or artifact.get("model_configuration_hash") != record.get("model_configuration_hash")
+                or artifact.get("feature_schema_hash") != record.get("feature_schema_hash")
+            ):
+                raise G3EvidenceBuildError(f"{zone}/{target}: candidate artifact/ledger provenance mismatch")
+            theta = artifact.get("parameters", {}).get("theta")
+            if not isinstance(theta, list):
+                raise G3EvidenceBuildError(f"{zone}/{target}: candidate theta missing")
+            probabilities = model.inclusion_marginals(theta)
+            observed_subset = record.get("observed_subset")
+            if not isinstance(observed_subset, list) or len(observed_subset) != selection_size:
+                raise G3EvidenceBuildError(f"{zone}/{target}: observed subset malformed")
+            observed = set(observed_subset)
+            squared_error = 0.0
+            for item_index, probability in enumerate(probabilities, 1):
+                outcome = 1 if item_index in observed else 0
+                squared_error += (probability - outcome) ** 2
+                bin_index = min(9, int(probability * 10))
+                bin_counts[bin_index] += 1
+                bin_predicted[bin_index] += probability
+                bin_observed[bin_index] += outcome
+            per_target_brier.append(squared_error / population_size)
+        observation_count = TARGET_COUNT * population_size
+        bins = []
+        weighted_gap = 0.0
+        gaps = []
+        for index in range(10):
+            count = bin_counts[index]
+            mean_predicted = bin_predicted[index] / count if count else 0.0
+            observed_frequency = bin_observed[index] / count if count else 0.0
+            gap = abs(mean_predicted - observed_frequency)
+            bins.append({
+                "bin_index": index, "lower": index / 10, "upper": (index + 1) / 10,
+                "count": count, "mean_predicted_probability": mean_predicted,
+                "observed_frequency": observed_frequency, "abs_gap": gap,
+            })
+            weighted_gap += count * gap
+            gaps.append(gap)
+        calibration_zones[zone] = {
+            "target_count": TARGET_COUNT,
+            "population_size": population_size,
+            "selection_size": selection_size,
+            "observation_count": observation_count,
+            "brier_score": sum(per_target_brier) / len(per_target_brier),
+            "ece": weighted_gap / observation_count,
+            "max_abs_bin_gap": max(gaps),
+            "bins": bins,
+            "per_target_brier_scores": per_target_brier,
+        }
+    generated_calibration = {
+        "schema": "lottery.g3-calibration/v1",
+        "target_ids_sha256": target_ids_hash,
+        "method": calibration_method,
+        "zones": calibration_zones,
+    }
+
     output_dir.mkdir(parents=True, exist_ok=True)
     staged_ledger = output_dir / "target-score-ledger.jsonl"
     staged_manifest = output_dir / "run_manifest.json"
@@ -311,12 +424,7 @@ def build_g3_evidence_bundle(
     if calibration_path is not None:
         calibration = _strict_json(calibration_path.read_bytes(), "G3 calibration")
     else:
-        calibration = {
-            "schema": "lottery.g3-calibration-blocked/v1",
-            "target_ids_sha256": target_ids_hash,
-            "status": "BLOCKED",
-            "reason": "No target-level calibration artifact supplied; the existing LOT-055 preregistration does not define an executable calibration method.",
-        }
+        calibration = generated_calibration
 
     reports = {
         "preregistration": preregistration,
@@ -341,8 +449,11 @@ def build_g3_evidence_bundle(
         blockers.append("run manifest explicitly marks this experiment as exploratory/non-confirmatory")
     if registration.get("outcomes_observed_at_registration") is not False:
         blockers.append("registration is not a verified pre-outcome registration")
-    if calibration.get("schema") != "lottery.g3-calibration/v1":
-        blockers.append("no preregistered, target-level calibration evidence was supplied")
+    if (registration.get("calibration_method") != calibration_method
+            or type(registration.get("calibration_tolerance")) not in (int, float)
+            or registration.get("calibration_tolerance", 0) < 0.05
+            or registration.get("outcomes_observed_at_registration") is not False):
+        blockers.append("marginal-inclusion calibration was computed exploratorily but was not specified in a pre-outcome registration")
     if not complete_scores:
         blockers.append("one or more terminal ledger rows are not scored")
     for zone in ZONES:
@@ -374,7 +485,20 @@ def build_g3_evidence_bundle(
         },
         "holm_adjusted_p_values": adjusted,
         "blockers": blockers,
-        "calibration_status": calibration.get("status", "SUPPLIED_BUT_REQUIRES_SEMANTIC_VERIFICATION"),
+        "calibration_status": (
+            "PREREGISTERED_METHOD_MATCH"
+            if registration.get("calibration_method") == calibration_method
+            and registration.get("outcomes_observed_at_registration") is False
+            else "EXPLORATORY_UNREGISTERED"
+        ),
+        "calibration_metrics": {
+            zone: {
+                "brier_score": calibration_zones[zone]["brier_score"],
+                "ece": calibration_zones[zone]["ece"],
+                "max_abs_bin_gap": calibration_zones[zone]["max_abs_bin_gap"],
+            }
+            for zone in ZONES
+        },
         "readiness_authorized": False,
         "production_ready": False,
     }
