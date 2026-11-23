@@ -15,6 +15,7 @@ import tempfile
 from typing import Any, Callable
 from uuid import uuid4
 
+from .execution_context import ExecutionContextError, validate_execution_context
 from .ledger_lock import ledger_lock
 from .subset_model.artifact import canonicalize, parse_json_strict, ArtifactValidationError
 
@@ -24,7 +25,7 @@ EVENT_SCHEMA = "lottery.experiment-event/v1"
 CONFIRMATORY_BOOTSTRAP_REPLICATES = 1000
 CONFIRMATORY_BLOCK_LENGTH = 50
 TERMINAL_STATUSES = {
-    "succeeded", "fit_failed", "invalid_artifact", "runner_error", "timeout", "abandoned"
+    "succeeded", "fit_failed", "invalid_artifact", "runner_error", "timeout", "cancelled", "abandoned"
 }
 POPULATION_CLAIMS = {
     "pooled", "same_artifact_distinct_fit", "distinct_population", "distributionally_distinct"
@@ -261,9 +262,23 @@ class ExperimentRegistry:
                 allowed = {_sha(canonicalize(x)) for x in spec["trial_plan"]}
                 if event.get("config_sha256") not in allowed:
                     raise ExperimentRegistryError("trial config was not preregistered")
+                execution_context = event.get("execution_context")
+                if execution_context is not None:
+                    try:
+                        validate_execution_context(
+                            execution_context,
+                            expected_repository=execution_context.get("repository"),
+                            expected_repository_id=execution_context.get("repository_id"),
+                            expected_workflow_path=execution_context.get("workflow_path"),
+                        )
+                    except (ExecutionContextError, AttributeError) as exc:
+                        raise ExperimentRegistryError("trial execution context is invalid") from exc
                 attempts[attempt_id] = {
                     "attempt_id": attempt_id,
                     "config_sha256": event["config_sha256"],
+                    "trial_id": event["config_sha256"],
+                    "execution_context": execution_context,
+                    "execution_id": execution_context.get("execution_id") if execution_context else None,
                     "status": "running",
                     "started_at_utc": event["occurred_at_utc"],
                     "finished_at_utc": None,
@@ -278,6 +293,8 @@ class ExperimentRegistry:
                 attempt = experiments[experiment_id]["attempts"].get(attempt_id)
                 if attempt is None or attempt["status"] != "running":
                     raise ExperimentRegistryError("terminal trial event has no running attempt")
+                if event.get("execution_id") != attempt.get("execution_id"):
+                    raise ExperimentRegistryError("terminal event execution identity does not match trial start")
                 attempt.update({
                     "status": event["terminal_status"],
                     "finished_at_utc": event["occurred_at_utc"],
@@ -372,6 +389,10 @@ class ExperimentRegistry:
         attempt_id: str,
         config: dict[str, Any],
         actor: str,
+        execution_context: dict[str, Any] | None = None,
+        expected_repository: str | None = None,
+        expected_repository_id: str | None = None,
+        expected_workflow_path: str | None = None,
     ) -> dict[str, Any]:
         if not _is_sha(experiment_id):
             raise ExperimentRegistryError("experiment_id is malformed")
@@ -382,6 +403,20 @@ class ExperimentRegistry:
         if not isinstance(actor, str) or not actor:
             raise ValueError("actor must be a non-empty string")
         config_hash = _sha(canonicalize(config))
+        if execution_context is not None:
+            if not all((expected_repository, expected_repository_id, expected_workflow_path)):
+                raise ExperimentRegistryError("execution context requires an explicit repository/workflow allowlist")
+            try:
+                execution_context = validate_execution_context(
+                    execution_context,
+                    expected_repository=expected_repository,
+                    expected_repository_id=expected_repository_id,
+                    expected_workflow_path=expected_workflow_path,
+                )
+            except ExecutionContextError as exc:
+                raise ExperimentRegistryError("trial execution context is invalid") from exc
+        elif any((expected_repository, expected_repository_id, expected_workflow_path)):
+            raise ExperimentRegistryError("execution allowlist cannot be supplied without an execution context")
         with ledger_lock(self.events_path):
             snapshot = self._snapshot_unlocked()
             experiment = snapshot["experiments"].get(experiment_id)
@@ -393,7 +428,9 @@ class ExperimentRegistry:
                 raise ExperimentRegistryError("trial configuration was not included in the immutable preregistration")
             if attempt_id in experiment["attempts"]:
                 existing = experiment["attempts"][attempt_id]
-                if existing["config_sha256"] == config_hash and existing["status"] == "running":
+                if (existing["config_sha256"] == config_hash
+                        and existing["execution_context"] == execution_context
+                        and existing["status"] == "running"):
                     return existing
                 raise ExperimentRegistryError("attempt_id already exists with a different or terminal state")
             event_id = _sha(f"{experiment_id}:{attempt_id}:start".encode("utf-8"))
@@ -406,6 +443,7 @@ class ExperimentRegistry:
                 "experiment_id": experiment_id,
                 "attempt_id": attempt_id,
                 "config_sha256": config_hash,
+                "execution_context": execution_context,
             })
             return self._snapshot_unlocked()["experiments"][experiment_id]["attempts"][attempt_id]
 
@@ -419,6 +457,7 @@ class ExperimentRegistry:
         artifact_sha256: str | None = None,
         result_sha256: str | None = None,
         failure_code: str | None = None,
+        execution_id: str | None = None,
     ) -> dict[str, Any]:
         if terminal_status not in TERMINAL_STATUSES:
             raise ExperimentRegistryError("trial terminal_status is not in the closed status set")
@@ -441,12 +480,17 @@ class ExperimentRegistry:
             attempt = experiment["attempts"].get(attempt_id)
             if attempt is None:
                 raise ExperimentRegistryError("trial attempt was never started")
+            if attempt.get("execution_id") != execution_id:
+                raise ExperimentRegistryError("terminal execution identity does not match trial start")
+            if attempt.get("execution_context") is not None and terminal_status == "succeeded" and artifact_sha256 is None:
+                raise ExperimentRegistryError("execution-bound successful trial requires an artifact digest")
             if attempt["status"] != "running":
                 same = (
                     attempt["status"] == terminal_status
                     and attempt["artifact_sha256"] == artifact_sha256
                     and attempt["result_sha256"] == result_sha256
                     and attempt["failure_code"] == failure_code
+                    and attempt.get("execution_id") == execution_id
                 )
                 if same:
                     return attempt
@@ -464,5 +508,6 @@ class ExperimentRegistry:
                 "artifact_sha256": artifact_sha256,
                 "result_sha256": result_sha256,
                 "failure_code": failure_code,
+                "execution_id": execution_id,
             })
             return self._snapshot_unlocked()["experiments"][experiment_id]["attempts"][attempt_id]
