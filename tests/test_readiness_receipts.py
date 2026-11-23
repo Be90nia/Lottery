@@ -9,6 +9,7 @@ from pathlib import Path
 from lottery.subset_model.artifact import canonicalize
 from lottery.readiness_receipts import (
     FAULTS, GATE_REQUIRED_CHECKS, GATE_TYPES, ReceiptVerificationError, verify_receipt_set,
+    verify_release_manifest_v2,
 )
 
 
@@ -105,6 +106,63 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         self.manifest["release_ref"] = "main"
         with self.assertRaisesRegex(ReceiptVerificationError, "invalid or mutable"):
             self.verify()
+
+    def test_v2_manifest_binds_full_release_tuple_to_actual_bytes(self):
+        names = (
+            "workflow_policy", "dependency_lock", "readiness_policy", "canonical_snapshot",
+            "source_evidence_ledger", "runtime_toolchain", "sbom", "security_scan",
+            "experiment_registration", "champion_registry_snapshot", "sampler_rng",
+            "storage_commit_receipts", "backup_generation", "independent_restore_receipt",
+        )
+        evidence = {}
+        for name in names:
+            raw = (name + "\\n").encode()
+            path = name + ".bin"
+            (self.root / path).write_bytes(raw)
+            evidence[name] = {"path": path, "sha256": hashlib.sha256(raw).hexdigest()}
+        for collection in ("evaluation_manifests", "model_artifacts"):
+            raw = (collection + "\\n").encode()
+            path = collection + ".bin"
+            (self.root / path).write_bytes(raw)
+            evidence[collection] = [{"path": path, "sha256": hashlib.sha256(raw).hexdigest()}]
+        manifest = {
+            "schema": "lottery.release-manifest/v2",
+            "release_id": "v2-release",
+            "release_ref": "c" * 40,
+            "source_commit": "c" * 40,
+            "lot042_accessed": False,
+            "evidence": evidence,
+        }
+        report = verify_release_manifest_v2(manifest, self.root)
+        self.assertEqual(len(report["verified_evidence"]), 16)
+        self.assertTrue(report["release_manifest_sha256"].startswith("sha256:"))
+
+    def test_v2_manifest_rejects_missing_or_mutated_release_evidence(self):
+        names = (
+            "workflow_policy", "dependency_lock", "readiness_policy", "canonical_snapshot",
+            "source_evidence_ledger", "runtime_toolchain", "sbom", "security_scan",
+            "experiment_registration", "champion_registry_snapshot", "sampler_rng",
+            "storage_commit_receipts", "backup_generation", "independent_restore_receipt",
+        )
+        evidence = {}
+        for name in names:
+            raw = name.encode()
+            path = name + ".bin"
+            (self.root / path).write_bytes(raw)
+            evidence[name] = {"path": path, "sha256": hashlib.sha256(raw).hexdigest()}
+        for collection in ("evaluation_manifests", "model_artifacts"):
+            raw = collection.encode()
+            path = collection + ".bin"
+            (self.root / path).write_bytes(raw)
+            evidence[collection] = [{"path": path, "sha256": hashlib.sha256(raw).hexdigest()}]
+        manifest = {
+            "schema": "lottery.release-manifest/v2", "release_id": "v2-release",
+            "release_ref": "c" * 40, "source_commit": "c" * 40,
+            "lot042_accessed": False, "evidence": evidence,
+        }
+        manifest["evidence"]["sbom"]["sha256"] = "f" * 64
+        with self.assertRaisesRegex(ReceiptVerificationError, "SHA-256 mismatch"):
+            verify_release_manifest_v2(manifest, self.root)
 
     def test_malformed_inventory_identifiers_fail_closed_without_type_errors(self):
         bad_gates = list(self.gates)
