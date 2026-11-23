@@ -76,7 +76,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             "experiment_id", "spec_sha256", "experiment_class", "approval_sha256",
             "approval_required", "approval_disposition", "approval_disposition_reason",
             "legacy_parent_issue_url", "legacy_child_registration_comment_url",
-            "parent_lineage_disposition", "trial_id", "trial_config", "attempt_id",
+            "legacy_child_registration_comment_sha256", "parent_lineage_disposition", "trial_id", "trial_config", "attempt_id",
             "execution_context",
         }
         if not isinstance(experiment_binding, dict) or set(experiment_binding) != required_binding:
@@ -109,6 +109,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                       "parent_lineage_disposition"):
             if not isinstance(experiment_binding[field], str) or not experiment_binding[field]:
                 raise ValueError(f"experiment binding {field} is required")
+        if re.fullmatch(r"[0-9a-f]{64}", experiment_binding["legacy_child_registration_comment_sha256"]) is None:
+            raise ValueError("legacy child registration comment digest is malformed")
         try:
             execution_context = validate_execution_context(
                 experiment_binding["execution_context"],
@@ -260,6 +262,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                                         "legacy_parent_issue_url": experiment_binding["legacy_parent_issue_url"],
                                         "parent_lineage_disposition": experiment_binding["parent_lineage_disposition"],
                                         "legacy_child_registration_comment_url": experiment_binding["legacy_child_registration_comment_url"],
+                                        "legacy_child_registration_comment_sha256": experiment_binding["legacy_child_registration_comment_sha256"],
                                         "evaluation_run_id": run_id,
                                     }))
                                 artifact_ids.add(artifact_id)
@@ -305,6 +308,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                         "approval_sha256": experiment_binding["approval_sha256"],
                         "approval_required": experiment_binding["approval_required"],
                         "approval_disposition": experiment_binding["approval_disposition"],
+                        "legacy_child_registration_comment_sha256": experiment_binding["legacy_child_registration_comment_sha256"],
                     })
                 row["record_sha256"] = _hash_object(row)
                 ledger.append(row)
@@ -370,6 +374,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             "approval_disposition_reason": experiment_binding["approval_disposition_reason"],
             "legacy_parent_issue_url": experiment_binding["legacy_parent_issue_url"],
             "legacy_child_registration_comment_url": experiment_binding["legacy_child_registration_comment_url"],
+            "legacy_child_registration_comment_sha256": experiment_binding["legacy_child_registration_comment_sha256"],
             "parent_lineage_disposition": experiment_binding["parent_lineage_disposition"],
             "experiment_class": experiment_binding["experiment_class"],
             "trial_id": experiment_binding["trial_id"],
