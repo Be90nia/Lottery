@@ -22,6 +22,7 @@ def actions_environment():
     return {
         "GITHUB_REPOSITORY": REPOSITORY,
         "GITHUB_REPOSITORY_ID": REPOSITORY_ID,
+        "LOTTERY_WORKFLOW_ID": "423307604",
         "GITHUB_WORKFLOW_REF": f"{REPOSITORY}/{WORKFLOW_PATH}@{ref}",
         "GITHUB_RUN_ID": RUN_ID,
         "GITHUB_RUN_ATTEMPT": "1",
