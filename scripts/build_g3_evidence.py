@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from lottery.experiment_registry import ExperimentRegistry, ExperimentRegistryError
+from lottery.storage import FileSystemObjectStore, StorageError
 from lottery.subset_model.artifact import canonicalize
 from lottery.subset_model.exponential import ExponentialFamily
 from lottery.subset_model.uniform import build_uniform_feature_table
@@ -160,6 +161,9 @@ def _verify_registry_binding(
     registry_root: Path | None,
     registry_run_receipt_path: Path | None,
     artifact_provenance_path: Path | None,
+    durable_store_root: Path | None,
+    storage_commit_receipts_path: Path | None,
+    ledger_path: Path,
 ) -> dict[str, Any]:
     binding = run_manifest.get("experiment_binding")
     if binding is None:
@@ -180,7 +184,9 @@ def _verify_registry_binding(
     if not isinstance(binding, dict):
         raise G3EvidenceBuildError("run manifest experiment_binding must be an object or null")
 
-    if registry_root is None or registry_run_receipt_path is None or artifact_provenance_path is None:
+    if (registry_root is None or registry_run_receipt_path is None
+            or artifact_provenance_path is None or durable_store_root is None
+            or storage_commit_receipts_path is None):
         return {
             "schema": "lottery.g3-registry-binding/v1",
             "status": "INCOMPLETE",
@@ -189,7 +195,9 @@ def _verify_registry_binding(
             "execution_id": binding.get("execution_id"),
             "reason": "registry root, terminal run receipt, or artifact provenance file was not supplied",
         }
-    if not registry_root.is_dir() or not registry_run_receipt_path.is_file() or not artifact_provenance_path.is_file():
+    if (not registry_root.is_dir() or not registry_run_receipt_path.is_file()
+            or not artifact_provenance_path.is_file() or not durable_store_root.is_dir()
+            or not storage_commit_receipts_path.is_file()):
         return {
             "schema": "lottery.g3-registry-binding/v1",
             "status": "INCOMPLETE",
@@ -274,6 +282,55 @@ def _verify_registry_binding(
             or attempt.get("artifact_sha256") != model_artifacts_sha256):
         raise G3EvidenceBuildError("terminal registry event digests do not match run outputs")
 
+    storage_raw = storage_commit_receipts_path.read_bytes()
+    storage_bundle = _strict_json(storage_raw, "storage commit receipt bundle")
+    storage_digest = _sha256(storage_raw)
+    if (canonicalize(storage_bundle) + b"\\n" != storage_raw
+            or storage_bundle.get("schema") != "lottery.storage-commit-receipts/v1"
+            or storage_bundle.get("experiment_id") != experiment_id
+            or storage_bundle.get("trial_id") != trial_id
+            or storage_bundle.get("attempt_id") != attempt_id
+            or storage_bundle.get("execution_id") != execution_id
+            or storage_bundle.get("store_root") != "durable-store"
+            or receipt.get("storage_commit_receipts_sha256") != storage_digest
+            or attempt.get("storage_commit_receipts_sha256") != storage_digest):
+        raise G3EvidenceBuildError("storage commit receipt bundle is not bound to the terminal registry event")
+    required_outputs = {
+        "run_manifest.json": run_manifest_raw,
+        "target-score-ledger.jsonl": ledger_path.read_bytes(),
+        "model-artifacts.jsonl": model_artifacts_raw,
+        "model-artifact-provenance.jsonl": artifact_provenance_path.read_bytes(),
+    }
+    storage_receipts = storage_bundle.get("receipts")
+    if not isinstance(storage_receipts, list) or len(storage_receipts) != len(required_outputs):
+        raise G3EvidenceBuildError("storage commit receipt inventory is incomplete")
+    store = FileSystemObjectStore(durable_store_root)
+    seen_storage_names = set()
+    for item in storage_receipts:
+        if not isinstance(item, dict):
+            raise G3EvidenceBuildError("storage commit receipt entry is invalid")
+        filename = item.get("filename")
+        if filename not in required_outputs or filename in seen_storage_names:
+            raise G3EvidenceBuildError("storage commit receipt names are missing, duplicated, or unexpected")
+        source_bytes = required_outputs[filename]
+        if (item.get("content_sha256") != _sha256(source_bytes)
+                or item.get("byte_length") != len(source_bytes)):
+            raise G3EvidenceBuildError(f"storage receipt does not bind exact output bytes: {filename}")
+        try:
+            verified_commit = store.verify_commit(
+                operation_id=item.get("operation_id"),
+                expected_content_sha256=item["content_sha256"],
+            )
+        except (StorageError, ValueError, OSError) as exc:
+            raise G3EvidenceBuildError(f"LOT-065 commit receipt failed verification: {filename}") from exc
+        if (hashlib.sha256(canonicalize(verified_commit)).hexdigest()
+                != item.get("commit_receipt_sha256")
+                or verified_commit.get("byte_length") != item["byte_length"]):
+            raise G3EvidenceBuildError(f"LOT-065 commit receipt digest mismatch: {filename}")
+        seen_storage_names.add(filename)
+    if seen_storage_names != set(required_outputs):
+        raise G3EvidenceBuildError("LOT-065 receipts do not cover every required run output")
+
     provenance_raw = artifact_provenance_path.read_bytes()
     declared_provenance = run_manifest.get("output_files", {}).get("model-artifact-provenance.jsonl", {})
     if (declared_provenance.get("sha256") != _sha256(provenance_raw)
@@ -316,6 +373,8 @@ def _verify_registry_binding(
         "event_chain_head_sha256": event_head,
         "registry_run_receipt_sha256": _sha256(receipt_raw),
         "artifact_provenance_sha256": _sha256(provenance_raw),
+        "storage_commit_receipts_sha256": storage_digest,
+        "storage_commit_count": len(storage_receipts),
     }
 
 
@@ -326,6 +385,8 @@ def build_g3_evidence_bundle(
     registry_root: Path | None = None,
     registry_run_receipt_path: Path | None = None,
     artifact_provenance_path: Path | None = None,
+    durable_store_root: Path | None = None,
+    storage_commit_receipts_path: Path | None = None,
 ) -> dict[str, Any]:
     """Create six G3 evidence files and an explicit non-authorizing build summary."""
     if expected_snapshot_sha256 != EXPECTED_SNAPSHOT_SHA256:
@@ -379,6 +440,9 @@ def build_g3_evidence_bundle(
         registry_root=registry_root,
         registry_run_receipt_path=registry_run_receipt_path,
         artifact_provenance_path=artifact_provenance_path,
+        durable_store_root=durable_store_root,
+        storage_commit_receipts_path=storage_commit_receipts_path,
+        ledger_path=ledger_path,
     )
 
     ledger_raw = ledger_path.read_bytes()
@@ -801,6 +865,8 @@ def main() -> int:
     parser.add_argument("--registry-root", type=Path)
     parser.add_argument("--registry-run-receipt", type=Path)
     parser.add_argument("--artifact-provenance", type=Path)
+    parser.add_argument("--durable-store-root", type=Path)
+    parser.add_argument("--storage-commit-receipts", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     try:
@@ -813,6 +879,8 @@ def main() -> int:
             registry_root=args.registry_root,
             registry_run_receipt_path=args.registry_run_receipt,
             artifact_provenance_path=args.artifact_provenance,
+            durable_store_root=args.durable_store_root,
+            storage_commit_receipts_path=args.storage_commit_receipts,
             output_dir=args.output_dir,
         )
     except (OSError, G3EvidenceBuildError, ValueError, KeyError, TypeError) as exc:
