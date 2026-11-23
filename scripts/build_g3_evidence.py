@@ -792,7 +792,7 @@ def build_g3_evidence_bundle(
         },
         "multiplicity_control": multiplicity,
         "calibration": calibration,
-        "registry_binding": registry_binding,
+        "registry_execution_binding": registry_binding,
     }
     for name, report in reports.items():
         (output_dir / f"{name}.json").write_bytes(canonicalize(report) + b"\n")
