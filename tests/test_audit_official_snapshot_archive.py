@@ -32,10 +32,11 @@ class OfficialSnapshotArchiveAuditTests(unittest.TestCase):
         digest = hashlib.sha256(raw).hexdigest()
         page_name = f"page-00001-{digest[:12]}.json"
         sidecar_name = f"page-00001-{digest[:12]}.manifest.json"
+        retrieved_at = "2026-11-18T03:58:58+00:00"
         sidecar = {
             "source": "Sporttery public historical draw API",
             "url": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry?gameNo=85&pageNo=1",
-            "retrieved_at": "2026-11-18T03:58:58+00:00",
+            "retrieved_at": retrieved_at,
             "http_status": 200,
             "content_type": "application/json;charset=UTF-8",
             "sha256": digest,
@@ -44,7 +45,32 @@ class OfficialSnapshotArchiveAuditTests(unittest.TestCase):
             "page_no": 1,
             "raw_file": page_name,
         }
-        collection = {"total_pages": 1, "total_records": 1}
+        collection = {
+            "source": "Sporttery public historical draw API",
+            "endpoint": "https://webapi.sporttery.cn/gateway/lottery/getHistoryPageListV1.qry",
+            "gameNo": "85",
+            "run_id": "fixture-run",
+            "started_at": "2026-11-18T03:58:57+00:00",
+            "finished_at": "2026-11-18T03:58:59+00:00",
+            "collector_version": COLLECTOR_VERSION,
+            "page_size": 100,
+            "pages": [{
+                "page_no": 1,
+                "raw_file": page_name,
+                "sha256": digest,
+                "record_count": 1,
+                "retrieved_at": retrieved_at,
+                "source_metadata": {
+                    "total": 1,
+                    "pages": 1,
+                    "pageNo": 1,
+                    "pageSize": 100,
+                },
+            }],
+            "status": "complete_short_page",
+            "total_pages": 1,
+            "total_records": 1,
+        }
         archive_path = root / "incoming.zip"
         with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("dlt_official_raw/", b"")
@@ -100,6 +126,22 @@ class OfficialSnapshotArchiveAuditTests(unittest.TestCase):
                 for name, value in members.items():
                     target.writestr(name, value)
             with self.assertRaisesRegex(AuditError, "sidecar identity/hash/status mismatch"):
+                audit_archive(archive, processed, manifest, expected_pages=1, expected_records=1)
+
+    def test_collection_manifest_page_hash_mismatch_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            archive, processed, manifest, _ = self.build_fixture(root)
+            with zipfile.ZipFile(archive, "r") as source:
+                members = {name: source.read(name) for name in source.namelist()}
+            collection_name = next(name for name in members if "collection-" in name)
+            collection = json.loads(members[collection_name])
+            collection["pages"][0]["sha256"] = "0" * 64
+            members[collection_name] = json.dumps(collection).encode("utf-8")
+            with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as target:
+                for name, value in members.items():
+                    target.writestr(name, value)
+            with self.assertRaisesRegex(AuditError, "collection manifest page inventory mismatch"):
                 audit_archive(archive, processed, manifest, expected_pages=1, expected_records=1)
 
     def test_archive_rejects_non_official_endpoint(self):
