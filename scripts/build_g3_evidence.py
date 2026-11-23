@@ -141,6 +141,14 @@ def _holm(p_values: dict[str, float]) -> dict[str, float]:
     return adjusted
 
 
+def _legacy_label_digest(run_manifest: dict[str, Any]) -> str:
+    """Return the digest of the historical display label, never a registry ID."""
+    label = run_manifest.get("experiment_id")
+    if not isinstance(label, str) or not label:
+        raise G3EvidenceBuildError("run manifest lacks its historical experiment label")
+    return _sha256(label.encode("utf-8"))
+
+
 def build_g3_evidence_bundle(
     *, snapshot_path: Path, run_manifest_path: Path, ledger_path: Path,
     model_artifacts_path: Path, registration_path: Path, output_dir: Path, expected_snapshot_sha256: str,
@@ -182,12 +190,28 @@ def build_g3_evidence_bundle(
         raise G3EvidenceBuildError("registration snapshot digest mismatch")
     if registration.get("target_manifest_sha256") != target_manifest_digest.removeprefix("sha256:"):
         raise G3EvidenceBuildError("registration target manifest digest mismatch")
-    if registration.get("experiment_id") != hashlib.sha256(
-        str(run_manifest.get("experiment_id", "")).encode("utf-8")
-    ).hexdigest():
-        raise G3EvidenceBuildError("registration does not identify this run's experiment")
+    legacy_label_digest = _legacy_label_digest(run_manifest)
+    if registration.get("experiment_id") != legacy_label_digest:
+        raise G3EvidenceBuildError("historical G3 record does not match the legacy label digest")
     if registration.get("experiment_class") != run_manifest.get("experiment_class"):
         raise G3EvidenceBuildError("registration/run experiment class mismatch")
+
+    # This historical compatibility digest is deliberately NOT accepted as a
+    # LOT-064 registry identity. The old run predates registry/runtime binding.
+    registry_binding = {
+        "schema": "lottery.g3-registry-binding/v1",
+        "status": "UNBOUND_LEGACY",
+        "legacy_experiment_label": run_manifest["experiment_id"],
+        "legacy_label_sha256": legacy_label_digest,
+        "registry_experiment_id": run_manifest.get("registry_experiment_id"),
+        "trial_id": run_manifest.get("trial_id"),
+        "execution_id": run_manifest.get("execution_id"),
+        "reason": (
+            "The historical run manifest has no verified LOT-064 registration, "
+            "trial, or concrete evaluator execution binding. A hash of its display "
+            "label is not proof of registry admission."
+        ),
+    }
 
     ledger_raw = ledger_path.read_bytes()
     ledger_digest = _sha256(ledger_raw)
@@ -517,11 +541,15 @@ def build_g3_evidence_bundle(
         },
         "multiplicity_control": multiplicity,
         "calibration": calibration,
+        "registry_binding": registry_binding,
     }
     for name, report in reports.items():
         (output_dir / f"{name}.json").write_bytes(canonicalize(report) + b"\n")
 
     blockers = []
+    blockers.append(
+        "historical G3 run is not bound to a LOT-064 registry experiment, trial, and concrete execution"
+    )
     if run_manifest.get("experiment_class") != "confirmatory" or run_manifest.get("confirmatory_eligible") is not True:
         blockers.append("run manifest explicitly marks this experiment as exploratory/non-confirmatory")
     if registration.get("outcomes_observed_at_registration") is not False:
@@ -555,6 +583,10 @@ def build_g3_evidence_bundle(
         "experiment_id": run_manifest.get("experiment_id"),
         "experiment_class": run_manifest.get("experiment_class"),
         "confirmatory_eligible": run_manifest.get("confirmatory_eligible"),
+        "registry_binding_status": registry_binding["status"],
+        "registry_experiment_id": registry_binding["registry_experiment_id"],
+        "trial_id": registry_binding["trial_id"],
+        "execution_id": registry_binding["execution_id"],
         "snapshot_sha256": expected_snapshot_sha256,
         "target_count_per_zone": TARGET_COUNT,
         "terminal_record_count": len(ledger),
