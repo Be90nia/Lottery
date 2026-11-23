@@ -213,6 +213,306 @@ def _verify_g2_evidence(check_id: str, raw: bytes) -> None:
         )
 
 
+
+def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> list[dict[str, str]]:
+    """Verify LOT-055 chronological evaluation evidence and its complete ledger."""
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            raise ReceiptVerificationError("G3: " + message)
+
+    expected_ids = {
+        "preregistration", "chronological_targets", "complete_denominator",
+        "baseline_comparison", "multiplicity_control", "calibration",
+    }
+    require(set(raw_by_check) == expected_ids, "evidence inventory mismatch")
+    reports = {key: _strict_json(raw, "G3 " + key) for key, raw in raw_by_check.items()}
+    prereg = reports["preregistration"]
+    require(set(prereg) == {
+        "schema", "protocol_id", "experiment_id", "experiment_class",
+        "outcomes_observed_at_registration", "snapshot_sha256",
+        "target_manifest_sha256", "model_ids", "bootstrap_replicates",
+        "block_length", "bootstrap_seed", "multiplicity_family",
+        "alpha", "calibration_method", "calibration_tolerance",
+        "holdout_accessed",
+    }, "preregistration fields invalid")
+    require(
+        prereg["schema"] == "lottery.g3-preregistration/v1"
+        and prereg["protocol_id"] == "LOT-055-v1"
+        and prereg["experiment_class"] == "confirmatory"
+        and prereg["outcomes_observed_at_registration"] is False
+        and prereg["holdout_accessed"] is False,
+        "protocol is not a pre-outcome confirmatory LOT-055 registration",
+    )
+    require(
+        isinstance(prereg["experiment_id"], str) and SHA256.fullmatch(prereg["experiment_id"])
+        and isinstance(prereg["snapshot_sha256"], str)
+        and prereg["snapshot_sha256"] == "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
+        and isinstance(prereg["target_manifest_sha256"], str)
+        and SHA256.fullmatch(prereg["target_manifest_sha256"]),
+        "experiment or frozen snapshot identity invalid",
+    )
+    model_ids = prereg["model_ids"]
+    require(
+        isinstance(model_ids, dict) and set(model_ids) == {"candidate", "uniform", "expanding", "ewma"}
+        and all(isinstance(value, str) and value for value in model_ids.values())
+        and len(set(model_ids.values())) == 4,
+        "the single candidate and three fixed comparators must have unique identities",
+    )
+    require(
+        type(prereg["bootstrap_replicates"]) is int and prereg["bootstrap_replicates"] == 1000
+        and type(prereg["block_length"]) is int and prereg["block_length"] == 50
+        and type(prereg["bootstrap_seed"]) is int and prereg["bootstrap_seed"] >= 0
+        and type(prereg["alpha"]) in (int, float) and prereg["alpha"] == 0.05
+        and isinstance(prereg["multiplicity_family"], list)
+        and prereg["multiplicity_family"] == [
+            "candidate_vs_uniform:front", "candidate_vs_uniform:back"
+        ]
+        and isinstance(prereg["calibration_method"], str) and prereg["calibration_method"]
+        and type(prereg["calibration_tolerance"]) in (int, float)
+        and math.isfinite(prereg["calibration_tolerance"])
+        and 0 < prereg["calibration_tolerance"] <= 1,
+        "frozen bootstrap, multiplicity or calibration policy invalid",
+    )
+
+    chronology = reports["chronological_targets"]
+    require(set(chronology) == {
+        "schema", "snapshot_sha256", "target_manifest_sha256", "snapshot_row_count",
+        "target_ids", "target_ids_sha256", "minimum_training_draws",
+        "strictly_before_target", "equipment_fields_used", "holdout_accessed",
+    }, "chronological target fields invalid")
+    target_ids = chronology["target_ids"]
+    require(
+        chronology["schema"] == "lottery.g3-chronological-targets/v1"
+        and chronology["snapshot_sha256"] == prereg["snapshot_sha256"]
+        and chronology["target_manifest_sha256"] == prereg["target_manifest_sha256"]
+        and chronology["snapshot_row_count"] == 2949
+        and isinstance(target_ids, list) and len(target_ids) == 2649
+        and all(isinstance(value, str) and re.fullmatch(r"\\d{5}", value) for value in target_ids)
+        and target_ids == sorted(set(target_ids))
+        and target_ids[0] == "09054" and target_ids[-1] == "26131"
+        and chronology["target_ids_sha256"] == hashlib.sha256(canonicalize(target_ids)).hexdigest()
+        and chronology["minimum_training_draws"] == 300
+        and chronology["strictly_before_target"] is True
+        and chronology["equipment_fields_used"] is False
+        and chronology["holdout_accessed"] is False,
+        "frozen 2,649-target chronology, source identity or leakage boundary invalid",
+    )
+    target_index = {target: index for index, target in enumerate(target_ids)}
+
+    denominator = reports["complete_denominator"]
+    require(set(denominator) == {
+        "schema", "target_ids_sha256", "model_ids", "zones",
+        "expected_target_count", "expected_record_count", "terminal_record_count",
+        "status_counts", "ledger",
+    }, "complete-denominator fields invalid")
+    expected_records = 2649 * 4 * 2
+    require(
+        denominator["schema"] == "lottery.g3-terminal-ledger-index/v1"
+        and denominator["target_ids_sha256"] == chronology["target_ids_sha256"]
+        and denominator["model_ids"] == model_ids
+        and denominator["zones"] == ["front", "back"]
+        and denominator["expected_target_count"] == 2649
+        and denominator["expected_record_count"] == expected_records
+        and denominator["terminal_record_count"] == expected_records,
+        "full model × zone × target denominator is incomplete or mismatched",
+    )
+    status_counts = denominator["status_counts"]
+    allowed_statuses = {"scored", "fit_failed", "artifact_invalid", "probability_invalid", "runner_error"}
+    require(
+        isinstance(status_counts, dict) and set(status_counts) <= allowed_statuses
+        and status_counts and all(type(value) is int and value >= 0 for value in status_counts.values())
+        and sum(status_counts.values()) == expected_records
+        and status_counts.get("scored", 0) == expected_records,
+        "failed or missing target fits prevent confirmatory full-coverage acceptance",
+    )
+    ledger_raw, ledger_digest = _safe_file(root, denominator["ledger"], "G3 terminal ledger")
+    ledger_lines = ledger_raw.splitlines()
+    require(len(ledger_lines) == expected_records, "terminal ledger line count differs from frozen denominator")
+    seen: set[tuple[str, str, str]] = set()
+    scores: dict[tuple[str, str, str], float] = {}
+    status_totals = {key: 0 for key in allowed_statuses}
+    for line_number, line in enumerate(ledger_lines, 1):
+        record = _strict_json(line, f"G3 terminal ledger line {line_number}")
+        require(set(record) == {
+            "model_id", "zone", "target_draw_id", "pairing_key",
+            "training_count", "train_cutoff_draw_id", "strictly_before_target",
+            "status", "nll",
+        }, f"terminal ledger line {line_number} fields invalid")
+        model_id, zone, target = record["model_id"], record["zone"], record["target_draw_id"]
+        require(
+            model_id in model_ids.values() and zone in ("front", "back")
+            and target in target_index and record["pairing_key"] == zone + ":" + target
+            and type(record["training_count"]) is int
+            and record["training_count"] == 300 + target_index[target]
+            and isinstance(record["train_cutoff_draw_id"], str)
+            and re.fullmatch(r"\\d{5}", record["train_cutoff_draw_id"])
+            and record["train_cutoff_draw_id"] < target
+            and record["strictly_before_target"] is True,
+            f"terminal ledger line {line_number} violates target/cutoff pairing",
+        )
+        key = (model_id, zone, target)
+        require(key not in seen, f"duplicate terminal ledger record {key}")
+        seen.add(key)
+        status = record["status"]
+        require(status in allowed_statuses, f"unknown terminal status at line {line_number}")
+        status_totals[status] += 1
+        if status == "scored":
+            require(
+                type(record["nll"]) in (int, float)
+                and math.isfinite(record["nll"]) and record["nll"] >= 0,
+                f"scored ledger record {key} has invalid NLL",
+            )
+            scores[key] = float(record["nll"])
+        else:
+            require(record["nll"] is None, f"failed ledger record {key} must not contain a fabricated score")
+    require(len(seen) == expected_records and status_totals == {
+        key: status_counts.get(key, 0) for key in allowed_statuses
+    }, "terminal ledger inventory/status counts do not reconcile")
+    for model_id in model_ids.values():
+        for zone in ("front", "back"):
+            for target in target_ids:
+                require((model_id, zone, target) in seen, "missing model × zone × target terminal record")
+    uniform_id = model_ids["uniform"]
+    uniform_nll = {"front": math.log(324632), "back": math.log(66)}
+    for zone in ("front", "back"):
+        for target in target_ids:
+            require(
+                abs(scores[(uniform_id, zone, target)] - uniform_nll[zone]) <= 1e-10,
+                "uniform exact-set baseline does not equal the legal-support constant",
+            )
+
+    baseline = reports["baseline_comparison"]
+    require(set(baseline) == {
+        "schema", "target_ids_sha256", "target_count", "candidate_model_id",
+        "baseline_model_ids", "zones",
+    }, "baseline comparison fields invalid")
+    require(
+        baseline["schema"] == "lottery.g3-baseline-comparison/v1"
+        and baseline["target_ids_sha256"] == chronology["target_ids_sha256"]
+        and baseline["target_count"] == 2649
+        and baseline["candidate_model_id"] == model_ids["candidate"]
+        and baseline["baseline_model_ids"] == {
+            "uniform": model_ids["uniform"], "expanding": model_ids["expanding"], "ewma": model_ids["ewma"]
+        }
+        and isinstance(baseline["zones"], dict) and set(baseline["zones"]) == {"front", "back"},
+        "baseline comparison is not paired to the frozen target family",
+    )
+    mean_values: dict[str, dict[str, float]] = {}
+    for zone in ("front", "back"):
+        entry = baseline["zones"][zone]
+        require(set(entry) == {
+            "scored_pairs", "mean_nll", "candidate_vs_uniform_mean_delta",
+            "candidate_vs_uniform_ci95", "candidate_vs_expanding_ci95_upper",
+            "candidate_vs_ewma_ci95_upper",
+        }, f"{zone} baseline fields invalid")
+        require(entry["scored_pairs"] == 2649, f"{zone} paired baseline coverage is incomplete")
+        mean_values[zone] = {}
+        for role, model_id in model_ids.items():
+            values = [scores[(model_id, zone, target)] for target in target_ids]
+            mean_values[zone][role] = sum(values) / len(values)
+        reported_means = entry["mean_nll"]
+        require(
+            isinstance(reported_means, dict) and set(reported_means) == set(model_ids)
+            and all(type(reported_means[role]) in (int, float)
+                    and math.isfinite(reported_means[role])
+                    and abs(reported_means[role] - mean_values[zone][role]) <= 1e-10
+                    for role in model_ids),
+            f"{zone} absolute baseline means do not reconcile to terminal ledger",
+        )
+        delta = mean_values[zone]["candidate"] - mean_values[zone]["uniform"]
+        interval = entry["candidate_vs_uniform_ci95"]
+        require(
+            type(entry["candidate_vs_uniform_mean_delta"]) in (int, float)
+            and abs(entry["candidate_vs_uniform_mean_delta"] - delta) <= 1e-10
+            and isinstance(interval, list) and len(interval) == 2
+            and all(type(value) in (int, float) and math.isfinite(value) for value in interval)
+            and interval[0] <= delta <= interval[1]
+            and type(entry["candidate_vs_expanding_ci95_upper"]) in (int, float)
+            and math.isfinite(entry["candidate_vs_expanding_ci95_upper"])
+            and type(entry["candidate_vs_ewma_ci95_upper"]) in (int, float)
+            and math.isfinite(entry["candidate_vs_ewma_ci95_upper"]),
+            f"{zone} paired uncertainty/non-regression report invalid",
+        )
+        require(
+            entry["candidate_vs_expanding_ci95_upper"] <= 0
+            and entry["candidate_vs_ewma_ci95_upper"] <= 0,
+            f"{zone} candidate fails the frozen non-regression margin",
+        )
+
+    multiplicity = reports["multiplicity_control"]
+    require(set(multiplicity) == {
+        "schema", "target_ids_sha256", "bootstrap_replicates", "block_length",
+        "bootstrap_seed", "method", "alpha", "hypotheses",
+    }, "multiplicity report fields invalid")
+    require(
+        multiplicity["schema"] == "lottery.g3-holm-control/v1"
+        and multiplicity["target_ids_sha256"] == chronology["target_ids_sha256"]
+        and multiplicity["bootstrap_replicates"] == prereg["bootstrap_replicates"]
+        and multiplicity["block_length"] == prereg["block_length"]
+        and multiplicity["bootstrap_seed"] == prereg["bootstrap_seed"]
+        and multiplicity["method"] == "holm-step-down-one-sided-centered-moving-block-bootstrap"
+        and multiplicity["alpha"] == prereg["alpha"]
+        and isinstance(multiplicity["hypotheses"], list) and len(multiplicity["hypotheses"]) == 2,
+        "bootstrap or Holm policy differs from preregistration",
+    )
+    hypotheses = {item.get("hypothesis_id"): item for item in multiplicity["hypotheses"] if isinstance(item, dict)}
+    expected_hypotheses = ("candidate_vs_uniform:front", "candidate_vs_uniform:back")
+    require(set(hypotheses) == set(expected_hypotheses), "confirmatory hypothesis family is not exactly two co-primary zones")
+    raw_p: dict[str, float] = {}
+    for hypothesis_id in expected_hypotheses:
+        item = hypotheses[hypothesis_id]
+        require(set(item) == {"hypothesis_id", "p_value", "holm_adjusted_p_value", "ci95_lower", "ci95_upper"}, "Holm hypothesis fields invalid")
+        values = (item["p_value"], item["holm_adjusted_p_value"], item["ci95_lower"], item["ci95_upper"])
+        require(all(type(value) in (int, float) and math.isfinite(value) for value in values), "Holm numeric value invalid")
+        require(0 <= item["p_value"] <= 1 and 0 <= item["holm_adjusted_p_value"] <= 1
+                and item["ci95_lower"] <= item["ci95_upper"], "Holm p-value/interval out of range")
+        raw_p[hypothesis_id] = float(item["p_value"])
+        zone = hypothesis_id.split(":")[1]
+        expected_interval = baseline["zones"][zone]["candidate_vs_uniform_ci95"]
+        require(
+            abs(item["ci95_lower"] - expected_interval[0]) <= 1e-12
+            and abs(item["ci95_upper"] - expected_interval[1]) <= 1e-12
+            and item["ci95_upper"] < 0
+            and item["holm_adjusted_p_value"] < prereg["alpha"],
+            f"{zone} candidate does not pass the co-primary inferential gate",
+        )
+    ordered = sorted(raw_p.items(), key=lambda pair: pair[1])
+    expected_adjusted: dict[str, float] = {}
+    running = 0.0
+    for rank, (hypothesis_id, p_value) in enumerate(ordered):
+        running = max(running, min(1.0, (2 - rank) * p_value))
+        expected_adjusted[hypothesis_id] = running
+    require(
+        all(abs(hypotheses[key]["holm_adjusted_p_value"] - expected_adjusted[key]) <= 1e-12
+            for key in expected_hypotheses),
+        "reported Holm adjusted p-values do not match step-down correction",
+    )
+
+    calibration = reports["calibration"]
+    require(set(calibration) == {
+        "schema", "target_ids_sha256", "method", "zones",
+    }, "calibration report fields invalid")
+    require(
+        calibration["schema"] == "lottery.g3-calibration/v1"
+        and calibration["target_ids_sha256"] == chronology["target_ids_sha256"]
+        and calibration["method"] == prereg["calibration_method"]
+        and isinstance(calibration["zones"], dict) and set(calibration["zones"]) == {"front", "back"},
+        "calibration report does not bind the preregistered method/targets",
+    )
+    for zone in ("front", "back"):
+        entry = calibration["zones"][zone]
+        require(set(entry) == {"target_count", "max_abs_error"}, f"{zone} calibration fields invalid")
+        require(
+            entry["target_count"] == 2649
+            and type(entry["max_abs_error"]) in (int, float)
+            and math.isfinite(entry["max_abs_error"])
+            and 0 <= entry["max_abs_error"] <= prereg["calibration_tolerance"],
+            f"{zone} calibration evidence fails the preregistered tolerance",
+        )
+    return [{"path": denominator["ledger"]["path"], "sha256": ledger_digest}]
+
+
+
 def _checks_pass(checks: Any, label: str, root: Path) -> list[dict[str, str]]:
     required = GATE_REQUIRED_CHECKS[label]
     if not isinstance(checks, list):
@@ -229,6 +529,7 @@ def _checks_pass(checks: Any, label: str, root: Path) -> list[dict[str, str]]:
         raise ReceiptVerificationError(f"{label}: required check inventory mismatch")
     verified: list[dict[str, str]] = []
     seen_paths: set[str] = set()
+    raw_by_check: dict[str, bytes] = {}
     for check_id in required:
         check = indexed[check_id]
         if check["status"] != "PASS":
@@ -236,11 +537,19 @@ def _checks_pass(checks: Any, label: str, root: Path) -> list[dict[str, str]]:
         evidence_raw, digest = _safe_file(root, check["evidence"], label + " " + check_id)
         if label == "G2":
             _verify_g2_evidence(check_id, evidence_raw)
+        if label == "G3":
+            raw_by_check[check_id] = evidence_raw
         path = check["evidence"]["path"]
         if path in seen_paths:
             raise ReceiptVerificationError(f"{label}: check evidence must be unique")
         seen_paths.add(path)
         verified.append({"path": path, "sha256": digest})
+    if label == "G3":
+        nested = _verify_g3_evidence_bundle(raw_by_check, root)
+        for item in nested:
+            if item["path"] in seen_paths or item["sha256"] in {entry["sha256"] for entry in verified}:
+                raise ReceiptVerificationError("G3 terminal ledger evidence must be unique")
+            verified.append(item)
     return verified
 
 
