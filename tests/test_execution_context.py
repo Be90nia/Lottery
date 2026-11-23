@@ -74,6 +74,7 @@ class ExecutionContextTests(unittest.TestCase):
             execution_context_from_env(
                 wrong_repo, checked_out_sha=COMMIT,
                 expected_repository=REPOSITORY, expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
                 expected_workflow_path=WORKFLOW_PATH,
             )
         wrong_workflow = environment()
@@ -82,12 +83,14 @@ class ExecutionContextTests(unittest.TestCase):
             execution_context_from_env(
                 wrong_workflow, checked_out_sha=COMMIT,
                 expected_repository=REPOSITORY, expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
                 expected_workflow_path=WORKFLOW_PATH,
             )
         with self.assertRaisesRegex(ExecutionContextError, "does not match GITHUB_SHA"):
             execution_context_from_env(
                 environment(), checked_out_sha="b" * 40,
                 expected_repository=REPOSITORY, expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
                 expected_workflow_path=WORKFLOW_PATH,
             )
 
@@ -99,6 +102,7 @@ class ExecutionContextTests(unittest.TestCase):
                 context,
                 expected_repository=REPOSITORY,
                 expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
                 expected_workflow_path=WORKFLOW_PATH,
             )
         context = self.make_context()
@@ -108,6 +112,7 @@ class ExecutionContextTests(unittest.TestCase):
                 context,
                 expected_repository=REPOSITORY,
                 expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
                 expected_workflow_path=WORKFLOW_PATH,
             )
 
