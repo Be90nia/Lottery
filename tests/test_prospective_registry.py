@@ -108,16 +108,20 @@ def fixture():
 
 class RegistryScheduleTests(unittest.TestCase):
     def build(self, lifecycle, target, inventory, **kw):
-        return build_registry_schedule(
-            lifecycle, target, inventory,
-            now=datetime.fromisoformat("2026-11-20T14:01:00+00:00"),
-            code_commit="e" * 40,
-            target_manifest_verifier=lambda value: True,
-            inventory_verifier=lambda value: True,
-            schedule_attestor=lambda value: {"key_id": "test-key", "signature": "fixture-signature", "payload_sha256": digest(value)},
-            schedule_verifier=lambda value: True,
-            **kw,
-        )
+        callbacks = {
+            "now": datetime.fromisoformat("2026-11-20T14:01:00+00:00"),
+            "code_commit": "e" * 40,
+            "target_manifest_verifier": lambda value: True,
+            "inventory_verifier": lambda value: True,
+            "schedule_attestor": lambda value: {
+                "key_id": "test-key",
+                "signature": "fixture-signature",
+                "payload_sha256": digest(value),
+            },
+            "schedule_verifier": lambda value: True,
+        }
+        callbacks.update(kw)
+        return build_registry_schedule(lifecycle, target, inventory, **callbacks)
 
     def test_builds_paired_champion_and_shadow_candidate_slots(self):
         lifecycle, target, inventory = fixture()
