@@ -94,7 +94,7 @@ class G3EvidenceAdapterTests(unittest.TestCase):
             "population_evidence_sha256": None,
         }
         artifact_id = "e" * 64
-        model_artifacts_raw = canonicalize({"artifact_id": artifact_id}) + b"\\n"
+        model_artifacts_raw = canonicalize({"artifact_id": artifact_id}) + b"\n"
         run_manifest = {
             "run_id": "lot055-binding-test",
             "experiment_binding": {
@@ -127,12 +127,12 @@ class G3EvidenceAdapterTests(unittest.TestCase):
             run_manifest["experiment_binding"]["experiment_id"] = experiment_id
             run_manifest["experiment_binding"]["spec_sha256"] = experiment_id
             provenance["experiment_id"] = experiment_id
-            provenance_raw = canonicalize(provenance) + b"\\n"
+            provenance_raw = canonicalize(provenance) + b"\n"
             run_manifest["output_files"]["model-artifact-provenance.jsonl"] = {
                 "sha256": hashlib.sha256(provenance_raw).hexdigest(),
                 "bytes": len(provenance_raw),
             }
-            run_manifest_raw = canonicalize(run_manifest) + b"\\n"
+            run_manifest_raw = canonicalize(run_manifest) + b"\n"
             registry.start_trial(
                 experiment_id=experiment_id,
                 attempt_id=attempt_id,
@@ -170,7 +170,7 @@ class G3EvidenceAdapterTests(unittest.TestCase):
                 "terminal_status": "succeeded",
             }
             receipt_path = root / "registry-run-receipt.json"
-            receipt_path.write_bytes(canonicalize(receipt) + b"\\n")
+            receipt_path.write_bytes(canonicalize(receipt) + b"\n")
             provenance_path = root / "model-artifact-provenance.jsonl"
             provenance_path.write_bytes(provenance_raw)
             report = _verify_registry_binding(
