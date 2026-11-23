@@ -249,6 +249,7 @@ def _start_registered_execution(
         execution_context=execution,
         expected_repository=EXPECTED_REPOSITORY,
         expected_repository_id=EXPECTED_REPOSITORY_ID,
+        expected_workflow_id=EXPECTED_WORKFLOW_ID,
         expected_workflow_path=EXPECTED_WORKFLOW_PATH,
     )
     binding = {
