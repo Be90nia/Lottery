@@ -403,7 +403,7 @@ class TypedReadinessReceiptTests(unittest.TestCase):
 
     def test_mutable_release_ref_is_rejected_before_receipt_evaluation(self):
         self.manifest["release_ref"] = "main"
-        with self.assertRaisesRegex(ReceiptVerificationError, "invalid or mutable"):
+        with self.assertRaisesRegex(ReceiptVerificationError, "immutable ref or LOT-042 flag invalid"):
             self.verify()
 
     def test_v2_manifest_binds_full_release_tuple_to_actual_bytes(self):
