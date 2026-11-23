@@ -67,6 +67,18 @@ class ExecutionContextTests(unittest.TestCase):
         self.assertNotEqual(first["execution_id"], rerun["execution_id"])
         self.assertNotEqual(first["execution_id"], independent["execution_id"])
 
+    def test_wrong_workflow_id_is_rejected_even_when_path_matches(self):
+        wrong_id = environment()
+        wrong_id["LOTTERY_WORKFLOW_ID"] = "999999999"
+        with self.assertRaisesRegex(ExecutionContextError, "workflow ID"):
+            execution_context_from_env(
+                wrong_id, checked_out_sha=COMMIT,
+                expected_repository=REPOSITORY,
+                expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
+                expected_workflow_path=WORKFLOW_PATH,
+            )
+
     def test_wrong_repository_workflow_or_checked_out_sha_is_rejected(self):
         wrong_repo = environment()
         wrong_repo["GITHUB_REPOSITORY"] = "someone/else"
