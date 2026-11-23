@@ -14,7 +14,7 @@ from lottery.readiness_receipts import (
 )
 
 
-_G3_FIXTURE_CACHE: tuple[dict[str, bytes], bytes, bytes] | None = None
+_G3_FIXTURE_CACHE: tuple[dict[str, bytes], bytes, bytes, bytes] | None = None
 
 
 def _build_g3_fixture(root: Path) -> dict[str, bytes]:
@@ -23,6 +23,7 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
     if _G3_FIXTURE_CACHE is not None:
         ledger_path.write_bytes(_G3_FIXTURE_CACHE[1])
         (root / "G3-run-manifest.json").write_bytes(_G3_FIXTURE_CACHE[2])
+        (root / "G3-model-artifacts.jsonl").write_bytes(_G3_FIXTURE_CACHE[3])
         return _G3_FIXTURE_CACHE[0]
     model_ids = {
         "candidate": "exponential_family", "uniform": "uniform",
@@ -231,7 +232,7 @@ def _build_g3_fixture(root: Path) -> dict[str, bytes]:
         "multiplicity_control": multiplicity, "calibration": calibration,
     }
     encoded = {key: canonicalize(value) for key, value in reports.items()}
-    _G3_FIXTURE_CACHE = (encoded, ledger_raw, run_manifest_raw)
+    _G3_FIXTURE_CACHE = (encoded, ledger_raw, run_manifest_raw, model_artifacts_raw)
     return encoded
 
 
