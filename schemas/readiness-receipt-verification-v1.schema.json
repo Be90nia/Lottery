@@ -12,6 +12,7 @@
     "receipt_completeness",
     "shadow_authorized",
     "production_ready",
+    "release_manifest_evidence",
     "gate_receipts",
     "fault_receipts",
     "lot042_accessed",
@@ -60,6 +61,30 @@
     "authenticity_note": {
       "type": "string",
       "minLength": 1
+    },
+    "release_manifest_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
     }
   }
 }
