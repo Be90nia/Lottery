@@ -150,6 +150,17 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptVerificationError, "SHA-256 mismatch"):
             self.verify()
 
+    def test_gate_check_evidence_cannot_be_reused_across_gates(self):
+        g0_path = self.root / self.gates[0]["receipt"]["path"]
+        g0_receipt = json.loads(g0_path.read_text(encoding="utf-8"))
+        shared = g0_receipt["checks"][0]["evidence"]
+        self.rewrite(
+            self.gates[1]["receipt"],
+            lambda receipt: receipt["checks"][0].__setitem__("evidence", shared),
+        )
+        with self.assertRaisesRegex(ReceiptVerificationError, "must be unique"):
+            self.verify()
+
     def test_fault_receipt_requires_recovery_action_and_no_output_publication(self):
         self.rewrite(self.faults[0]["receipt"], lambda r: r.__setitem__("recovery_action", ""))
         with self.assertRaisesRegex(ReceiptVerificationError, "fault receipt contract mismatch"):
