@@ -131,6 +131,8 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
             or target_manifest.get("target_count_per_zone") != scientific["target_count_per_zone"]):
         raise ValueError("historical run manifest scientific status, snapshot or target denominators differ from evidence")
     declared_outputs = manifest.get("output_files", {})
+    if set(declared_outputs) != {"target-score-ledger.jsonl", "model-artifacts.jsonl"}:
+        raise ValueError("historical manifest output set differs from the pinned legacy run schema")
     for filename, raw in (
         ("target-score-ledger.jsonl", ledger_raw),
         ("model-artifacts.jsonl", artifacts_raw),
