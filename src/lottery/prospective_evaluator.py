@@ -37,12 +37,16 @@ class FrozenArtifactEvaluator:
         self._cache: dict[str, tuple[dict[str, Any], Any, float]] = {}
 
     def _load(self, artifact_id: str) -> tuple[dict[str, Any], Any, float]:
-        cached = self._cache.get(artifact_id)
-        if cached is not None:
-            return cached
         if not isinstance(artifact_id, str) or not artifact_id.startswith("sha256:"):
             raise FrozenArtifactEvaluationError("forecast artifact ID must be content-addressed")
+        # Re-read and verify immutable storage on every evaluation; an in-memory
+        # cache must never conceal later on-disk tampering or object replacement.
         artifact = self.lifecycle._load_artifact(artifact_id)
+        cached = self._cache.get(artifact_id)
+        if cached is not None:
+            if canonicalize(cached[0]) != canonicalize(artifact):
+                raise FrozenArtifactEvaluationError("immutable artifact bytes changed after initial verification")
+            return cached
         zone = artifact.get("zone")
         m, k = (35, 5) if zone == "front" else (12, 2) if zone == "back" else (0, 0)
         if not m or artifact.get("support", {}).get("support_count") != math.comb(m, k):
