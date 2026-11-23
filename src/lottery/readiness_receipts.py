@@ -407,34 +407,65 @@ def _verify_g3_evidence_bundle(
             for index, target in enumerate(target_ids)
         ]
     })).hexdigest()
-    expected_snapshot_digest = None
-    run_manifest_already_bound_by_release = False
-    model_artifacts_already_bound_by_release = False
-    if isinstance(release_manifest, dict):
-        if release_manifest.get("schema") == "lottery.release-manifest/v2":
-            release_evidence = release_manifest.get("evidence", {})
-            snapshot_ref = release_evidence.get("canonical_snapshot", {})
-            expected_snapshot_digest = snapshot_ref.get("sha256") if isinstance(snapshot_ref, dict) else None
-            evaluation_refs = release_evidence.get("evaluation_manifests", [])
-            artifact_refs = release_evidence.get("model_artifacts", [])
-            run_manifest_already_bound_by_release = any(
-                isinstance(item, dict)
-                and item.get("path") == denominator["run_manifest"].get("path")
-                and item.get("sha256") == run_manifest_digest
-                for item in evaluation_refs
-            )
-            model_artifacts_already_bound_by_release = any(
-                isinstance(item, dict)
-                and item.get("path") == denominator["model_artifacts"].get("path")
-                and item.get("sha256") == model_artifacts_digest
-                for item in artifact_refs
-            )
-            require(
-                run_manifest_already_bound_by_release and model_artifacts_already_bound_by_release,
-                "G3 run manifest and model-artifact ledger must be included in immutable release evidence inventories",
-            )
-        else:
-            expected_snapshot_digest = release_manifest.get("snapshot_sha256")
+    require(
+        isinstance(release_manifest, dict)
+        and release_manifest.get("schema") == "lottery.release-manifest/v2",
+        "G3 requires a v2 release manifest with an immutable canonical snapshot reference",
+    )
+    release_evidence = release_manifest.get("evidence", {})
+    snapshot_ref = release_evidence.get("canonical_snapshot", {})
+    expected_snapshot_digest = snapshot_ref.get("sha256") if isinstance(snapshot_ref, dict) else None
+    evaluation_refs = release_evidence.get("evaluation_manifests", [])
+    artifact_refs = release_evidence.get("model_artifacts", [])
+    run_manifest_already_bound_by_release = any(
+        isinstance(item, dict)
+        and item.get("path") == denominator["run_manifest"].get("path")
+        and item.get("sha256") == run_manifest_digest
+        for item in evaluation_refs
+    )
+    model_artifacts_already_bound_by_release = any(
+        isinstance(item, dict)
+        and item.get("path") == denominator["model_artifacts"].get("path")
+        and item.get("sha256") == model_artifacts_digest
+        for item in artifact_refs
+    )
+    require(
+        run_manifest_already_bound_by_release and model_artifacts_already_bound_by_release,
+        "G3 run manifest and model-artifact ledger must be included in immutable release evidence inventories",
+    )
+    snapshot_raw, snapshot_digest = _safe_file(root, snapshot_ref, "G3 canonical snapshot")
+    require(
+        snapshot_digest == prereg["snapshot_sha256"],
+        "canonical snapshot bytes do not match preregistered snapshot digest",
+    )
+    try:
+        snapshot_rows = [
+            _strict_json(line, f"G3 canonical snapshot line {line_number}")
+            for line_number, line in enumerate(snapshot_raw.splitlines(), 1)
+        ]
+    except ReceiptVerificationError:
+        raise
+    require(len(snapshot_rows) == 2949, "canonical snapshot row count is not 2,949")
+    snapshot_ids = [row.get("draw_id") for row in snapshot_rows]
+    snapshot_dates = [row.get("draw_date") for row in snapshot_rows]
+    require(
+        all(isinstance(value, str) and re.fullmatch(r"\\d{5}", value) for value in snapshot_ids)
+        and all(isinstance(value, str) and re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", value) for value in snapshot_dates)
+        and snapshot_ids == sorted(set(snapshot_ids))
+        and snapshot_dates == sorted(set(snapshot_dates)),
+        "canonical snapshot draw IDs/dates are not strictly chronological",
+    )
+    snapshot_target_ids = snapshot_ids[300:]
+    snapshot_target_dates = snapshot_dates[300:]
+    snapshot_cutoff_ids = snapshot_ids[299:-1]
+    snapshot_cutoff_dates = snapshot_dates[299:-1]
+    require(
+        target_ids == snapshot_target_ids
+        and target_dates == snapshot_target_dates
+        and cutoff_ids == snapshot_cutoff_ids
+        and cutoff_dates == snapshot_cutoff_dates,
+        "G3 chronology evidence does not match actual canonical snapshot rows and predecessor cutoffs",
+    )
     require(
         run_manifest.get("schema") == "lot-055-run-manifest-v1"
         and run_manifest.get("manifest_sha256") == expected_run_manifest_digest
