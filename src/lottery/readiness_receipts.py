@@ -409,6 +409,7 @@ def _verify_g3_evidence_bundle(
     })).hexdigest()
     expected_snapshot_digest = None
     run_manifest_already_bound_by_release = False
+    model_artifacts_already_bound_by_release = False
     if isinstance(release_manifest, dict):
         if release_manifest.get("schema") == "lottery.release-manifest/v2":
             release_evidence = release_manifest.get("evidence", {})
