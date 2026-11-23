@@ -249,7 +249,9 @@ def _g3_moving_block_bootstrap(values: tuple[float, ...], seed: int) -> tuple[fl
 
 
 
-def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> list[dict[str, str]]:
+def _verify_g3_evidence_bundle(
+    raw_by_check: dict[str, bytes], root: Path, release_manifest: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
     """Verify LOT-055 chronological evaluation evidence and its complete ledger."""
     def require(condition: bool, message: str) -> None:
         if not condition:
@@ -363,7 +365,7 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
     require(set(denominator) == {
         "schema", "target_ids_sha256", "model_ids", "zones",
         "expected_target_count", "expected_record_count", "terminal_record_count",
-        "status_counts", "ledger",
+        "status_counts", "ledger", "run_manifest",
     }, "complete-denominator fields invalid")
     expected_records = 2649 * 4 * 2
     require(
@@ -386,6 +388,68 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
         "failed or missing target fits prevent confirmatory full-coverage acceptance",
     )
     ledger_raw, ledger_digest = _safe_file(root, denominator["ledger"], "G3 terminal ledger")
+    run_manifest_raw, run_manifest_digest = _safe_file(
+        root, denominator["run_manifest"], "G3 run manifest"
+    )
+    run_manifest = _strict_json(run_manifest_raw, "G3 run manifest")
+    run_manifest_body = {
+        key: value for key, value in run_manifest.items() if key != "manifest_sha256"
+    }
+    expected_run_manifest_digest = "sha256:" + hashlib.sha256(
+        canonicalize(run_manifest_body)
+    ).hexdigest()
+    expected_target_list_digest = "sha256:" + hashlib.sha256(canonicalize({
+        "targets": [
+            {"target_draw_id": target, "target_draw_date": target_dates[index]}
+            for index, target in enumerate(target_ids)
+        ]
+    })).hexdigest()
+    expected_snapshot_digest = None
+    if isinstance(release_manifest, dict):
+        if release_manifest.get("schema") == "lottery.release-manifest/v2":
+            snapshot_ref = release_manifest.get("evidence", {}).get("canonical_snapshot", {})
+            expected_snapshot_digest = snapshot_ref.get("sha256") if isinstance(snapshot_ref, dict) else None
+        else:
+            expected_snapshot_digest = release_manifest.get("snapshot_sha256")
+    require(
+        run_manifest.get("schema") == "lot-055-run-manifest-v1"
+        and run_manifest.get("manifest_sha256") == expected_run_manifest_digest
+        and run_manifest.get("run_id")
+        and run_manifest.get("experiment_class") == "confirmatory"
+        and run_manifest.get("confirmatory_eligible") is True
+        and run_manifest.get("confirmatory_ineligibility_reason") in (None, "")
+        and isinstance(run_manifest.get("snapshot"), dict)
+        and run_manifest["snapshot"].get("sha256") == prereg["snapshot_sha256"]
+        and run_manifest["snapshot"].get("row_count") == chronology["snapshot_row_count"]
+        and isinstance(run_manifest.get("target_manifest"), dict)
+        and run_manifest["target_manifest"].get("target_count_per_zone") == 2649
+        and run_manifest["target_manifest"].get("first_target_draw_id") == target_ids[0]
+        and run_manifest["target_manifest"].get("last_target_draw_id") == target_ids[-1]
+        and run_manifest["target_manifest"].get("target_list_sha256") == expected_target_list_digest
+        and run_manifest.get("expected_target_record_count") == expected_records
+        and run_manifest.get("actual_target_record_count") == expected_records
+        and run_manifest.get("terminal_status_counts") == {
+            status: status_counts.get(status, 0)
+            for status in ("scored", "fit_failed", "artifact_invalid", "probability_invalid", "runner_error")
+        }
+        and isinstance(run_manifest.get("output_files"), dict)
+        and isinstance(run_manifest["output_files"].get("target-score-ledger.jsonl"), dict)
+        and run_manifest["output_files"]["target-score-ledger.jsonl"].get("sha256") == ledger_digest
+        and run_manifest["output_files"]["target-score-ledger.jsonl"].get("bytes") == len(ledger_raw)
+        and run_manifest.get("bootstrap", {}).get("replicates") == prereg["bootstrap_replicates"]
+        and run_manifest.get("bootstrap", {}).get("block_length") == prereg["block_length"]
+        and run_manifest.get("bootstrap", {}).get("seed") == prereg["bootstrap_seed"]
+        and run_manifest.get("bootstrap", {}).get("seeds_by_zone_and_comparison")
+            == prereg["bootstrap_seeds_by_zone_and_comparison"]
+        and expected_snapshot_digest == prereg["snapshot_sha256"],
+        "run manifest is missing, non-confirmatory, tampered, or inconsistent with the frozen release/protocol",
+    )
+    require(
+        isinstance(run_manifest.get("experiment_id"), str)
+        and hashlib.sha256(run_manifest["experiment_id"].encode("utf-8")).hexdigest()
+            == prereg["experiment_id"],
+        "preregistration experiment identity does not bind the run manifest",
+    )
     ledger_lines = ledger_raw.splitlines()
     require(len(ledger_lines) == expected_records, "terminal ledger line count differs from frozen denominator")
     seen: set[tuple[str, str, str]] = set()
@@ -471,6 +535,10 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
                 and isinstance(record["failure_reason"], str) and record["failure_reason"],
                 f"failed ledger record {key} must not contain a fabricated score",
             )
+    require(
+        run_id == run_manifest["run_id"],
+        "terminal ledger run ID does not match immutable run manifest",
+    )
     require(len(seen) == expected_records and status_totals == {
         key: status_counts.get(key, 0) for key in allowed_statuses
     }, "terminal ledger inventory/status counts do not reconcile")
@@ -652,11 +720,16 @@ def _verify_g3_evidence_bundle(raw_by_check: dict[str, bytes], root: Path) -> li
             and 0 <= entry["max_abs_error"] <= prereg["calibration_tolerance"],
             f"{zone} calibration evidence fails the preregistered tolerance or target coverage",
         )
-    return [{"path": denominator["ledger"]["path"], "sha256": ledger_digest}]
+    return [
+        {"path": denominator["ledger"]["path"], "sha256": ledger_digest},
+        {"path": denominator["run_manifest"]["path"], "sha256": run_manifest_digest},
+    ]
 
 
 
-def _checks_pass(checks: Any, label: str, root: Path) -> list[dict[str, str]]:
+def _checks_pass(
+    checks: Any, label: str, root: Path, release_manifest: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
     required = GATE_REQUIRED_CHECKS[label]
     if not isinstance(checks, list):
         raise ReceiptVerificationError(f"{label}: checks must be an array")
@@ -688,7 +761,7 @@ def _checks_pass(checks: Any, label: str, root: Path) -> list[dict[str, str]]:
         seen_paths.add(path)
         verified.append({"path": path, "sha256": digest})
     if label == "G3":
-        nested = _verify_g3_evidence_bundle(raw_by_check, root)
+        nested = _verify_g3_evidence_bundle(raw_by_check, root, release_manifest=release_manifest)
         for item in nested:
             if item["path"] in seen_paths or item["sha256"] in {entry["sha256"] for entry in verified}:
                 raise ReceiptVerificationError("G3 terminal ledger evidence must be unique")
@@ -727,7 +800,7 @@ def verify_gate_receipt(
         raise ReceiptVerificationError(f"{gate_id}: receipt does not bind this release and gate")
     if not GIT_SHA.fullmatch(str(receipt["source_commit"])):
         raise ReceiptVerificationError(f"{gate_id}: source commit must be full Git SHA")
-    check_evidence = _checks_pass(receipt["checks"], gate_id, root)
+    check_evidence = _checks_pass(receipt["checks"], gate_id, root, release_manifest=manifest)
     _utc_timestamp(receipt["generated_at_utc"], gate_id)
     return {
         "gate_id": gate_id, "receipt_sha256": digest, "status": "PASS",
