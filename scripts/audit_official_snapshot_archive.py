@@ -104,7 +104,8 @@ def audit_archive(
             unexpected = sorted(set(names) - expected_names)
             raise AuditError(f"unexpected or unclassified ZIP entries: {unexpected[:5]}")
 
-        collection = _json(archive.read(collection_names[0]), "collection manifest")
+        collection_raw = archive.read(collection_names[0])
+        collection = _json(collection_raw, "collection manifest")
         if not isinstance(collection, dict):
             raise AuditError("collection manifest must be an object")
         if collection.get("total_pages") != expected_pages or collection.get("total_records") != expected_records:
@@ -249,6 +250,9 @@ def audit_archive(
     return {
         "schema": "lottery.g1-official-snapshot-audit/v1",
         "archive": {"path": str(archive_path), "bytes": len(archive_bytes), "sha256": archive_sha256},
+        "collection_manifest_sha256": hashlib.sha256(collection_raw).hexdigest(),
+        "collection_manifest_keys": sorted(collection),
+        "collection_manifest": collection,
         "raw_pages": expected_pages,
         "sidecars": expected_pages,
         "raw_records": sum(page_record_counts),
