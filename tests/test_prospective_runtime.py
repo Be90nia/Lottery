@@ -46,7 +46,7 @@ class ProspectiveRuntimeTests(unittest.TestCase):
             self.assertEqual(len(issued), 4)
             self.assertEqual({item["status"] for item in issued}, {"eligible"})
             self.assertEqual({item["lifecycle_state"] for item in issued}, {"champion", "shadow"})
-            self.assertEqual(ledger.coverage_report()["issued"], 4)
+            self.assertEqual(ledger.coverage_report()["forecast_records"], 4)
 
     def test_forecast_after_cutoff_cannot_be_issued_even_if_schedule_exists(self):
         lifecycle, target, inventory = fixture()
