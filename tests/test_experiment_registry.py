@@ -28,6 +28,7 @@ def execution_context(*, attempt="1"):
         "GITHUB_WORKFLOW_REF": f"{repository}/{workflow_path}@refs/heads/feature",
         "GITHUB_RUN_ID": "45130000000",
         "GITHUB_RUN_ATTEMPT": attempt,
+        "GITHUB_JOB": "run-evaluation",
         "GITHUB_EVENT_NAME": "workflow_dispatch",
         "GITHUB_REF": "refs/heads/feature",
         "GITHUB_SHA": commit,
