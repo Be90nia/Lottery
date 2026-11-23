@@ -205,6 +205,41 @@ class ExperimentRegistry:
     def _append_event_locked(self, body: dict[str, Any]) -> None:
         if not isinstance(body, dict) or body.get("schema") != EVENT_SCHEMA:
             raise ExperimentRegistryError("experiment event does not match the closed event schema")
+        required_fields = {
+            "experiment_registered": {
+                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+                "experiment_id", "approval_sha256",
+            },
+            "trial_started": {
+                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+                "experiment_id", "attempt_id", "config_sha256",
+            },
+            "trial_finished": {
+                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+                "experiment_id", "attempt_id", "terminal_status", "artifact_sha256",
+                "result_sha256", "failure_code",
+            },
+        }
+        optional_fields = {
+            "experiment_registered": set(),
+            "trial_started": {"execution_context", "approval_sha256"},
+            "trial_finished": {"execution_id", "approval_sha256"},
+        }
+        event_type = body.get("event_type")
+        required = required_fields.get(event_type)
+        if required is None or not required <= set(body) or set(body) - required - optional_fields[event_type]:
+            raise ExperimentRegistryError("experiment event fields do not match the closed event schema")
+        if (not isinstance(body.get("event_id"), str) or not body["event_id"]
+                or not isinstance(body.get("actor"), str) or not body["actor"]
+                or not _is_sha(body.get("experiment_id"))):
+            raise ExperimentRegistryError("experiment event identity fields are invalid")
+        try:
+            datetime.fromisoformat(body["occurred_at_utc"])
+        except (TypeError, ValueError) as exc:
+            raise ExperimentRegistryError("experiment event timestamp is invalid") from exc
+        approval_hash = body.get("approval_sha256")
+        if approval_hash is not None and not _is_sha(approval_hash):
+            raise ExperimentRegistryError("experiment event approval digest is invalid")
         events = self._read_events()
         event_id = body["event_id"]
         existing = next((x for x in events if x["event_id"] == event_id), None)
@@ -262,6 +297,9 @@ class ExperimentRegistry:
                 allowed = {_sha(canonicalize(x)) for x in spec["trial_plan"]}
                 if event.get("config_sha256") not in allowed:
                     raise ExperimentRegistryError("trial config was not preregistered")
+                approval_hash = experiments[experiment_id]["registration"].get("approval_sha256")
+                if "approval_sha256" in event and event["approval_sha256"] != approval_hash:
+                    raise ExperimentRegistryError("trial start approval receipt does not match registration")
                 execution_context = event.get("execution_context")
                 if execution_context is not None:
                     try:
@@ -279,6 +317,7 @@ class ExperimentRegistry:
                     "trial_id": event["config_sha256"],
                     "execution_context": execution_context,
                     "execution_id": execution_context.get("execution_id") if execution_context else None,
+                    "approval_sha256": approval_hash,
                     "status": "running",
                     "started_at_utc": event["occurred_at_utc"],
                     "finished_at_utc": None,
@@ -295,6 +334,8 @@ class ExperimentRegistry:
                     raise ExperimentRegistryError("terminal trial event has no running attempt")
                 if event.get("execution_id") != attempt.get("execution_id"):
                     raise ExperimentRegistryError("terminal event execution identity does not match trial start")
+                if "approval_sha256" in event and event["approval_sha256"] != attempt.get("approval_sha256"):
+                    raise ExperimentRegistryError("terminal event approval receipt does not match trial start")
                 attempt.update({
                     "status": event["terminal_status"],
                     "finished_at_utc": event["occurred_at_utc"],
@@ -444,6 +485,7 @@ class ExperimentRegistry:
                 "attempt_id": attempt_id,
                 "config_sha256": config_hash,
                 "execution_context": execution_context,
+                "approval_sha256": experiment["registration"].get("approval_sha256"),
             })
             return self._snapshot_unlocked()["experiments"][experiment_id]["attempts"][attempt_id]
 
@@ -509,5 +551,6 @@ class ExperimentRegistry:
                 "result_sha256": result_sha256,
                 "failure_code": failure_code,
                 "execution_id": execution_id,
+                "approval_sha256": attempt.get("approval_sha256"),
             })
             return self._snapshot_unlocked()["experiments"][experiment_id]["attempts"][attempt_id]
