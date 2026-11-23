@@ -46,7 +46,11 @@ class StorageCommitVerificationTests(unittest.TestCase):
                 producer_runtime="python-test",
             )
             operation_id = staged["operation_id"]
-            store.validate(operation_id=operation_id)
+            store.validate(
+                operation_id=operation_id,
+                validator=lambda raw: raw == payload,
+                validator_id="test-exact-bytes/v1",
+            )
             store.commit(operation_id=operation_id)
             receipt_path = store._commit_path(operation_id)
             receipt = store._read_canonical(receipt_path) if hasattr(store, "_read_canonical") else None
