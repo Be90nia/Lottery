@@ -298,6 +298,10 @@ class FileSystemObjectStore:
                 or validation.get("operation_id") != operation_id
                 or validation.get("content_sha256") != digest
                 or validation.get("byte_length") != byte_length
+                or validation.get("schema_version") != operation.get("schema_version")
+                or validation.get("validation_mode") != "semantic"
+                or not isinstance(validation.get("validator_id"), str)
+                or not validation["validator_id"]
                 or validation.get("validated") is not True):
             raise StorageError("validation receipt does not bind the staged output")
         if (commit.get("schema") != COMMIT_SCHEMA
