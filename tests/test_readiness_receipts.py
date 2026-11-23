@@ -8,7 +8,7 @@ from pathlib import Path
 
 from lottery.subset_model.artifact import canonicalize
 from lottery.readiness_receipts import (
-    FAULTS, GATE_TYPES, ReceiptVerificationError, verify_receipt_set,
+    FAULTS, GATE_REQUIRED_CHECKS, GATE_TYPES, ReceiptVerificationError, verify_receipt_set,
 )
 
 
@@ -40,9 +40,21 @@ class TypedReadinessReceiptTests(unittest.TestCase):
                 "source_commit": self.manifest["source_commit"],
                 "release_manifest_sha256": "sha256:" + hashlib.sha256(canonicalize(self.manifest)).hexdigest(),
                 "result": "PASS",
-                "checks": [{"check_id": gate_id + ".contract", "status": "PASS"}],
+                "checks": [],
                 "generated_at_utc": "2026-11-23T12:00:00Z",
             }
+            for check_id in GATE_REQUIRED_CHECKS[gate_id]:
+                evidence_name = gate_id + "-" + check_id + ".txt"
+                evidence_raw = (gate_id + ":" + check_id + "\\n").encode()
+                (self.root / evidence_name).write_bytes(evidence_raw)
+                receipt["checks"].append({
+                    "check_id": check_id,
+                    "status": "PASS",
+                    "evidence": {
+                        "path": evidence_name,
+                        "sha256": hashlib.sha256(evidence_raw).hexdigest(),
+                    },
+                })
             self.gates.append({"gate_id": gate_id, "receipt": self.write(name, receipt)})
         for fault_id in FAULTS:
             evidence_name = fault_id + "-evidence.txt"
@@ -121,6 +133,19 @@ class TypedReadinessReceiptTests(unittest.TestCase):
     def test_gate_checks_must_all_pass(self):
         self.rewrite(self.gates[0]["receipt"], lambda r: r["checks"][0].__setitem__("status", "FAIL"))
         with self.assertRaisesRegex(ReceiptVerificationError, "did not pass"):
+            self.verify()
+
+    def test_gate_specific_check_inventory_is_mandatory(self):
+        self.rewrite(self.gates[0]["receipt"], lambda r: r["checks"].pop())
+        with self.assertRaisesRegex(ReceiptVerificationError, "required check inventory mismatch"):
+            self.verify()
+
+    def test_gate_check_evidence_digest_is_verified(self):
+        receipt_path = self.root / self.gates[0]["receipt"]["path"]
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        evidence_path = self.root / receipt["checks"][0]["evidence"]["path"]
+        evidence_path.write_text("tampered", encoding="utf-8")
+        with self.assertRaisesRegex(ReceiptVerificationError, "SHA-256 mismatch"):
             self.verify()
 
     def test_fault_receipt_requires_recovery_action_and_no_output_publication(self):
