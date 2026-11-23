@@ -14,7 +14,7 @@ import sys
 import urllib.parse
 import zipfile
 from dataclasses import asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -246,8 +246,8 @@ def audit_archive(
         "raw_records": sum(page_record_counts),
         "unique_draws": len(parsed_rows),
         "page_record_counts": page_record_counts,
-        "retrieval_start_utc": min(retrieved).astimezone().isoformat(),
-        "retrieval_end_utc": max(retrieved).astimezone().isoformat(),
+        "retrieval_start_utc": min(retrieved).astimezone(timezone.utc).isoformat(),
+        "retrieval_end_utc": max(retrieved).astimezone(timezone.utc).isoformat(),
         "run_id_count": len(run_ids),
         "raw_snapshot_hashes_match_processed_manifest": True,
         "processed_rebuild_byte_identical": True,
