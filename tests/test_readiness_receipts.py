@@ -13,6 +13,108 @@ from lottery.readiness_receipts import (
 )
 
 
+def _build_g3_fixture(root: Path) -> dict[str, bytes]:
+    model_ids = {
+        "candidate": "a" * 64, "uniform": "uniform-exact-v1",
+        "expanding": "expanding-frequency-v1", "ewma": "ewma-conditional-poisson-v1",
+    }
+    targets = [
+        f"{9054 + (17077 * index // 2648):05d}" for index in range(2649)
+    ]
+    cutoffs = [f"{int(targets[0]) - 1:05d}", *targets[:-1]]
+    target_hash = hashlib.sha256(canonicalize(targets)).hexdigest()
+    snapshot_hash = "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa"
+    target_manifest_hash = "b" * 64
+    prereg = {
+        "schema": "lottery.g3-preregistration/v1", "protocol_id": "LOT-055-v1",
+        "experiment_id": "c" * 64, "experiment_class": "confirmatory",
+        "outcomes_observed_at_registration": False, "snapshot_sha256": snapshot_hash,
+        "target_manifest_sha256": target_manifest_hash, "model_ids": model_ids,
+        "bootstrap_replicates": 1000, "block_length": 50, "bootstrap_seed": 20261118,
+        "multiplicity_family": ["candidate_vs_uniform:front", "candidate_vs_uniform:back"],
+        "alpha": 0.05, "calibration_method": "preregistered-randomized-pit-v1",
+        "calibration_tolerance": 0.05, "holdout_accessed": False,
+    }
+    chronology = {
+        "schema": "lottery.g3-chronological-targets/v1", "snapshot_sha256": snapshot_hash,
+        "target_manifest_sha256": target_manifest_hash, "snapshot_row_count": 2949,
+        "target_ids": targets, "target_ids_sha256": target_hash,
+        "training_cutoff_ids": cutoffs, "minimum_training_draws": 300,
+        "strictly_before_target": True, "equipment_fields_used": False, "holdout_accessed": False,
+    }
+    rows = []
+    for role in ("candidate", "uniform", "expanding", "ewma"):
+        model_id = model_ids[role]
+        for zone in ("front", "back"):
+            uniform_nll = math.log(324632 if zone == "front" else 66)
+            nll = {
+                "candidate": uniform_nll - 0.2, "uniform": uniform_nll,
+                "expanding": uniform_nll + 0.1, "ewma": uniform_nll + 0.1,
+            }[role]
+            for index, target in enumerate(targets):
+                rows.append({
+                    "model_id": model_id, "zone": zone, "target_draw_id": target,
+                    "pairing_key": zone + ":" + target, "training_count": 300 + index,
+                    "train_cutoff_draw_id": cutoffs[index], "strictly_before_target": True,
+                    "status": "scored", "nll": nll,
+                })
+    ledger_raw = b"".join(canonicalize(row) + b"\n" for row in rows)
+    ledger_path = root / "G3-terminal-ledger.jsonl"
+    ledger_path.write_bytes(ledger_raw)
+    denominator = {
+        "schema": "lottery.g3-terminal-ledger-index/v1", "target_ids_sha256": target_hash,
+        "model_ids": model_ids, "zones": ["front", "back"], "expected_target_count": 2649,
+        "expected_record_count": 21192, "terminal_record_count": 21192,
+        "status_counts": {"scored": 21192},
+        "ledger": {"path": ledger_path.name, "sha256": hashlib.sha256(ledger_raw).hexdigest()},
+    }
+    zone_reports = {}
+    for zone in ("front", "back"):
+        uniform_nll = math.log(324632 if zone == "front" else 66)
+        zone_reports[zone] = {
+            "scored_pairs": 2649,
+            "mean_nll": {
+                "candidate": uniform_nll - 0.2, "uniform": uniform_nll,
+                "expanding": uniform_nll + 0.1, "ewma": uniform_nll + 0.1,
+            },
+            "candidate_vs_uniform_mean_delta": -0.2,
+            "candidate_vs_uniform_ci95": [-0.21, -0.19],
+            "candidate_vs_expanding_ci95_upper": -0.2,
+            "candidate_vs_ewma_ci95_upper": -0.2,
+        }
+    baseline = {
+        "schema": "lottery.g3-baseline-comparison/v1", "target_ids_sha256": target_hash,
+        "target_count": 2649, "candidate_model_id": model_ids["candidate"],
+        "baseline_model_ids": {key: model_ids[key] for key in ("uniform", "expanding", "ewma")},
+        "zones": zone_reports,
+    }
+    multiplicity = {
+        "schema": "lottery.g3-holm-control/v1", "target_ids_sha256": target_hash,
+        "bootstrap_replicates": 1000, "block_length": 50, "bootstrap_seed": 20261118,
+        "method": "holm-step-down-one-sided-centered-moving-block-bootstrap", "alpha": 0.05,
+        "hypotheses": [
+            {"hypothesis_id": "candidate_vs_uniform:front", "p_value": 0.001,
+             "holm_adjusted_p_value": 0.002, "ci95_lower": -0.21, "ci95_upper": -0.19},
+            {"hypothesis_id": "candidate_vs_uniform:back", "p_value": 0.002,
+             "holm_adjusted_p_value": 0.002, "ci95_lower": -0.21, "ci95_upper": -0.19},
+        ],
+    }
+    calibration = {
+        "schema": "lottery.g3-calibration/v1", "target_ids_sha256": target_hash,
+        "method": "preregistered-randomized-pit-v1",
+        "zones": {
+            "front": {"target_count": 2649, "max_abs_error": 0.01},
+            "back": {"target_count": 2649, "max_abs_error": 0.01},
+        },
+    }
+    reports = {
+        "preregistration": prereg, "chronological_targets": chronology,
+        "complete_denominator": denominator, "baseline_comparison": baseline,
+        "multiplicity_control": multiplicity, "calibration": calibration,
+    }
+    return {key: canonicalize(value) for key, value in reports.items()}
+
+
 class TypedReadinessReceiptTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -31,6 +133,7 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         }
         self.gates = []
         self.faults = []
+        g3_evidence = _build_g3_fixture(self.root)
         for gate_id, receipt_type in GATE_TYPES.items():
             name = gate_id + ".json"
             receipt = {
@@ -46,7 +149,9 @@ class TypedReadinessReceiptTests(unittest.TestCase):
             }
             for check_id in GATE_REQUIRED_CHECKS[gate_id]:
                 evidence_name = gate_id + "-" + check_id + ".txt"
-                if gate_id == "G2":
+                if gate_id == "G3":
+                    evidence_raw = g3_evidence[check_id]
+                elif gate_id == "G2":
                     zones = [
                         {"zone": "front", "population_size": 35, "selection_size": 5,
                          "expected_support_count": 324632, "enumerated_support_count": 324632},
