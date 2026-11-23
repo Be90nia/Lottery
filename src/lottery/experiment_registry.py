@@ -18,6 +18,7 @@ from uuid import uuid4
 from .execution_context import ExecutionContextError, validate_execution_context
 from .ledger_lock import ledger_lock
 from .subset_model.artifact import canonicalize, parse_json_strict, ArtifactValidationError
+from .storage import FileSystemObjectStore, StorageError
 
 
 EXPERIMENT_SCHEMA = "lottery.experiment-preregistration/v1"
@@ -490,6 +491,103 @@ class ExperimentRegistry:
             })
             return self._snapshot_unlocked()["experiments"][experiment_id]["attempts"][attempt_id]
 
+    def _verify_execution_storage_receipts(
+        self, *, execution_id: str, result_sha256: str, artifact_sha256: str,
+        expected_receipts_sha256: str,
+    ) -> None:
+        """Resolve every LOT-065 receipt to committed bytes before terminal success."""
+        bundle_path = self.root / "storage-receipts" / f"{execution_id}.json"
+        try:
+            bundle_raw = bundle_path.read_bytes()
+            bundle = parse_json_strict(bundle_raw)
+        except (OSError, ArtifactValidationError) as exc:
+            raise ExperimentRegistryError("execution-bound success requires a LOT-065 storage receipts bundle") from exc
+        if (not isinstance(bundle, dict) or canonicalize(bundle) != bundle_raw
+                or _sha(bundle_raw) != expected_receipts_sha256):
+            raise ExperimentRegistryError("LOT-065 storage receipts bundle digest or canonical form is invalid")
+        if "run_manifest.json" not in bundle or "model-artifacts.jsonl" not in bundle:
+            raise ExperimentRegistryError("LOT-065 storage receipts omit required manifest or model artifacts")
+        store = FileSystemObjectStore(self.root.parent / "experiment-storage")
+        resolved: dict[str, bytes] = {}
+        required_entry_fields = {
+            "operation_id", "content_sha256", "byte_length", "stage_manifest_sha256",
+            "validation_receipt_sha256", "commit_receipt_sha256",
+            "publication_receipt_sha256", "pointer_name", "read_back_verified",
+        }
+        for filename, entry in bundle.items():
+            if (not isinstance(filename, str) or Path(filename).name != filename
+                    or not isinstance(entry, dict) or set(entry) != required_entry_fields
+                    or entry.get("read_back_verified") is not True):
+                raise ExperimentRegistryError("LOT-065 receipt entry does not match the closed output schema")
+            operation_id = entry["operation_id"]
+            try:
+                stage_path = store._operation_path(operation_id)
+                validation_path = store._validation_path(operation_id)
+                commit_path = store._commit_path(operation_id)
+                stage_raw = stage_path.read_bytes()
+                validation_raw = validation_path.read_bytes()
+                commit_raw = commit_path.read_bytes()
+                stage = parse_json_strict(stage_raw)
+                validation = parse_json_strict(validation_raw)
+                commit = parse_json_strict(commit_raw)
+                pointer = store.read_pointer(entry["pointer_name"])
+                object_raw = store._verify_bytes(
+                    store._object_path(entry["content_sha256"]),
+                    entry["content_sha256"], entry["byte_length"],
+                )
+                publication_path = store.publications / f"{entry['pointer_name']}.{operation_id}.json"
+                publication_raw = publication_path.read_bytes()
+                publication = parse_json_strict(publication_raw)
+            except (OSError, ArtifactValidationError, StorageError, KeyError, TypeError, ValueError) as exc:
+                raise ExperimentRegistryError(f"LOT-065 committed object or receipt is missing/invalid: {filename}") from exc
+            if (canonicalize(stage) != stage_raw or canonicalize(validation) != validation_raw
+                    or canonicalize(commit) != commit_raw or canonicalize(publication) != publication_raw):
+                raise ExperimentRegistryError(f"LOT-065 receipts are not canonical: {filename}")
+            if (_sha(stage_raw) != entry["stage_manifest_sha256"]
+                    or _sha(validation_raw) != entry["validation_receipt_sha256"]
+                    or _sha(commit_raw) != entry["commit_receipt_sha256"]
+                    or _sha(publication_raw) != entry["publication_receipt_sha256"]):
+                raise ExperimentRegistryError(f"LOT-065 receipt digest mismatch: {filename}")
+            if (stage.get("operation_id") != operation_id
+                    or stage.get("content_sha256") != entry["content_sha256"]
+                    or stage.get("byte_length") != entry["byte_length"]
+                    or validation.get("operation_id") != operation_id
+                    or validation.get("content_sha256") != entry["content_sha256"]
+                    or validation.get("validated") is not True
+                    or validation.get("validation_mode") != "semantic"
+                    or commit.get("operation_id") != operation_id
+                    or commit.get("content_sha256") != entry["content_sha256"]
+                    or commit.get("byte_length") != entry["byte_length"]
+                    or commit.get("committed") is not True
+                    or commit.get("stage_manifest_sha256") != _sha(stage_raw)
+                    or commit.get("validation_receipt_sha256") != _sha(validation_raw)
+                    or pointer.get("last_operation_id") != operation_id
+                    or pointer.get("object_sha256") != entry["content_sha256"]
+                    or publication.get("operation_id") != operation_id
+                    or publication.get("pointer_name") != entry["pointer_name"]
+                    or publication.get("object_sha256") != entry["content_sha256"]):
+                raise ExperimentRegistryError(f"LOT-065 stage/validation/commit/read-back chain mismatch: {filename}")
+            resolved[filename] = object_raw
+
+        manifest_raw = resolved["run_manifest.json"]
+        if _sha(manifest_raw) != result_sha256:
+            raise ExperimentRegistryError("LOT-065 run manifest bytes do not match the terminal result digest")
+        try:
+            manifest = parse_json_strict(manifest_raw)
+        except ArtifactValidationError as exc:
+            raise ExperimentRegistryError("LOT-065 stored run manifest is invalid JSON") from exc
+        declared = manifest.get("output_files") if isinstance(manifest, dict) else None
+        if not isinstance(declared, dict) or set(bundle) != set(declared) | {"run_manifest.json"}:
+            raise ExperimentRegistryError("LOT-065 receipt bundle does not cover the exact manifest output set")
+        for filename, declaration in declared.items():
+            raw = resolved.get(filename)
+            if (raw is None or not isinstance(declaration, dict)
+                    or declaration.get("sha256") != _sha(raw)
+                    or declaration.get("bytes") != len(raw)):
+                raise ExperimentRegistryError(f"LOT-065 stored output does not match manifest declaration: {filename}")
+        if _sha(resolved["model-artifacts.jsonl"]) != artifact_sha256:
+            raise ExperimentRegistryError("LOT-065 model artifact bytes do not match the terminal artifact digest")
+
     def finish_trial(
         self,
         *,
@@ -533,6 +631,12 @@ class ExperimentRegistry:
                     raise ExperimentRegistryError("execution-bound successful trial requires an artifact digest")
                 if storage_receipts_sha256 is None:
                     raise ExperimentRegistryError("execution-bound successful trial requires verified LOT-065 storage receipts")
+                self._verify_execution_storage_receipts(
+                    execution_id=execution_id,
+                    result_sha256=result_sha256,
+                    artifact_sha256=artifact_sha256,
+                    expected_receipts_sha256=storage_receipts_sha256,
+                )
             if attempt["status"] != "running":
                 same = (
                     attempt["status"] == terminal_status
