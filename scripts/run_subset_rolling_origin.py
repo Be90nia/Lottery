@@ -63,6 +63,16 @@ def _build_g3_registry_spec(
         raise ValueError("G3 registration snapshot digest differs from evaluator snapshot")
     if registration.get("holdout_accessed") is not False:
         raise ValueError("G3 registration must preserve the LOT-042 holdout firewall")
+    if registration.get("migration_mode") != "retrospective_registry_materialization":
+        raise ValueError("G3 registration must identify its retrospective registry migration")
+    if registration.get("legacy_parent_issue_url") != "https://github.com/Be90nia/Lottery/issues/18":
+        raise ValueError("G3 parent protocol lineage reference is missing or mismatched")
+    if registration.get("legacy_child_registration_comment_url") != "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751":
+        raise ValueError("G3 append-only child registration source reference is missing or mismatched")
+    if registration.get("approval_required") is not False or registration.get("approval_disposition") != "not_required_exploratory":
+        raise ValueError("exploratory G3 registration must explicitly declare that protected approval is not required")
+    if not isinstance(registration.get("approval_disposition_reason"), str) or not registration["approval_disposition_reason"]:
+        raise ValueError("G3 exploratory approval disposition requires a reason")
 
     targets = rows[MIN_TRAIN:]
     target_list = [
@@ -135,6 +145,12 @@ def _build_g3_registry_spec(
         "feature_contract_sha256": hashlib.sha256(canonicalize(feature_contract)).hexdigest(),
         "legacy_g3_label_digest": registration["experiment_id"],
         "legacy_registration_source_sha256": hashlib.sha256(registration_raw).hexdigest(),
+        "legacy_parent_issue_url": registration["legacy_parent_issue_url"],
+        "legacy_child_registration_comment_url": registration["legacy_child_registration_comment_url"],
+        "parent_lineage_disposition": registration["parent_lineage_disposition"],
+        "approval_required": registration["approval_required"],
+        "approval_disposition": registration["approval_disposition"],
+        "approval_disposition_reason": registration["approval_disposition_reason"],
     }
     spec = {
         "schema": EXPERIMENT_SCHEMA,
@@ -200,6 +216,9 @@ def _start_registered_execution(
         "experiment_id": registration["experiment_id"],
         "spec_sha256": registration["spec_sha256"],
         "approval_sha256": registration["approval_sha256"],
+        "approval_required": spec["experiment_class"] == "confirmatory",
+        "approval_disposition": "not_required_exploratory",
+        "approval_disposition_reason": registration_path.read_text(encoding="utf-8") and json.loads(registration_path.read_text(encoding="utf-8"))["approval_disposition_reason"],
         "trial_id": hashlib.sha256(canonicalize(trial_config)).hexdigest(),
         "trial_config": trial_config,
         "attempt_id": attempt_id,
@@ -232,6 +251,9 @@ def _finish_registered_execution(
         "experiment_id": binding["experiment_id"],
         "spec_sha256": binding["spec_sha256"],
         "approval_sha256": binding["approval_sha256"],
+        "approval_required": binding["approval_required"],
+        "approval_disposition": binding["approval_disposition"],
+        "approval_disposition_reason": binding["approval_disposition_reason"],
         "trial_id": binding["trial_id"],
         "attempt_id": binding["attempt_id"],
         "execution_id": execution["execution_id"],
@@ -241,6 +263,12 @@ def _finish_registered_execution(
         "event_count": snapshot["event_count"],
         "event_chain_head_sha256": events[-1]["event_hash"] if events else None,
         "terminal_status": "succeeded",
+        "execution_status": "completed",
+        "scientific_result_status": json.loads(manifest_raw).get("status"),
+        "confirmatory_eligible": json.loads(manifest_raw).get("confirmatory_eligible"),
+        "approval_required": binding["approval_required"],
+        "approval_disposition": binding["approval_disposition"],
+        "approval_disposition_reason": binding["approval_disposition_reason"],
         "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     receipt_path = output_path.parent / "registry-run-receipt.json"
