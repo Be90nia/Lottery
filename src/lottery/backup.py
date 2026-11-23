@@ -40,8 +40,12 @@ def _safe_relative(value: str) -> PurePosixPath:
     if not isinstance(value, str) or not value or "\\" in value or ":" in value:
         raise BackupError("backup file path must be a portable relative POSIX path")
     path = PurePosixPath(value)
-    if path.is_absolute() or any(part in ("", ".", "..") for part in path.parts):
-        raise BackupError("backup file path traversal is forbidden")
+    if (
+        path.is_absolute()
+        or any(part in ("", ".", "..") for part in path.parts)
+        or path.as_posix() != value
+    ):
+        raise BackupError("backup file path must be canonical and traversal-free")
     return path
 
 
@@ -326,6 +330,13 @@ def restore_backup(backup_dir: str | Path, restore_root: str | Path) -> dict[str
         restored = _inventory(temporary)
         if restored != manifest["files"]:
             raise BackupError("restored file inventory differs from backup manifest")
+
+        # The package is outside our control between the initial verification
+        # and the last payload read. Re-verify it and pin the same manifest ID
+        # before exposing the restored directory.
+        verified_again = verify_backup(backup)
+        if verified_again["manifest_sha256"] != summary["manifest_sha256"]:
+            raise BackupError("backup package changed during restore; refusing to expose restored data")
 
         reconciliation = FileSystemObjectStore(temporary).reconcile()
         corruption = {
