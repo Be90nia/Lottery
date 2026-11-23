@@ -16,7 +16,7 @@ from .subset_model.artifact import canonicalize
 EXECUTION_SCHEMA = "lottery.github-actions-execution/v1"
 _EXECUTION_FIELDS = {
     "schema", "repository", "repository_id", "workflow_path", "workflow_ref",
-    "run_id", "run_attempt", "event_name", "ref", "sha", "actor", "run_url",
+    "run_id", "run_attempt", "job", "event_name", "ref", "sha", "actor", "run_url",
     "execution_id",
 }
 
@@ -63,7 +63,7 @@ def validate_execution_context(
         raise ExecutionContextError("run_id must be a positive integer")
     if type(context["run_attempt"]) is not int or context["run_attempt"] <= 0:
         raise ExecutionContextError("run_attempt must be a positive integer")
-    for field in ("event_name", "ref", "actor"):
+    for field in ("job", "event_name", "ref", "actor"):
         if not isinstance(context[field], str) or not context[field].strip():
             raise ExecutionContextError(f"{field} must be a non-empty string")
     if not isinstance(context["sha"], str) or re.fullmatch(r"[0-9a-f]{40}", context["sha"]) is None:
@@ -119,6 +119,7 @@ def execution_context_from_env(
         "workflow_ref": workflow_ref,
         "run_id": run_id,
         "run_attempt": run_attempt,
+        "job": env["GITHUB_JOB"],
         "event_name": env["GITHUB_EVENT_NAME"],
         "ref": env["GITHUB_REF"],
         "sha": checked_out_sha,
