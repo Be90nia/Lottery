@@ -15,6 +15,26 @@ class ExponentialFamilyTests(unittest.TestCase):
         cls.table = build_uniform_feature_table(8, 3, include_gap_variance=True)
         cls.model = ExponentialFamily(cls.table)
 
+    def test_inclusion_marginals_match_full_support_enumeration(self):
+        theta = (0.17, -0.08, 0.11, 0.04, -0.03)
+        actual = self.model.inclusion_marginals(theta)
+        expected = []
+        for item in range(1, self.model.m + 1):
+            expected.append(sum(
+                math.exp(self.model.log_probability(subset, theta))
+                for subset in enumerate_support(self.model.m, self.model.k)
+                if item in subset
+            ))
+        for observed, reference in zip(actual, expected):
+            self.assertAlmostEqual(observed, reference, places=12)
+        self.assertAlmostEqual(sum(actual), self.model.k, places=12)
+
+    def test_zero_theta_has_uniform_exact_inclusion_marginals(self):
+        theta = (0.0,) * self.model.dimension
+        actual = self.model.inclusion_marginals(theta)
+        for probability in actual:
+            self.assertAlmostEqual(probability, self.model.k / self.model.m, places=12)
+
     def test_theta_zero_is_exact_uniform_on_every_subset(self):
         theta = (0.0,) * self.model.dimension
         expected = -math.log(math.comb(8, 3))
