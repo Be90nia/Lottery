@@ -21,6 +21,7 @@ def environment(*, run_id="45130000000", attempt="1", sha=COMMIT):
         "GITHUB_WORKFLOW_REF": f"{REPOSITORY}/{WORKFLOW_PATH}@refs/heads/feature",
         "GITHUB_RUN_ID": run_id,
         "GITHUB_RUN_ATTEMPT": attempt,
+        "GITHUB_JOB": "run-evaluation",
         "GITHUB_EVENT_NAME": "workflow_dispatch",
         "GITHUB_REF": "refs/heads/feature",
         "GITHUB_SHA": sha,
