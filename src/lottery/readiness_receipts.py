@@ -365,7 +365,7 @@ def _verify_g3_evidence_bundle(
     require(set(denominator) == {
         "schema", "target_ids_sha256", "model_ids", "zones",
         "expected_target_count", "expected_record_count", "terminal_record_count",
-        "status_counts", "ledger", "run_manifest",
+        "status_counts", "ledger", "run_manifest", "model_artifacts",
     }, "complete-denominator fields invalid")
     expected_records = 2649 * 4 * 2
     require(
@@ -391,6 +391,9 @@ def _verify_g3_evidence_bundle(
     run_manifest_raw, run_manifest_digest = _safe_file(
         root, denominator["run_manifest"], "G3 run manifest"
     )
+    model_artifacts_raw, model_artifacts_digest = _safe_file(
+        root, denominator["model_artifacts"], "G3 model artifacts"
+    )
     run_manifest = _strict_json(run_manifest_raw, "G3 run manifest")
     run_manifest_body = {
         key: value for key, value in run_manifest.items() if key != "manifest_sha256"
@@ -412,15 +415,22 @@ def _verify_g3_evidence_bundle(
             snapshot_ref = release_evidence.get("canonical_snapshot", {})
             expected_snapshot_digest = snapshot_ref.get("sha256") if isinstance(snapshot_ref, dict) else None
             evaluation_refs = release_evidence.get("evaluation_manifests", [])
+            artifact_refs = release_evidence.get("model_artifacts", [])
             run_manifest_already_bound_by_release = any(
                 isinstance(item, dict)
                 and item.get("path") == denominator["run_manifest"].get("path")
                 and item.get("sha256") == run_manifest_digest
                 for item in evaluation_refs
             )
+            model_artifacts_already_bound_by_release = any(
+                isinstance(item, dict)
+                and item.get("path") == denominator["model_artifacts"].get("path")
+                and item.get("sha256") == model_artifacts_digest
+                for item in artifact_refs
+            )
             require(
-                run_manifest_already_bound_by_release,
-                "G3 run manifest must also be included in the immutable release evaluation-manifest inventory",
+                run_manifest_already_bound_by_release and model_artifacts_already_bound_by_release,
+                "G3 run manifest and model-artifact ledger must be included in immutable release evidence inventories",
             )
         else:
             expected_snapshot_digest = release_manifest.get("snapshot_sha256")
@@ -449,6 +459,12 @@ def _verify_g3_evidence_bundle(
         and isinstance(run_manifest["output_files"].get("target-score-ledger.jsonl"), dict)
         and run_manifest["output_files"]["target-score-ledger.jsonl"].get("sha256") == ledger_digest
         and run_manifest["output_files"]["target-score-ledger.jsonl"].get("bytes") == len(ledger_raw)
+        and isinstance(run_manifest["output_files"].get("model-artifacts.jsonl"), dict)
+        and run_manifest["output_files"]["model-artifacts.jsonl"].get("sha256") == model_artifacts_digest
+        and run_manifest["output_files"]["model-artifacts.jsonl"].get("bytes") == len(model_artifacts_raw)
+        and type(run_manifest.get("model_artifact_count")) is int
+        and run_manifest["model_artifact_count"] == len(model_artifacts_raw.splitlines())
+        and run_manifest["model_artifact_count"] == 2649 * 2 * 3
         and run_manifest.get("bootstrap", {}).get("replicates") == prereg["bootstrap_replicates"]
         and run_manifest.get("bootstrap", {}).get("block_length") == prereg["block_length"]
         and run_manifest.get("bootstrap", {}).get("seed") == prereg["bootstrap_seed"]
@@ -764,6 +780,10 @@ def _verify_g3_evidence_bundle(
     if not run_manifest_already_bound_by_release:
         nested.append({
             "path": denominator["run_manifest"]["path"], "sha256": run_manifest_digest,
+        })
+    if not model_artifacts_already_bound_by_release:
+        nested.append({
+            "path": denominator["model_artifacts"]["path"], "sha256": model_artifacts_digest,
         })
     return nested
 
