@@ -172,6 +172,10 @@ class G3SemanticEvidenceTests(unittest.TestCase):
             "block_length": 50,
             "bootstrap_seed": 20261118,
             "bootstrap_seeds_by_zone": {"front": 20261118, "back": 20261119},
+            "bootstrap_seeds_by_zone_and_comparison": {
+                "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+                "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+            },
             "method": "holm-step-down-one-sided-centered-moving-block-bootstrap",
             "alpha": 0.05,
             "hypotheses": [
