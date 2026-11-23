@@ -232,7 +232,9 @@ def _checks_pass(checks: Any, label: str, root: Path) -> list[dict[str, str]]:
         check = indexed[check_id]
         if check["status"] != "PASS":
             raise ReceiptVerificationError(f"{label}: check {check_id} did not pass")
-        evidence_raw, digest = _safe_file(root, check["evidence"], label + " " + check_id)\n        if label == "G2":\n            _verify_g2_evidence(check_id, evidence_raw)
+        evidence_raw, digest = _safe_file(root, check["evidence"], label + " " + check_id)
+        if label == "G2":
+            _verify_g2_evidence(check_id, evidence_raw)
         path = check["evidence"]["path"]
         if path in seen_paths:
             raise ReceiptVerificationError(f"{label}: check evidence must be unique")
