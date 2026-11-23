@@ -71,7 +71,8 @@ PYTHONPATH=src python scripts/build_prospective_schedule.py \
   --mode register \
   --lifecycle-root /secure/lottery/lifecycle \
   --schedule /secure/objects/schedule.json \
-  --ledger /secure/ledger/prospective.jsonl
+  --ledger /secure/ledger/prospective.jsonl \
+  --trust-adapter lottery_trust_adapter
 ```
 
 After cutoff, finalize missing slots:
@@ -81,7 +82,8 @@ PYTHONPATH=src python scripts/build_prospective_schedule.py \
   --mode finalize \
   --lifecycle-root /secure/lottery/lifecycle \
   --schedule /secure/objects/schedule.json \
-  --ledger /secure/ledger/prospective.jsonl
+  --ledger /secure/ledger/prospective.jsonl \
+  --trust-adapter lottery_trust_adapter
 ```
 
 Forecast issuance is exposed as `issue_registered_forecast()` and requires the same protected `schedule_verifier` callback. It rechecks the signed schedule and registry snapshot before writing.  It loads the
