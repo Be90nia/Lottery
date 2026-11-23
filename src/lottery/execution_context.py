@@ -94,7 +94,7 @@ def execution_context_from_env(
     if missing:
         raise ExecutionContextError("missing GitHub Actions context: " + ", ".join(missing))
     if env["GITHUB_REPOSITORY"] != expected_repository:
-        raise ExecutionContextError("GITHUB_REPOSITORY does not match the allowlist")
+        raise ExecutionContextError("repository GITHUB_REPOSITORY does not match the allowlist")
     if str(env["GITHUB_REPOSITORY_ID"]) != str(expected_repository_id):
         raise ExecutionContextError("GITHUB_REPOSITORY_ID does not match the allowlist")
     if env["GITHUB_SHA"] != checked_out_sha:
