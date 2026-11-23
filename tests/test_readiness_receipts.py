@@ -221,7 +221,7 @@ class TypedReadinessReceiptTests(unittest.TestCase):
             "workflow_policy_sha256": "1" * 64,
             "dependency_lock_sha256": "2" * 64,
             "readiness_policy_sha256": "3" * 64,
-            "snapshot_sha256": "4" * 64,
+            "snapshot_sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa",
             "lot042_accessed": False,
         }
         self.gates = []
@@ -389,7 +389,7 @@ class TypedReadinessReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptVerificationError, "SHA-256 mismatch"):
             verify_release_manifest_v2(manifest, self.root)
 
-    def test_v2_manifest_integrates_with_complete_receipt_set(self):
+    def test_v2_manifest_with_mismatched_g3_snapshot_fails_closed(self):
         names = (
             "workflow_policy", "dependency_lock", "readiness_policy", "canonical_snapshot",
             "source_evidence_ledger", "runtime_toolchain", "sbom", "security_scan",
@@ -425,10 +425,8 @@ class TypedReadinessReceiptTests(unittest.TestCase):
                 r.__setitem__("source_commit", self.manifest["source_commit"]),
                 r.__setitem__("release_manifest_sha256", manifest_digest),
             ))
-        report = verify_receipt_set(self.manifest, self.gates, self.faults, self.root)
-        self.assertEqual(report["receipt_completeness"], "COMPLETE")
-        self.assertEqual(len(report["release_manifest_evidence"]), 16)
-        self.assertFalse(report["shadow_authorized"])
+        with self.assertRaisesRegex(ReceiptVerificationError, "run manifest is missing, non-confirmatory"):
+            verify_receipt_set(self.manifest, self.gates, self.faults, self.root)
 
     def test_malformed_inventory_identifiers_fail_closed_without_type_errors(self):
         bad_gates = list(self.gates)
