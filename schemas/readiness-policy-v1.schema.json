@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://be90nia.github.io/Lottery/schemas/readiness-policy-v1.json",
+  "title": "LOT-067 release readiness policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "gates", "faults", "offline", "shadow", "production"],
+  "properties": {
+    "schema": {"const": "lottery.readiness-policy/v1"},
+    "gates": {"const": ["G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8"]},
+    "faults": {"const": ["F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F10", "F11", "F12", "F13", "F14", "F15"]},
+    "offline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_gates", "required_faults", "state"],
+      "properties": {
+        "required_gates": {"const": ["G0", "G1", "G2", "G3"]},
+        "required_faults": {"const": ["F01", "F03", "F04", "F05"]},
+        "state": {"const": "READY_FOR_OFFLINE_VALIDATION"}
+      }
+    },
+    "shadow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_gates", "required_faults", "state"],
+      "properties": {
+        "required_gates": {"const": ["G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8"]},
+        "required_faults": {"const": ["F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F10", "F11", "F12", "F13", "F14", "F15"]},
+        "state": {"const": "READY_FOR_SHADOW"}
+      }
+    },
+    "production": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "reason"],
+      "properties": {
+        "enabled": {"const": false},
+        "reason": {"const": "protected_cryptographic_approval_verifier_not_implemented"}
+      }
+    }
+  }
+}

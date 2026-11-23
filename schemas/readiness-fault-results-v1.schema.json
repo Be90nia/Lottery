@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://be90nia.github.io/Lottery/schemas/readiness-fault-results-v1.schema.json",
+  "title": "Lottery release fault injection results v1",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["fault_id", "status", "injected", "expected_state", "observed_state", "evidence"],
+    "properties": {
+      "fault_id": {"enum": ["F01", "F02", "F03", "F04", "F05", "F06", "F07", "F08", "F09", "F10", "F11", "F12", "F13", "F14", "F15"]},
+      "status": {"enum": ["PASS", "FAIL", "BLOCKED", "UNKNOWN"]},
+      "injected": {"type": "boolean"},
+      "expected_state": {"type": "string", "minLength": 1},
+      "observed_state": {"type": "string", "minLength": 1},
+      "evidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}
