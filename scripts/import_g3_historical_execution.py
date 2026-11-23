@@ -197,6 +197,17 @@ def _verify_github_sources(evidence: dict, token: str) -> tuple[dict, dict]:
     }.items():
         if job.get(key) != value:
             raise ValueError(f"live GitHub Actions job metadata mismatch: {key}")
+    evaluator_steps = [
+        step for step in job.get("steps", [])
+        if step.get("name") == "Run full frozen 2,649-target exact-subset evaluation"
+    ]
+    if len(evaluator_steps) != 1:
+        raise ValueError("historical job is missing its unique full rolling-origin evaluator step")
+    evaluator_step = evaluator_steps[0]
+    if (evaluator_step.get("started_at") != expected_job["evaluator_step_started_at_utc"]
+            or evaluator_step.get("completed_at") != expected_job["evaluator_step_completed_at_utc"]
+            or evaluator_step.get("conclusion") != "success"):
+        raise ValueError("historical evaluator step timestamps or conclusion differ from pinned evidence")
 
     expected_artifact = evidence["artifact"]
     artifacts = [item for item in artifact_payload.get("artifacts", []) if item.get("id") == expected_artifact["id"]]
@@ -263,8 +274,8 @@ def import_historical_execution(
 
     source_metadata = {
         "source_run_url": expected_run["run_url"],
-        "source_started_at_utc": evidence["job"]["started_at_utc"],
-        "source_completed_at_utc": evidence["job"]["completed_at_utc"],
+        "source_started_at_utc": evidence["job"]["evaluator_step_started_at_utc"],
+        "source_completed_at_utc": evidence["job"]["evaluator_step_completed_at_utc"],
         "source_artifact_id": artifact["id"],
         "source_artifact_zip_sha256": _digest(archive_raw),
         "source_manifest_sha256": _digest(archive_manifest_raw := _read_manifest_bytes(evidence_path, archive_raw)),
