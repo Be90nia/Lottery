@@ -59,6 +59,8 @@ class ProspectiveRuntimeTests(unittest.TestCase):
             code_commit="e" * 40,
             target_manifest_verifier=lambda value: True,
             inventory_verifier=lambda value: True,
+            schedule_attestor=lambda value: {"key_id": "test-key", "signature": "fixture-signature", "payload_sha256": hashlib.sha256(__import__("lottery.subset_model.artifact", fromlist=["canonicalize"]).canonicalize(value)).hexdigest()},
+            schedule_verifier=lambda value: True,
         )
         record = schedule["expected_forecasts"][0]
         with tempfile.TemporaryDirectory() as directory:
