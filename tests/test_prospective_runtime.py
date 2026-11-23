@@ -41,7 +41,7 @@ class ProspectiveRuntimeTests(unittest.TestCase):
                 ledger.register_expected_forecast(**record)
                 issued.append(issue_registered_forecast(
                     lifecycle, ledger, schedule, record,
-                    now=clock(), evaluator=DistributionDigests(),
+                    now=clock(), evaluator=DistributionDigests(), schedule_verifier=lambda value: True,
                 ))
             self.assertEqual(len(issued), 4)
             self.assertEqual({item["status"] for item in issued}, {"eligible"})
