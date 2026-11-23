@@ -59,7 +59,7 @@ class TypedReadinessReceiptTests(unittest.TestCase):
             self.gates.append({"gate_id": gate_id, "receipt": self.write(name, receipt)})
         for fault_id in FAULTS:
             evidence_name = fault_id + "-evidence.txt"
-            evidence_raw = b"isolated fault evidence\n"
+            evidence_raw = (fault_id + " isolated fault evidence\n").encode()
             (self.root / evidence_name).write_bytes(evidence_raw)
             receipt = {
                 "schema": "lottery.fault-receipt/v1",
