@@ -669,14 +669,6 @@ class ExperimentRegistry:
         if verified_at.tzinfo is None or verified_at.utcoffset() is None:
             raise ExperimentRegistryError("GitHub verification receipt timestamp must be timezone-aware")
         verification_receipt_sha256 = _sha(canonicalize(verification))
-        _write_once(
-            self.root / "historical-source-metadata" / f"{source_metadata_sha256}.json",
-            canonicalize(source_metadata),
-        )
-        _write_once(
-            self.root / "github-actions-verification" / f"{verification_receipt_sha256}.json",
-            canonicalize(verification),
-        )
         config_sha256 = _sha(canonicalize(config))
         with ledger_lock(self.events_path):
             snapshot = self._snapshot_unlocked()
@@ -694,17 +686,26 @@ class ExperimentRegistry:
                 same_source = (
                     existing.get("imported") is True
                     and existing.get("source_metadata_sha256") == source_metadata_sha256
-                    and existing.get("source_verification_receipt_sha256") == verification_receipt_sha256
                     and existing.get("execution_id") == context["execution_id"]
                     and existing.get("config_sha256") == config_sha256
                 )
                 if not same_source:
                     raise ExperimentRegistryError("historical attempt ID already exists with conflicting evidence")
+                verification_receipt_sha256 = existing["source_verification_receipt_sha256"]
                 if existing.get("status") == "completed_uncommitted":
                     return existing
                 if existing.get("status") != "running":
                     raise ExperimentRegistryError("historical attempt is in a non-recoverable terminal state")
                 resume_partial_import = True
+            else:
+                _write_once(
+                    self.root / "historical-source-metadata" / f"{source_metadata_sha256}.json",
+                    canonicalize(source_metadata),
+                )
+                _write_once(
+                    self.root / "github-actions-verification" / f"{verification_receipt_sha256}.json",
+                    canonicalize(verification),
+                )
             approval_sha256 = experiment["registration"].get("approval_sha256")
             if approval_sha256 is not None:
                 raise ExperimentRegistryError("exploratory historical import must not fabricate an approval receipt")
