@@ -7,6 +7,7 @@ from pathlib import Path
 
 from lottery.execution_context import execution_context_from_env
 from lottery.experiment_registry import EXPERIMENT_SCHEMA, ExperimentRegistry
+from lottery.storage import FileSystemObjectStore
 from lottery.subset_model.artifact import canonicalize
 from scripts.build_g3_evidence import (
     G3EvidenceBuildError,
@@ -128,11 +129,64 @@ class G3EvidenceAdapterTests(unittest.TestCase):
             run_manifest["experiment_binding"]["spec_sha256"] = experiment_id
             provenance["experiment_id"] = experiment_id
             provenance_raw = canonicalize(provenance) + b"\n"
+            ledger_raw = canonicalize({"record": "test-ledger-row"}) + b"\n"
+            run_manifest["output_files"]["target-score-ledger.jsonl"] = {
+                "sha256": hashlib.sha256(ledger_raw).hexdigest(),
+                "bytes": len(ledger_raw),
+            }
             run_manifest["output_files"]["model-artifact-provenance.jsonl"] = {
                 "sha256": hashlib.sha256(provenance_raw).hexdigest(),
                 "bytes": len(provenance_raw),
             }
             run_manifest_raw = canonicalize(run_manifest) + b"\n"
+            ledger_path = root / "target-score-ledger.jsonl"
+            ledger_path.write_bytes(ledger_raw)
+            provenance_path = root / "model-artifact-provenance.jsonl"
+            provenance_path.write_bytes(provenance_raw)
+            durable_store_root = root / "durable-store"
+            store = FileSystemObjectStore(durable_store_root)
+            committed = []
+            for filename, raw, schema_version in (
+                ("run_manifest.json", run_manifest_raw, "lot-055-run-manifest-v1"),
+                ("target-score-ledger.jsonl", ledger_raw, "lot-055-target-score-ledger-v1"),
+                ("model-artifacts.jsonl", model_artifacts_raw, "lottery.subset-probability-model/v1"),
+                ("model-artifact-provenance.jsonl", provenance_raw, "lottery.model-artifact-provenance/v1"),
+            ):
+                staged = store.stage(
+                    idempotency_key=f"{execution['execution_id']}:{filename}",
+                    content=raw,
+                    media_type="application/x-ndjson" if filename.endswith(".jsonl") else "application/json",
+                    schema_version=schema_version,
+                    producer_commit=commit,
+                    producer_runtime="python-test",
+                )
+                store.validate(
+                    operation_id=staged["operation_id"],
+                    validator=lambda content, expected=raw: content == expected,
+                    validator_id="test-exact-bytes/v1",
+                )
+                commit_receipt = store.commit(operation_id=staged["operation_id"])
+                store.verify_commit(operation_id=staged["operation_id"])
+                committed.append({
+                    "filename": filename,
+                    "operation_id": staged["operation_id"],
+                    "content_sha256": staged["content_sha256"],
+                    "byte_length": staged["byte_length"],
+                    "commit_receipt_sha256": hashlib.sha256(canonicalize(commit_receipt)).hexdigest(),
+                })
+            storage_bundle = {
+                "schema": "lottery.storage-commit-receipts/v1",
+                "experiment_id": experiment_id,
+                "trial_id": trial_id,
+                "attempt_id": attempt_id,
+                "execution_id": execution["execution_id"],
+                "store_root": "durable-store",
+                "receipts": committed,
+            }
+            storage_receipt_raw = canonicalize(storage_bundle) + b"\n"
+            storage_receipt_path = root / "storage-commit-receipts.json"
+            storage_receipt_path.write_bytes(storage_receipt_raw)
+            storage_receipts_sha256 = hashlib.sha256(storage_receipt_raw).hexdigest()
             registry.start_trial(
                 experiment_id=experiment_id,
                 attempt_id=attempt_id,
@@ -150,6 +204,7 @@ class G3EvidenceAdapterTests(unittest.TestCase):
                 result_sha256=hashlib.sha256(run_manifest_raw).hexdigest(),
                 artifact_sha256=hashlib.sha256(model_artifacts_raw).hexdigest(),
                 execution_id=execution["execution_id"],
+                storage_commit_receipts_sha256=storage_receipts_sha256,
                 actor=execution["actor"],
             )
             snapshot = registry.snapshot()
@@ -165,14 +220,13 @@ class G3EvidenceAdapterTests(unittest.TestCase):
                 "evaluation_run_id": run_manifest["run_id"],
                 "run_manifest_sha256": hashlib.sha256(run_manifest_raw).hexdigest(),
                 "model_artifacts_sha256": hashlib.sha256(model_artifacts_raw).hexdigest(),
+                "storage_commit_receipts_sha256": storage_receipts_sha256,
                 "event_count": snapshot["event_count"],
                 "event_chain_head_sha256": events[-1]["event_hash"],
                 "terminal_status": "succeeded",
             }
             receipt_path = root / "registry-run-receipt.json"
             receipt_path.write_bytes(canonicalize(receipt) + b"\n")
-            provenance_path = root / "model-artifact-provenance.jsonl"
-            provenance_path.write_bytes(provenance_raw)
             report = _verify_registry_binding(
                 run_manifest=run_manifest,
                 run_manifest_raw=run_manifest_raw,
@@ -181,6 +235,9 @@ class G3EvidenceAdapterTests(unittest.TestCase):
                 registry_root=registry.root,
                 registry_run_receipt_path=receipt_path,
                 artifact_provenance_path=provenance_path,
+                durable_store_root=durable_store_root,
+                storage_commit_receipts_path=storage_receipt_path,
+                ledger_path=ledger_path,
             )
             self.assertEqual(report["status"], "VERIFIED")
             self.assertEqual(report["registry_experiment_id"], experiment_id)
