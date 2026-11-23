@@ -84,7 +84,7 @@ PYTHONPATH=src python scripts/build_prospective_schedule.py \
   --ledger /secure/ledger/prospective.jsonl
 ```
 
-Forecast issuance is exposed as `issue_registered_forecast()`. It loads the
+Forecast issuance is exposed as `issue_registered_forecast()` and requires the same protected `schedule_verifier` callback. It rechecks the signed schedule and registry snapshot before writing.  It loads the
 front and back distributions from immutable artifacts, verifies full-support
 normalization, binds content hashes, checks the current registry snapshot, and
 uses the ledger's actual event clock. The evaluator supports the repository's
