@@ -231,9 +231,9 @@ class ExecutionReconciliationTests(unittest.TestCase):
         output_dir.mkdir()
         output_path = output_dir / "evaluation.json"
         outputs = {
-            "target-score-ledger.jsonl": b'{"record_type":"target"}\\n',
-            "model-artifacts.jsonl": b'{"artifact_id":"sha256:' + b"a" * 64 + b'"}\\n',
-            "model-artifact-provenance.jsonl": b'{"artifact_id":"sha256:' + b"a" * 64 + b'"}\\n',
+            "target-score-ledger.jsonl": b'{"record_type":"target"}',
+            "model-artifacts.jsonl": b'{"artifact_id":"sha256:' + b"a" * 64 + b'"}',
+            "model-artifact-provenance.jsonl": b'{"artifact_id":"sha256:' + b"a" * 64 + b'"}',
         }
         declarations = {}
         for filename, raw in outputs.items():
