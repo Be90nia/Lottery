@@ -176,6 +176,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
             ),
             "model-artifacts.jsonl": runner.canonicalize(artifact_record) + b"\n",
             "model-artifact-provenance.jsonl": runner.canonicalize(provenance_record) + b"\n",
+            "subset-model-rolling-origin.json": runner.canonicalize({"report": "test"}) + b"\n",
         }
         for filename, raw in output_payloads.items():
             (self.output_dir / filename).write_bytes(raw)
@@ -223,6 +224,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
                         "target-score-ledger.jsonl": "lottery.target-score-ledger/v1",
                         "model-artifacts.jsonl": "lottery.subset-probability-model/v1",
                         "model-artifact-provenance.jsonl": "lottery.model-artifact-provenance/v1",
+                        "subset-model-rolling-origin.json": "lottery.g3-summary-report/v1",
                     }[filename],
                     "sha256": runner.hashlib.sha256(raw).hexdigest(),
                     "bytes": len(raw),
@@ -244,7 +246,8 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertTrue(receipt["storage_receipts"])
         self.assertEqual(
             set(receipt["storage_receipts"]),
-            {"run_manifest.json", "target-score-ledger.jsonl", "model-artifacts.jsonl",
+            {"run_manifest.json", "subset-model-rolling-origin.json",
+             "target-score-ledger.jsonl", "model-artifacts.jsonl",
              "model-artifact-provenance.jsonl"},
         )
         self.assertTrue(all(
