@@ -370,7 +370,10 @@ def reconcile(
                     actual_producer_commit=operation.get("producer_commit"),
                 ))
             committed = store._commit_path(operation_id).exists()
-            severity = "error" if committed or len(bindings) != 1 or bindings[0]["attempt"]["status"] == "running" else "warning"
+            registry_status = bindings[0]["attempt"]["status"] if len(bindings) == 1 else None
+            severity = "error" if (
+                committed or len(bindings) != 1 or registry_status in ("running", "succeeded")
+            ) else "warning"
             findings.append(_finding(
                 "committed_storage_operation_without_registry_bundle" if committed
                 else "staged_storage_operation_without_registry_bundle",
@@ -378,7 +381,7 @@ def reconcile(
                 operation_id=operation_id,
                 execution_id=execution_id,
                 matching_attempt_count=len(bindings),
-                registry_status=bindings[0]["attempt"]["status"] if len(bindings) == 1 else None,
+                registry_status=registry_status,
             ))
 
     findings.sort(key=lambda item: (
