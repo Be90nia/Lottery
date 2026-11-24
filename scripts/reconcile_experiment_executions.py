@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 from lottery.experiment_registry import ExperimentRegistry
+from lottery.subset_model.artifact import canonicalize
 
 API = "https://api.github.com"
 
@@ -55,19 +57,25 @@ def reconcile(
     repository_id: str, workflow_id: int, workflow_path: str,
 ) -> dict[str, Any]:
     """Compare the append-only local registry with authoritative Actions metadata."""
-    snapshot = ExperimentRegistry(registry_root).snapshot()
+    registry = ExperimentRegistry(registry_root)
+    snapshot = registry.snapshot()
     attempts_by_run: dict[int, list[dict[str, Any]]] = {}
+    attempts_by_execution: dict[str, list[dict[str, Any]]] = {}
     for experiment_id, experiment in snapshot["experiments"].items():
         experiment_class = experiment["registration"]["spec"]["experiment_class"]
         for attempt in experiment["attempts"].values():
             context = attempt.get("execution_context")
             if not isinstance(context, dict) or type(context.get("run_id")) is not int:
                 continue
-            attempts_by_run.setdefault(context["run_id"], []).append({
+            binding = {
                 "experiment_id": experiment_id,
                 "experiment_class": experiment_class,
                 "attempt": attempt,
-            })
+            }
+            attempts_by_run.setdefault(context["run_id"], []).append(binding)
+            execution_id = context.get("execution_id")
+            if isinstance(execution_id, str):
+                attempts_by_execution.setdefault(execution_id, []).append(binding)
 
     findings: list[dict[str, Any]] = []
     checked_runs: set[int] = set()
@@ -196,6 +204,50 @@ def reconcile(
             status=run.get("status"), conclusion=run.get("conclusion"),
             head_sha=run.get("head_sha"), html_url=run.get("html_url"),
         ))
+
+    # Detect a crash after LOT-065 commits but before the registry terminal event.
+    # Verification is read-only: no event or storage object is repaired here.
+    receipt_root = registry_root / "storage-receipts"
+    if receipt_root.exists():
+        for receipt_path in sorted(receipt_root.glob("*.json")):
+            execution_id = receipt_path.stem
+            bindings = attempts_by_execution.get(execution_id, [])
+            if len(bindings) != 1:
+                findings.append(_finding(
+                    "storage_bundle_without_unique_registry_attempt", "error",
+                    execution_id=execution_id, matching_attempt_count=len(bindings),
+                ))
+                continue
+            binding = bindings[0]
+            attempt = binding["attempt"]
+            try:
+                bundle_raw = receipt_path.read_bytes()
+                bundle = json.loads(bundle_raw)
+                if not isinstance(bundle, dict) or canonicalize(bundle) != bundle_raw:
+                    raise ValueError("receipt bundle is not canonical JSON")
+                manifest_entry = bundle["run_manifest.json"]
+                artifact_entry = bundle["model-artifacts.jsonl"]
+                registry._verify_execution_storage_receipts(
+                    execution_id=execution_id,
+                    expected_producer_commit=attempt["execution_context"]["sha"],
+                    result_sha256=manifest_entry["content_sha256"],
+                    artifact_sha256=artifact_entry["content_sha256"],
+                    expected_receipts_sha256=hashlib.sha256(bundle_raw).hexdigest(),
+                )
+            except Exception as exc:
+                findings.append(_finding(
+                    "storage_bundle_invalid", "error",
+                    execution_id=execution_id, attempt_id=attempt["attempt_id"],
+                    reason=f"{type(exc).__name__}: {exc}",
+                ))
+                continue
+            if attempt["status"] != "succeeded":
+                findings.append(_finding(
+                    "storage_bundle_valid_but_terminal_missing", "error",
+                    execution_id=execution_id, run_id=attempt["execution_context"]["run_id"],
+                    attempt_id=attempt["attempt_id"], registry_status=attempt["status"],
+                    experiment_id=binding["experiment_id"],
+                ))
 
     findings.sort(key=lambda item: (
         item.get("run_id", 0), item["code"], item.get("attempt_id", "")
