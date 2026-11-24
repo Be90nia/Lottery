@@ -70,6 +70,15 @@ def _execution_binding_expectations(
         item for item in spec["trial_plan"]
         if _sha(canonicalize(item)) == attempt["config_sha256"]
     )
+    expected["_expected_target_draw_ids"] = spec["target_draw_ids"]
+    if isinstance(config.get("zones"), list) and isinstance(config.get("model_order"), list):
+        expected["_expected_model_pairs"] = [
+            (zone, model_name)
+            for zone in config["zones"]
+            for model_name in config["model_order"]
+        ]
+    if isinstance(config.get("target_manifest_sha256"), str):
+        expected["_expected_target_manifest_sha256"] = config["target_manifest_sha256"]
     expected["approval_disposition"] = config.get(
         "approval_disposition",
         "not_required_exploratory" if spec["experiment_class"] == "exploratory"
@@ -971,6 +980,8 @@ class ExperimentRegistry:
                 or manifest.get("experiment_class") != expected_binding["experiment_class"]):
             raise ExperimentRegistryError("LOT-065 run manifest is missing its closed registry experiment binding")
         for field, expected_value in expected_binding.items():
+            if field.startswith("_"):
+                continue
             if manifest_binding.get(field) != expected_value:
                 raise ExperimentRegistryError(
                     f"LOT-065 run manifest binding mismatch: {field}"
