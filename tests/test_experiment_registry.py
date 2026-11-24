@@ -217,6 +217,26 @@ class ExperimentRegistryTests(unittest.TestCase):
         self.assertEqual(attempts["attempt-001"]["failure_code"], "timeout")
         self.assertEqual(attempts["attempt-002"]["failure_code"], "line_search_failed")
 
+    def test_cancelled_and_abandoned_attempts_remain_first_class_terminal_states(self):
+        registered = self.register_confirmatory()
+        experiment_id = registered["experiment_id"]
+        config = experiment_spec()["trial_plan"][0]
+        for attempt_id, status, failure_code in (
+            ("cancelled-001", "cancelled", "github_cancelled"),
+            ("abandoned-001", "abandoned", "runner_lost"),
+        ):
+            self.registry.start_trial(
+                experiment_id=experiment_id, attempt_id=attempt_id,
+                config=config, actor="test-suite",
+            )
+            terminal = self.registry.finish_trial(
+                experiment_id=experiment_id, attempt_id=attempt_id,
+                terminal_status=status, failure_code=failure_code,
+                actor="test-suite",
+            )
+            self.assertEqual(terminal["status"], status)
+            self.assertEqual(terminal["failure_code"], failure_code)
+
     def test_successful_trial_requires_result_digest(self):
         registered = self.register_confirmatory()
         experiment_id = registered["experiment_id"]
