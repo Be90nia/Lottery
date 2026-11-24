@@ -116,6 +116,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
                 experiment_binding["execution_context"],
                 expected_repository="Be90nia/Lottery",
                 expected_repository_id="1461523125",
+                expected_workflow_id=423307604,
                 expected_workflow_path=".github/workflows/subset-research.yml",
             )
         except ExecutionContextError as exc:
