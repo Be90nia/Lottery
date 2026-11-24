@@ -931,8 +931,9 @@ class ExperimentRegistry:
                 or _sha(bundle_raw) != expected_receipts_sha256):
             raise ExperimentRegistryError("LOT-065 storage receipts bundle digest or canonical form is invalid")
         required_outputs = {
-            "run_manifest.json", "target-score-ledger.jsonl",
-            "model-artifacts.jsonl", "model-artifact-provenance.jsonl",
+            "run_manifest.json", "subset-model-rolling-origin.json",
+            "target-score-ledger.jsonl", "model-artifacts.jsonl",
+            "model-artifact-provenance.jsonl",
         }
         if not required_outputs.issubset(bundle):
             raise ExperimentRegistryError(
@@ -1247,6 +1248,7 @@ class ExperimentRegistry:
             raise ExperimentRegistryError("LOT-065 artifact provenance does not cover the exact model artifact set")
         declared = manifest.get("output_files") if isinstance(manifest, dict) else None
         expected_output_schemas = {
+            "subset-model-rolling-origin.json": "lottery.g3-summary-report/v1",
             "target-score-ledger.jsonl": "lottery.target-score-ledger/v1",
             "model-artifacts.jsonl": "lottery.subset-probability-model/v1",
             "model-artifact-provenance.jsonl": "lottery.model-artifact-provenance/v1",
