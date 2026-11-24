@@ -22,6 +22,7 @@ on:
       - src/lottery/experiment_registry.py
       - src/lottery/storage.py
       - docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
+      - docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json
   workflow_dispatch:
 permissions:
   contents: read
