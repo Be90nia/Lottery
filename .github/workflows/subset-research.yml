@@ -271,11 +271,14 @@ jobs:
               for experiment in snapshot["experiments"].values()
               for attempt in experiment["attempts"].values()
           ]
-          if not any(
-              attempt.get("imported") is True and attempt.get("status") == "completed_uncommitted"
-              for attempt in all_attempts
-          ):
-              raise SystemExit("persistent registry is missing the verified retrospective G3 execution")
+          historical = [
+              (experiment_id, attempt)
+              for experiment_id, experiment in snapshot["experiments"].items()
+              for attempt in experiment["attempts"].values()
+              if attempt.get("imported") is True
+          ]
+          if len(historical) != 1 or historical[0][1].get("status") != "completed_uncommitted":
+              raise SystemExit("persistent registry must contain exactly one verified exploratory historical G3 execution")
           current = []
           for experiment_id, experiment in snapshot["experiments"].items():
               for attempt_id, attempt in experiment["attempts"].items():
@@ -287,7 +290,18 @@ jobs:
               raise SystemExit(f"expected exactly one registry attempt for current run, found {len(current)}")
           if len(all_attempts) < 2:
               raise SystemExit("independent execution history was not preserved across workflow runs")
-          _, _, attempt = current[0]
+          current_experiment_id, _, attempt = current[0]
+          historical_experiment_id, historical_attempt = historical[0]
+          if (historical_experiment_id != current_experiment_id
+                  or historical_attempt.get("trial_id") != attempt.get("trial_id")
+                  or historical_attempt.get("execution_id") == attempt.get("execution_id")):
+              raise SystemExit("historical and live executions are not distinct attempts of the same preregistered trial")
+          experiment_spec = snapshot["experiments"][current_experiment_id]["registration"]["spec"]
+          if (experiment_spec.get("experiment_class") != "exploratory"
+                  or experiment_spec.get("outcomes_observed") is not True
+                  or any(item.get("trial_id") != attempt.get("trial_id")
+                         for item in snapshot["experiments"][current_experiment_id]["attempts"].values())):
+              raise SystemExit("G3 registration or trial lineage escaped its immutable exploratory plan")
           job_result = os.environ["FULL_JOB_RESULT"]
           if job_result == "success" and attempt["status"] != "succeeded":
               raise SystemExit("successful evaluator job lacks a succeeded registry attempt")
