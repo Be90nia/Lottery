@@ -366,6 +366,52 @@ class ExecutionReconciliationTests(unittest.TestCase):
         self.assertEqual(finding["operation_id"], staged["operation_id"])
         self.assertEqual(finding["execution_id"], self.context["execution_id"])
 
+    def test_storage_operation_from_another_commit_is_rejected(self):
+        store = FileSystemObjectStore(self.root.parent / "experiment-storage")
+        staged = store.stage(
+            idempotency_key=f"lot064-g3:{self.context['execution_id']}:foreign-commit",
+            content=b'{"schema":"test"}',
+            media_type="application/json",
+            schema_version="lottery.g3-run-output/v1",
+            producer_commit="b" * 40,
+            producer_runtime="python/3.12",
+            execution_id=self.context["execution_id"],
+        )
+        store.validate(
+            operation_id=staged["operation_id"],
+            validator=lambda raw: True,
+            validator_id="lottery.g3-json-object-or-jsonl/v1",
+        )
+        store.commit(operation_id=staged["operation_id"])
+        store.publish_pointer(
+            name="g3-foreign-commit-test",
+            operation_id=staged["operation_id"],
+            expected_generation=0,
+        )
+        run = {
+            "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
+            "path": ".github/workflows/subset-research.yml",
+            "head_sha": "a" * 40, "event": "push",
+            "ref": "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
+            "status": "completed", "conclusion": "success",
+            "repository": {"id": 1461523125},
+        }
+        with patch.object(reconciler, "_api_json", return_value=run), patch.object(
+            reconciler, "_paged_items", return_value=[]
+        ):
+            report = reconciler.reconcile(
+                registry_root=self.root, token="test",
+                repository="Be90nia/Lottery", repository_id="1461523125",
+                workflow_id=423307604,
+                workflow_path=".github/workflows/subset-research.yml",
+            )
+        finding = next(
+            item for item in report["findings"]
+            if item["code"] == "storage_operation_producer_commit_mismatch"
+        )
+        self.assertEqual(finding["operation_id"], staged["operation_id"])
+        self.assertEqual(finding["actual_producer_commit"], "b" * 40)
+
     def test_committed_storage_bundle_without_terminal_event_is_reported_read_only(self):
         output_dir = self.root.parent / "outputs"
         output_dir.mkdir()
