@@ -55,6 +55,26 @@ class _NoRedirect(HTTPRedirectHandler):
         return None
 
 
+def _api_timestamp_matches_second_precision(actual: Any, expected: Any) -> bool:
+    """Compare timestamps at the whole-second precision exposed by Actions API.
+
+    The source evidence retains sub-second evaluator-step timestamps from the
+    runner, while the GitHub jobs API returns whole seconds. Compare UTC
+    instants after truncating both sides to seconds, with no wider tolerance.
+    """
+    if not isinstance(actual, str) or not isinstance(expected, str):
+        return False
+    try:
+        def parse(value: str) -> datetime:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                raise ValueError("timestamp must include timezone")
+            return parsed.astimezone(timezone.utc).replace(microsecond=0)
+        return parse(actual) == parse(expected)
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
 def _api_json(url: str, token: str) -> dict:
     request = Request(url, headers={
         "Accept": "application/vnd.github+json",
@@ -303,8 +323,14 @@ def _verify_github_sources(evidence: dict, token: str) -> tuple[dict, dict]:
     if len(evaluator_steps) != 1:
         raise ValueError("historical job is missing its unique full rolling-origin evaluator step")
     evaluator_step = evaluator_steps[0]
-    if (evaluator_step.get("started_at") != expected_job["evaluator_step_started_at_utc"]
-            or evaluator_step.get("completed_at") != expected_job["evaluator_step_completed_at_utc"]
+    if (not _api_timestamp_matches_second_precision(
+                evaluator_step.get("started_at"),
+                expected_job["evaluator_step_started_at_utc"],
+            )
+            or not _api_timestamp_matches_second_precision(
+                evaluator_step.get("completed_at"),
+                expected_job["evaluator_step_completed_at_utc"],
+            )
             or evaluator_step.get("conclusion") != "success"):
         raise ValueError("historical evaluator step timestamps or conclusion differ from pinned evidence")
 
