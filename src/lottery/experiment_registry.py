@@ -948,7 +948,7 @@ class ExperimentRegistry:
             raise ExperimentRegistryError("LOT-065 stored run manifest is not canonical JSON")
         manifest_body = dict(manifest)
         manifest_self_digest = manifest_body.pop("manifest_sha256", None)
-        if manifest_self_digest != _sha(canonicalize(manifest_body)):
+        if manifest_self_digest != "sha256:" + _sha(canonicalize(manifest_body)):
             raise ExperimentRegistryError("LOT-065 run manifest self-digest is invalid")
         manifest_binding = manifest.get("experiment_binding")
         required_binding_fields = {
