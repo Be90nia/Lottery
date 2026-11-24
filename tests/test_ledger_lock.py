@@ -19,6 +19,15 @@ def _exit_with_lock_held(path, ready):
         os._exit(0)
 
 
+def _contend_first_lock_creation(path, barrier, results):
+    try:
+        barrier.wait(timeout=15)
+        with ledger_lock(Path(path)):
+            results.put("ok")
+    except Exception as exc:
+        results.put(type(exc).__name__ + ":" + str(exc))
+
+
 class LedgerLockTests(unittest.TestCase):
     def test_lock_file_is_reused_and_persists(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -59,6 +68,27 @@ class LedgerLockTests(unittest.TestCase):
             self.assertEqual(process.exitcode, 0)
             with ledger_lock(ledger, timeout=1):
                 pass
+
+    def test_concurrent_first_lock_creation_uses_one_lock_region(self):
+        with tempfile.TemporaryDirectory() as temp:
+            ledger = Path(temp) / "ledger.jsonl"
+            ctx = multiprocessing.get_context("spawn")
+            barrier, results = ctx.Barrier(4), ctx.Queue()
+            processes = [
+                ctx.Process(
+                    target=_contend_first_lock_creation,
+                    args=(str(ledger), barrier, results),
+                )
+                for _ in range(4)
+            ]
+            for process in processes:
+                process.start()
+            outcomes = [results.get(timeout=25) for _ in processes]
+            for process in processes:
+                process.join(timeout=10)
+                self.assertEqual(process.exitcode, 0)
+            self.assertEqual(outcomes, ["ok"] * 4)
+            self.assertEqual(Path(str(ledger) + ".lock").stat().st_size, 1)
 
 
 if __name__ == "__main__":
