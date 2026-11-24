@@ -168,6 +168,7 @@ def _build_g3_registry_spec(
                      "weighting": "2^(-lag/100)"},
         },
         "zones": ["front", "back"],
+        "model_order": ["uniform", "expanding", "ewma", "exponential_family"],
         "target_manifest_sha256": target_manifest_sha256,
         "bootstrap": {
             "replicates": BOOTSTRAP_REPLICATES,
