@@ -83,6 +83,8 @@ jobs:
       # Restore registry and LOT-065 receipts across runs, including cancelled runs
       # when they have an artifact. Never restore model checkpoints: each execution
       # must produce its own model artifacts bound to its own Actions attempt.
+      # Every new LOT-065 stage records that execution ID; only the first isolated
+      # G3 producer commit is grandfathered for migration compatibility.
       - name: Restore append-only registry and LOT-065 object history
         env:
           GH_TOKEN: ${{ github.token }}
