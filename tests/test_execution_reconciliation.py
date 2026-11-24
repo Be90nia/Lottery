@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from lottery.experiment_registry import ExperimentRegistry
+from lottery.storage import FileSystemObjectStore
 from scripts import reconcile_experiment_executions as reconciler
 from scripts import run_subset_rolling_origin as runner
 
@@ -318,6 +319,52 @@ class ExecutionReconciliationTests(unittest.TestCase):
         self.assertIn("imported_source_artifact_mismatch", codes)
         self.assertIn("historical_execution_not_durably_committed", codes)
 
+
+    def test_committed_storage_operation_without_receipt_bundle_is_reported(self):
+        store = FileSystemObjectStore(self.root.parent / "experiment-storage")
+        staged = store.stage(
+            idempotency_key=f"lot064-g3:{self.context['execution_id']}:run_manifest.json",
+            content=b'{"schema":"test"}',
+            media_type="application/json",
+            schema_version="lottery.g3-run-output/v1",
+            producer_commit=self.context["sha"],
+            producer_runtime="python/3.12",
+            execution_id=self.context["execution_id"],
+        )
+        store.validate(
+            operation_id=staged["operation_id"],
+            validator=lambda raw: True,
+            validator_id="lottery.g3-json-object-or-jsonl/v1",
+        )
+        store.commit(operation_id=staged["operation_id"])
+        store.publish_pointer(
+            name="g3-crash-window-test",
+            operation_id=staged["operation_id"],
+            expected_generation=0,
+        )
+        run = {
+            "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
+            "path": ".github/workflows/subset-research.yml",
+            "head_sha": "a" * 40, "event": "push",
+            "ref": "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
+            "status": "completed", "conclusion": "success",
+            "repository": {"id": 1461523125},
+        }
+        with patch.object(reconciler, "_api_json", return_value=run), patch.object(
+            reconciler, "_paged_items", return_value=[]
+        ):
+            report = reconciler.reconcile(
+                registry_root=self.root, token="test",
+                repository="Be90nia/Lottery", repository_id="1461523125",
+                workflow_id=423307604,
+                workflow_path=".github/workflows/subset-research.yml",
+            )
+        finding = next(
+            item for item in report["findings"]
+            if item["code"] == "committed_storage_operation_without_registry_bundle"
+        )
+        self.assertEqual(finding["operation_id"], staged["operation_id"])
+        self.assertEqual(finding["execution_id"], self.context["execution_id"])
 
     def test_committed_storage_bundle_without_terminal_event_is_reported_read_only(self):
         output_dir = self.root.parent / "outputs"
