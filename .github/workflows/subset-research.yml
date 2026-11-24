@@ -1,8 +1,8 @@
 name: exact-subset-research
 
 on:
-  # One-shot frozen research launch for the preregistered branch and the
-  # explicit numerical-solver amendment branch. Never run on arbitrary pushes.
+  # Frozen research launch for the preregistered, solver-amendment and G3
+  # execution-binding branches. Never run on arbitrary pushes.
   push:
     branches:
       - feat/lot-055-preregistered-holm-inference
@@ -16,12 +16,6 @@ on:
       - src/lottery/subset_model/rolling_origin_ledger.py
       - scripts/run_subset_rolling_origin.py
   workflow_dispatch:
-    inputs:
-      resume_checkpoints:
-        description: "Restore checkpoints from the latest completed run only when evaluator source and frozen data are unchanged"
-        type: boolean
-        required: false
-        default: true
 permissions:
   contents: read
 
