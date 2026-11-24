@@ -144,6 +144,18 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
         self.assertEqual(verified_run["id"], expected["id"])
         self.assertEqual(verified_artifact["id"], expected_artifact["id"])
 
+
+    def test_evidence_cannot_choose_a_different_workflow_or_repository(self):
+        from pathlib import Path
+        evidence = json.loads(
+            Path("docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json").read_text(encoding="utf-8")
+        )
+        evidence["run"]["workflow_id"] += 1
+        with patch.object(importer, "_api_json") as api:
+            with self.assertRaisesRegex(ValueError, "workflow identity"):
+                importer._verify_github_sources(evidence, "test-token")
+            api.assert_not_called()
+
     def test_archive_tampering_fails_before_historical_import(self):
         evidence, archive_raw = self.build_archive()
         tampered = archive_raw + b"tampered"
