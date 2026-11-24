@@ -290,23 +290,57 @@ class ExecutionReconciliationTests(unittest.TestCase):
                 "sha256": __import__("hashlib").sha256(raw).hexdigest(),
                 "bytes": len(raw),
             }
+        trial_id = __import__("hashlib").sha256(
+            runner.canonicalize(self.spec["trial_plan"][0])
+        ).hexdigest()
+        binding = {
+            "experiment_id": self.registered["experiment_id"],
+            "spec_sha256": self.registered["spec_sha256"],
+            "experiment_class": "exploratory",
+            "approval_sha256": None,
+            "approval_required": False,
+            "approval_disposition": "not_required_exploratory",
+            "approval_disposition_reason": "test-only exploratory binding",
+            "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
+            "legacy_child_registration_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
+            "legacy_child_registration_comment_sha256": "a" * 64,
+            "parent_lineage_disposition": "test-only lineage",
+            "trial_id": trial_id,
+            "attempt_id": "attempt-1",
+            "execution_context": self.context,
+        }
         manifest = {
             "run_id": "evaluation-domain-id",
             "status": "complete_with_explicit_failures",
             "confirmatory_eligible": False,
+            "experiment_id": self.registered["experiment_id"],
+            "experiment_class": "exploratory",
+            "experiment_binding": {
+                "schema": "lottery.experiment-run-binding/v1",
+                "experiment_id": binding["experiment_id"],
+                "spec_sha256": binding["spec_sha256"],
+                "approval_sha256": binding["approval_sha256"],
+                "approval_required": binding["approval_required"],
+                "approval_disposition": binding["approval_disposition"],
+                "approval_disposition_reason": binding["approval_disposition_reason"],
+                "legacy_parent_issue_url": binding["legacy_parent_issue_url"],
+                "legacy_child_registration_comment_url": binding["legacy_child_registration_comment_url"],
+                "legacy_child_registration_comment_sha256": binding["legacy_child_registration_comment_sha256"],
+                "parent_lineage_disposition": binding["parent_lineage_disposition"],
+                "experiment_class": binding["experiment_class"],
+                "trial_id": binding["trial_id"],
+                "registry_attempt_id": binding["attempt_id"],
+                "execution_id": self.context["execution_id"],
+                "execution_context": self.context,
+            },
             "output_files": declarations,
         }
+        manifest["manifest_sha256"] = __import__("hashlib").sha256(
+            runner.canonicalize(manifest)
+        ).hexdigest()
         (output_dir / "run_manifest.json").write_bytes(
-            __import__("json").dumps(manifest, sort_keys=True).encode("utf-8")
+            runner.canonicalize(manifest) + b"\n"
         )
-        binding = {
-            "experiment_id": self.registered["experiment_id"],
-            "trial_id": __import__("hashlib").sha256(
-                runner.canonicalize(self.spec["trial_plan"][0])
-            ).hexdigest(),
-            "attempt_id": "attempt-1",
-            "execution_context": self.context,
-        }
         with patch.object(self.registry, "finish_trial", side_effect=RuntimeError("crash after commit")):
             with self.assertRaisesRegex(RuntimeError, "crash after commit"):
                 runner._finish_registered_execution(self.registry, binding, output_path)
