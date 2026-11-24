@@ -49,6 +49,25 @@ def _is_sha(value: Any) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
+def _execution_binding_expectations(
+    experiment_id: str, experiment: dict[str, Any], attempt: dict[str, Any],
+    attempt_id: str, execution_id: str,
+) -> dict[str, Any]:
+    registration = experiment["registration"]
+    spec = registration["spec"]
+    return {
+        "experiment_id": experiment_id,
+        "spec_sha256": registration["spec_sha256"],
+        "experiment_class": spec["experiment_class"],
+        "approval_sha256": attempt.get("approval_sha256"),
+        "approval_required": spec["experiment_class"] == "confirmatory",
+        "trial_id": attempt["config_sha256"],
+        "registry_attempt_id": attempt_id,
+        "execution_id": execution_id,
+        "execution_context": attempt["execution_context"],
+    }
+
+
 def _write_once(path: Path, raw: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(
@@ -803,6 +822,7 @@ class ExperimentRegistry:
     def _verify_execution_storage_receipts(
         self, *, execution_id: str, expected_producer_commit: str,
         result_sha256: str, artifact_sha256: str, expected_receipts_sha256: str,
+        expected_binding: dict[str, Any],
     ) -> None:
         """Resolve every LOT-065 receipt to committed bytes before terminal success."""
         bundle_path = self.root / "storage-receipts" / f"{execution_id}.json"
@@ -814,8 +834,15 @@ class ExperimentRegistry:
         if (not isinstance(bundle, dict) or canonicalize(bundle) != bundle_raw
                 or _sha(bundle_raw) != expected_receipts_sha256):
             raise ExperimentRegistryError("LOT-065 storage receipts bundle digest or canonical form is invalid")
-        if "run_manifest.json" not in bundle or "model-artifacts.jsonl" not in bundle:
-            raise ExperimentRegistryError("LOT-065 storage receipts omit required manifest or model artifacts")
+        required_outputs = {
+            "run_manifest.json", "target-score-ledger.jsonl",
+            "model-artifacts.jsonl", "model-artifact-provenance.jsonl",
+        }
+        if not required_outputs.issubset(bundle):
+            raise ExperimentRegistryError(
+                "LOT-065 storage receipts omit the manifest, target-score ledger, "
+                "model-artifact ledger or artifact-provenance sidecar"
+            )
         store = FileSystemObjectStore(self.root.parent / "experiment-storage")
         resolved: dict[str, bytes] = {}
         required_entry_fields = {
@@ -901,6 +928,22 @@ class ExperimentRegistry:
             manifest = parse_json_strict(manifest_raw)
         except ArtifactValidationError as exc:
             raise ExperimentRegistryError("LOT-065 stored run manifest is invalid JSON") from exc
+        if canonicalize(manifest) + b"\n" != manifest_raw:
+            raise ExperimentRegistryError("LOT-065 stored run manifest is not canonical JSON")
+        manifest_body = dict(manifest)
+        manifest_self_digest = manifest_body.pop("manifest_sha256", None)
+        if manifest_self_digest != _sha(canonicalize(manifest_body)):
+            raise ExperimentRegistryError("LOT-065 run manifest self-digest is invalid")
+        manifest_binding = manifest.get("experiment_binding")
+        if (not isinstance(manifest_binding, dict)
+                or manifest.get("experiment_id") != expected_binding["experiment_id"]
+                or manifest.get("experiment_class") != expected_binding["experiment_class"]):
+            raise ExperimentRegistryError("LOT-065 run manifest is missing its registry experiment binding")
+        for field, expected_value in expected_binding.items():
+            if manifest_binding.get(field) != expected_value:
+                raise ExperimentRegistryError(
+                    f"LOT-065 run manifest binding mismatch: {field}"
+                )
         declared = manifest.get("output_files") if isinstance(manifest, dict) else None
         if not isinstance(declared, dict) or set(bundle) != set(declared) | {"run_manifest.json"}:
             raise ExperimentRegistryError("LOT-065 receipt bundle does not cover the exact manifest output set")
@@ -962,6 +1005,9 @@ class ExperimentRegistry:
                     result_sha256=result_sha256,
                     artifact_sha256=artifact_sha256,
                     expected_receipts_sha256=storage_receipts_sha256,
+                    expected_binding=_execution_binding_expectations(
+                        experiment_id, experiment, attempt, attempt_id, execution_id,
+                    ),
                 )
             if attempt["status"] != "running":
                 same = (
