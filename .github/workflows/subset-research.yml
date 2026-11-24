@@ -106,7 +106,9 @@ jobs:
               rm -rf previous-history
               mkdir -p previous-history
               gh run download "$GITHUB_RUN_ID" --name exact-subset-rolling-origin --dir previous-history || true
-              [ -f previous-history/experiment-registry/events.jsonl ] && restored=true
+              if [ -f previous-history/experiment-registry/events.jsonl ]; then
+                restored=true
+              fi
             fi
             if [ "$restored" = true ]; then
               mkdir -p experiment-registry
@@ -139,7 +141,9 @@ jobs:
               rm -rf previous-history
               mkdir -p previous-history
               gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-history || true
-              [ -f previous-history/experiment-registry/events.jsonl ] && restored=true
+              if [ -f previous-history/experiment-registry/events.jsonl ]; then
+                restored=true
+              fi
             fi
             if [ "$restored" = true ]; then
               mkdir -p experiment-registry
