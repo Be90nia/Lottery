@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
-from lottery.experiment_registry import ExperimentRegistry
+from lottery.experiment_registry import ExperimentRegistry, _execution_binding_expectations
 from lottery.subset_model.artifact import canonicalize
 
 API = "https://api.github.com"
@@ -94,6 +94,7 @@ def reconcile(
             binding = {
                 "experiment_id": experiment_id,
                 "experiment_class": experiment_class,
+                "experiment": experiment,
                 "attempt": attempt,
             }
             attempts_by_run.setdefault(context["run_id"], []).append(binding)
@@ -280,6 +281,10 @@ def reconcile(
                     result_sha256=manifest_entry["content_sha256"],
                     artifact_sha256=artifact_entry["content_sha256"],
                     expected_receipts_sha256=hashlib.sha256(bundle_raw).hexdigest(),
+                    expected_binding=_execution_binding_expectations(
+                        binding["experiment_id"], binding["experiment"], attempt,
+                        attempt["attempt_id"], execution_id,
+                    ),
                 )
             except Exception as exc:
                 findings.append(_finding(
