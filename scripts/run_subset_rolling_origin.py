@@ -44,6 +44,7 @@ EXPECTED_REPOSITORY = "Be90nia/Lottery"
 EXPECTED_REPOSITORY_ID = "1461523125"
 EXPECTED_WORKFLOW_ID = 423307604
 EXPECTED_WORKFLOW_PATH = ".github/workflows/subset-research.yml"
+EXPECTED_G3_REGISTRATION_SHA256 = "d9a92b728708cca513e99d2d1716b242248e0d17404f7deab3fbbbf13620b144"
 
 
 def _write_once_bytes(path: Path, raw: bytes) -> None:
@@ -80,6 +81,8 @@ def _build_g3_registry_spec(
 ) -> tuple[dict, dict]:
     """Map the retrospective G3 record into a new exploratory LOT-064 registration."""
     registration_raw = registration_path.read_bytes()
+    if hashlib.sha256(registration_raw).hexdigest() != EXPECTED_G3_REGISTRATION_SHA256:
+        raise ValueError("G3 registration source bytes differ from the fixed retrospective-registration allowlist")
     registration = json.loads(registration_raw)
     if registration.get("schema") != "lottery.g3-preregistration/v1":
         raise ValueError("unsupported G3 diagnostic registration schema")
