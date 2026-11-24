@@ -1295,6 +1295,7 @@ def run(
                     checked_out_sha=checked_out_sha,
                     expected_repository=EXPECTED_REPOSITORY,
                     expected_repository_id=EXPECTED_REPOSITORY_ID,
+                    expected_workflow_id=EXPECTED_WORKFLOW_ID,
                     expected_workflow_path=EXPECTED_WORKFLOW_PATH,
                 )
                 root = registry_root or output_path.parent / "experiment-registry"
