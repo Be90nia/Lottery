@@ -88,7 +88,8 @@ class LedgerLockTests(unittest.TestCase):
                 process.join(timeout=10)
                 self.assertEqual(process.exitcode, 0)
             self.assertEqual(outcomes, ["ok"] * 4)
-            self.assertEqual(Path(str(ledger) + ".lock").stat().st_size, 1)
+            expected_lock_size = 1 if os.name == "nt" else 0
+            self.assertEqual(Path(str(ledger) + ".lock").stat().st_size, expected_lock_size)
 
 
 if __name__ == "__main__":
