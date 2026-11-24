@@ -79,9 +79,21 @@ def reconcile(
     findings: list[dict[str, Any]] = []
     checked_runs: set[int] = set()
     for run_id, bindings in sorted(attempts_by_run.items()):
-        run = _api_json(f"{API}/repos/{repository}/actions/runs/{run_id}", token)
         checked_runs.add(run_id)
-        context = bindings[0]["attempt"]["execution_context"]
+        bindings_by_attempt: dict[int, list[dict[str, Any]]] = {}
+        for binding in bindings:
+            attempt_number = binding["attempt"]["execution_context"].get("run_attempt")
+            if type(attempt_number) is int:
+                bindings_by_attempt.setdefault(attempt_number, []).append(binding)
+        for attempt_number, attempt_bindings in sorted(bindings_by_attempt.items()):
+            # The run-level endpoint returns the latest rerun. Use the
+            # attempt-specific endpoint so older immutable attempts are not
+            # compared against a newer run_attempt.
+            run = _api_json(
+                f"{API}/repos/{repository}/actions/runs/{run_id}/attempts/{attempt_number}",
+                token,
+            )
+            context = attempt_bindings[0]["attempt"]["execution_context"]
         expected = {
             "id": run_id,
             "run_attempt": context.get("run_attempt"),
@@ -110,8 +122,8 @@ def reconcile(
                 "workflow_metadata_mismatch", "error", run_id=run_id,
                 mismatches=mismatches,
             ))
-        for binding in bindings:
-            attempt = binding["attempt"]
+            for binding in attempt_bindings:
+                attempt = binding["attempt"]
             status = attempt["status"]
             if status == "running" and run.get("status") == "completed":
                 findings.append(_finding(
@@ -178,7 +190,10 @@ def reconcile(
         run_id = run.get("id")
         if type(run_id) is not int or run_id in checked_runs:
             continue
-        if run.get("path") not in (None, workflow_path):
+        listed_path = run.get("path")
+        if isinstance(listed_path, str):
+            listed_path = listed_path.split("@", 1)[0]
+        if listed_path not in (None, workflow_path):
             continue
         findings.append(_finding(
             "workflow_run_without_registry_binding", "warning",
@@ -198,7 +213,9 @@ def reconcile(
         "workflow_id": workflow_id,
         "workflow_path": workflow_path,
         "registry_event_count": snapshot["event_count"],
-        "registered_execution_run_count": len(attempts_by_run),
+        "registered_execution_attempt_count": sum(
+            len(items) for items in attempts_by_run.values()
+        ),
         "workflow_run_count_scanned": len(workflow_runs),
         "finding_count": len(findings),
         "findings": findings,
