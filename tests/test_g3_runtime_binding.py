@@ -420,6 +420,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
             "front": zone_result("front"),
             "back": zone_result("back"),
         }
+        self.output_path.write_bytes(runner.canonicalize({"report": "binding-test"}) + b"\n")
         runner.write_immutable_outputs(
             result, self.rows,
             Path("data/processed/draws-20261118.jsonl"),
