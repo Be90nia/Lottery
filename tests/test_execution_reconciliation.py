@@ -477,6 +477,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             ),
             "model-artifacts.jsonl": runner.canonicalize(artifact_record) + b"\n",
             "model-artifact-provenance.jsonl": runner.canonicalize(provenance_record) + b"\n",
+            "subset-model-rolling-origin.json": runner.canonicalize({"report": "test"}) + b"\n",
         }
         declarations = {}
         for filename, raw in outputs.items():
@@ -486,6 +487,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
                     "target-score-ledger.jsonl": "lottery.target-score-ledger/v1",
                     "model-artifacts.jsonl": "lottery.subset-probability-model/v1",
                     "model-artifact-provenance.jsonl": "lottery.model-artifact-provenance/v1",
+                    "subset-model-rolling-origin.json": "lottery.g3-summary-report/v1",
                 }[filename],
                 "sha256": __import__("hashlib").sha256(raw).hexdigest(),
                 "bytes": len(raw),
