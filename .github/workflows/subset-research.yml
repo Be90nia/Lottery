@@ -379,3 +379,5 @@ jobs:
           path: g3-execution-reconciliation.json
           if-no-files-found: error
           retention-days: 90
+
+# G3 live acceptance execution: fresh run-bound 2,649-target evaluation.
