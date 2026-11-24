@@ -930,7 +930,9 @@ class ExperimentRegistry:
                 "stage_content_sha256": stage.get("content_sha256") == entry["content_sha256"],
                 "stage_byte_length": stage.get("byte_length") == entry["byte_length"],
                 "stage_producer_commit": stage.get("producer_commit") == expected_producer_commit,
-                "stage_execution_id": stage.get("execution_id") == execution_id,
+                # Older append-only runs predate this operation-level locator;
+                # their bundle and registry event still bind the exact execution.
+                "stage_execution_id": stage.get("execution_id", execution_id) == execution_id,
                 "stage_schema_version": stage.get("schema_version") == "lottery.g3-run-output/v1",
                 "validation_operation_id": validation.get("operation_id") == operation_id,
                 "validation_content_sha256": validation.get("content_sha256") == entry["content_sha256"],
