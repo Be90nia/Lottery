@@ -152,7 +152,7 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
         )
         evidence["run"]["workflow_id"] += 1
         with patch.object(importer, "_api_json") as api:
-            with self.assertRaisesRegex(ValueError, "workflow identity"):
+            with self.assertRaisesRegex(ValueError, "fixed historical-run allowlist"):
                 importer._verify_github_sources(evidence, "test-token")
             api.assert_not_called()
 
