@@ -39,7 +39,7 @@ jobs:
       actions: read
     timeout-minutes: 360
     env:
-      PYTHONPATH: src
+      PYTHONPATH: .:src
       RUN_FULL_SUBSET_RESEARCH: "1"
       LOTTERY_WORKFLOW_ID: "423307604"
       RESEARCH_CODE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -87,8 +87,9 @@ jobs:
           destination.write_bytes(raw)
           print(f"Verified frozen snapshot: bytes={len(raw)} sha256={expected}")
           PY
-      # Restore registry and LOT-065 receipts across runs, including cancelled runs
-      # when they have an artifact. Never restore model checkpoints: each execution
+      # Restore only closed registry histories. Failed/cancelled attempts remain
+      # first-class when terminalized; never carry an open attempt into a new run.
+      # Never restore model checkpoints: each execution
       # must produce its own model artifacts bound to its own Actions attempt.
       # Every new LOT-065 stage records that execution ID; only the first isolated
       # G3 producer commit is grandfathered for migration compatibility.
@@ -102,13 +103,38 @@ jobs:
           set -euo pipefail
           branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           restored=false
+          history_is_closed() {
+            local registry_path="$1"
+            python - "$registry_path" <<'PY'
+          import sys
+          from pathlib import Path
+          from lottery.experiment_registry import ExperimentRegistry
+
+          try:
+              snapshot = ExperimentRegistry(Path(sys.argv[1])).snapshot()
+          except Exception as exc:
+              print(f"Rejecting invalid registry history: {type(exc).__name__}: {exc}")
+              raise SystemExit(1)
+          attempts = [
+              attempt
+              for experiment in snapshot["experiments"].values()
+              for attempt in experiment["attempts"].values()
+          ]
+          open_attempts = [attempt for attempt in attempts if attempt.get("status") == "running"]
+          if open_attempts:
+              print(f"Rejecting registry history with {len(open_attempts)} nonterminal execution attempt(s)")
+              raise SystemExit(1)
+          print(f"Accepted closed registry history with {len(attempts)} terminal execution attempt(s)")
+          PY
+          }
           if [ "${GITHUB_RUN_ATTEMPT:-1}" -gt 1 ]; then
             for ((previous_attempt=GITHUB_RUN_ATTEMPT - 1; previous_attempt>=1; previous_attempt--)); do
               rm -rf previous-history
               mkdir -p previous-history
               if gh run download "$GITHUB_RUN_ID" \
                   --name "exact-subset-rolling-origin-attempt-$previous_attempt" --dir previous-history \
-                  && [ -f previous-history/experiment-registry/events.jsonl ]; then
+                  && [ -f previous-history/experiment-registry/events.jsonl ] \
+                  && history_is_closed previous-history/experiment-registry; then
                 restored=true
                 break
               fi
@@ -117,7 +143,8 @@ jobs:
               rm -rf previous-history
               mkdir -p previous-history
               gh run download "$GITHUB_RUN_ID" --name exact-subset-rolling-origin --dir previous-history || true
-              if [ -f previous-history/experiment-registry/events.jsonl ]; then
+              if [ -f previous-history/experiment-registry/events.jsonl ] \
+                  && history_is_closed previous-history/experiment-registry; then
                 restored=true
               fi
             fi
@@ -143,7 +170,8 @@ jobs:
               mkdir -p previous-history
               if gh run download "$previous_run" \
                   --name "exact-subset-rolling-origin-attempt-$attempt" --dir previous-history \
-                  && [ -f previous-history/experiment-registry/events.jsonl ]; then
+                  && [ -f previous-history/experiment-registry/events.jsonl ] \
+                  && history_is_closed previous-history/experiment-registry; then
                 restored=true
                 break
               fi
@@ -152,7 +180,8 @@ jobs:
               rm -rf previous-history
               mkdir -p previous-history
               gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-history || true
-              if [ -f previous-history/experiment-registry/events.jsonl ]; then
+              if [ -f previous-history/experiment-registry/events.jsonl ] \
+                  && history_is_closed previous-history/experiment-registry; then
                 restored=true
               fi
             fi
@@ -173,6 +202,7 @@ jobs:
             test -f historical-baseline/experiment-registry/events.jsonl
             mkdir -p experiment-registry
             cp -a historical-baseline/experiment-registry/. experiment-registry/
+            history_is_closed experiment-registry
             echo "Restored the pinned retrospective G3 registry baseline."
           fi
       # Cross-run model checkpoints are intentionally not restored here:
