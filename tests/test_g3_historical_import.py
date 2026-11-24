@@ -156,6 +156,24 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
                 importer._verify_github_sources(evidence, "test-token")
             api.assert_not_called()
 
+    def test_evidence_cannot_redirect_import_to_another_run_or_artifact(self):
+        from pathlib import Path
+        evidence = json.loads(
+            Path("docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json").read_text(encoding="utf-8")
+        )
+        evidence["run"]["id"] += 1
+        with patch.object(importer, "_api_json") as api:
+            with self.assertRaisesRegex(ValueError, "fixed historical-run allowlist"):
+                importer._verify_github_sources(evidence, "test-token")
+            api.assert_not_called()
+
+        evidence["run"]["id"] -= 1
+        evidence["artifact"]["id"] += 1
+        with patch.object(importer, "_api_json") as api:
+            with self.assertRaisesRegex(ValueError, "fixed historical-artifact allowlist"):
+                importer._verify_github_sources(evidence, "test-token")
+            api.assert_not_called()
+
     def test_archive_tampering_fails_before_historical_import(self):
         evidence, archive_raw = self.build_archive()
         tampered = archive_raw + b"tampered"
