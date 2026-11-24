@@ -265,7 +265,7 @@ class ImmutableRollingOriginLedgerTests(unittest.TestCase):
         rows, result = _fixture()
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "subset-model-rolling-origin.json"
-            summary_raw = b'{"report":"immutable"}\\n'
+            summary_raw = b'{"report":"immutable"}\n'
             output.write_bytes(summary_raw)
             write_immutable_outputs(result, rows, Path("snapshot.jsonl"), output)
             manifest = json.loads((output.parent / "run_manifest.json").read_text())
