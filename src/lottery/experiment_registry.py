@@ -55,7 +55,7 @@ def _execution_binding_expectations(
 ) -> dict[str, Any]:
     registration = experiment["registration"]
     spec = registration["spec"]
-    return {
+    expected = {
         "experiment_id": experiment_id,
         "spec_sha256": registration["spec_sha256"],
         "experiment_class": spec["experiment_class"],
@@ -66,6 +66,18 @@ def _execution_binding_expectations(
         "execution_id": execution_id,
         "execution_context": attempt["execution_context"],
     }
+    config = next(
+        item for item in spec["trial_plan"]
+        if _sha(canonicalize(item)) == attempt["config_sha256"]
+    )
+    for field in (
+        "approval_disposition", "approval_disposition_reason",
+        "legacy_parent_issue_url", "legacy_child_registration_comment_url",
+        "legacy_child_registration_comment_sha256", "parent_lineage_disposition",
+    ):
+        if field in config:
+            expected[field] = config[field]
+    return expected
 
 
 def _write_once(path: Path, raw: bytes) -> None:
@@ -935,10 +947,20 @@ class ExperimentRegistry:
         if manifest_self_digest != _sha(canonicalize(manifest_body)):
             raise ExperimentRegistryError("LOT-065 run manifest self-digest is invalid")
         manifest_binding = manifest.get("experiment_binding")
+        required_binding_fields = {
+            "schema", "experiment_id", "spec_sha256", "approval_sha256",
+            "approval_required", "approval_disposition", "approval_disposition_reason",
+            "legacy_parent_issue_url", "legacy_child_registration_comment_url",
+            "legacy_child_registration_comment_sha256", "parent_lineage_disposition",
+            "experiment_class", "trial_id", "registry_attempt_id", "execution_id",
+            "execution_context",
+        }
         if (not isinstance(manifest_binding, dict)
+                or set(manifest_binding) != required_binding_fields
+                or manifest_binding.get("schema") != "lottery.experiment-run-binding/v1"
                 or manifest.get("experiment_id") != expected_binding["experiment_id"]
                 or manifest.get("experiment_class") != expected_binding["experiment_class"]):
-            raise ExperimentRegistryError("LOT-065 run manifest is missing its registry experiment binding")
+            raise ExperimentRegistryError("LOT-065 run manifest is missing its closed registry experiment binding")
         for field, expected_value in expected_binding.items():
             if manifest_binding.get(field) != expected_value:
                 raise ExperimentRegistryError(
