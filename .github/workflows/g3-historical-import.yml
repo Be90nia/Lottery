@@ -40,6 +40,13 @@ jobs:
           --snapshot data/processed/draws-20261118.jsonl
           --registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
           --registry-root experiment-registry
+      - name: Replay historical import and verify append-only idempotency
+        run: >-
+          python scripts/import_g3_historical_execution.py
+          --evidence docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json
+          --snapshot data/processed/draws-20261118.jsonl
+          --registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
+          --registry-root experiment-registry
       - name: Reconcile imported execution against live GitHub metadata (read-only)
         run: >-
           python scripts/reconcile_experiment_executions.py
