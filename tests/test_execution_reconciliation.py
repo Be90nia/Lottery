@@ -78,7 +78,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
     def test_running_registry_attempt_against_completed_workflow_is_reported(self):
         run = {
             "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
-            "path": ".github/workflows/subset-research.yml", "head_sha": "a" * 40,
+            "path": ".github/workflows/subset-research.yml@refs/heads/test", "head_sha": "a" * 40,
             "event": "push", "ref": "refs/heads/test", "status": "completed",
             "conclusion": "success", "repository": {"id": 1461523125},
         }
