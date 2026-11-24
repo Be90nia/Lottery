@@ -70,9 +70,14 @@ def _execution_binding_expectations(
         item for item in spec["trial_plan"]
         if _sha(canonicalize(item)) == attempt["config_sha256"]
     )
+    expected["approval_disposition"] = config.get(
+        "approval_disposition",
+        "not_required_exploratory" if spec["experiment_class"] == "exploratory"
+        else "protected_approval",
+    )
     for field in (
-        "approval_disposition", "approval_disposition_reason",
-        "legacy_parent_issue_url", "legacy_child_registration_comment_url",
+        "approval_disposition_reason", "legacy_parent_issue_url",
+        "legacy_child_registration_comment_url",
         "legacy_child_registration_comment_sha256", "parent_lineage_disposition",
     ):
         if field in config:
@@ -975,6 +980,137 @@ class ExperimentRegistry:
             raise ExperimentRegistryError(
                 "exploratory execution manifest cannot claim confirmatory eligibility"
             )
+        def read_canonical_jsonl(filename: str) -> list[dict[str, Any]]:
+            raw = resolved[filename]
+            if raw and not raw.endswith(b"\n"):
+                raise ExperimentRegistryError(f"LOT-065 JSONL output lacks its final newline: {filename}")
+            records = []
+            for line in raw.splitlines():
+                if not line:
+                    raise ExperimentRegistryError(f"LOT-065 JSONL output contains a blank record: {filename}")
+                try:
+                    value = parse_json_strict(line)
+                except ArtifactValidationError as exc:
+                    raise ExperimentRegistryError(f"LOT-065 JSONL output contains invalid JSON: {filename}") from exc
+                if not isinstance(value, dict) or canonicalize(value) != line:
+                    raise ExperimentRegistryError(f"LOT-065 JSONL record is not canonical: {filename}")
+                records.append(value)
+            return records
+
+        target_records = read_canonical_jsonl("target-score-ledger.jsonl")
+        artifact_records = read_canonical_jsonl("model-artifacts.jsonl")
+        provenance_records = read_canonical_jsonl("model-artifact-provenance.jsonl")
+        target_manifest = manifest.get("target_manifest")
+        models = manifest.get("models")
+        target_count = target_manifest.get("target_count_per_zone") if isinstance(target_manifest, dict) else None
+        if (type(target_count) is not int or target_count < 1
+                or not isinstance(models, list) or not models):
+            raise ExperimentRegistryError("LOT-065 manifest omits its frozen target denominator or model family")
+        model_pairs = []
+        for model in models:
+            if (not isinstance(model, dict)
+                    or not isinstance(model.get("zone"), str)
+                    or not isinstance(model.get("model_name"), str)
+                    or not model["zone"] or not model["model_name"]):
+                raise ExperimentRegistryError("LOT-065 manifest model family contains an invalid zone/model entry")
+            pair = (model["zone"], model["model_name"])
+            if pair in model_pairs:
+                raise ExperimentRegistryError("LOT-065 manifest model family contains duplicate zone/model entries")
+            model_pairs.append(pair)
+        expected_target_count = target_count * len(model_pairs)
+        if (manifest.get("expected_target_record_count") != expected_target_count
+                or manifest.get("actual_target_record_count") != expected_target_count
+                or len(target_records) != expected_target_count):
+            raise ExperimentRegistryError("LOT-065 target-score ledger does not cover the complete expected denominator")
+        if (manifest.get("model_artifact_count") != len(artifact_records)
+                or manifest.get("model_artifact_provenance_count") != len(provenance_records)
+                or len(provenance_records) != len(artifact_records)):
+            raise ExperimentRegistryError("LOT-065 model artifact/provenance counts differ from manifest declarations")
+
+        artifact_ids = set()
+        for record in artifact_records:
+            artifact_id = record.get("artifact_id")
+            if (not isinstance(artifact_id, str)
+                    or re.fullmatch(r"sha256:[0-9a-f]{64}", artifact_id) is None
+                    or artifact_id in artifact_ids):
+                raise ExperimentRegistryError("LOT-065 model artifact IDs are malformed or duplicated")
+            artifact_ids.add(artifact_id)
+
+        target_ids_by_pair: dict[tuple[str, str], set[str]] = {pair: set() for pair in model_pairs}
+        observed_status_counts: dict[str, int] = {}
+        for row in target_records:
+            pair = (row.get("zone"), row.get("model_name"))
+            target_id = row.get("target_draw_id")
+            if pair not in target_ids_by_pair or not isinstance(target_id, str) or not target_id:
+                raise ExperimentRegistryError("LOT-065 target ledger contains an undeclared model or target")
+            if target_id in target_ids_by_pair[pair]:
+                raise ExperimentRegistryError("LOT-065 target ledger contains a duplicate model/target row")
+            target_ids_by_pair[pair].add(target_id)
+            record_body = dict(row)
+            record_digest = record_body.pop("record_sha256", None)
+            if record_digest != "sha256:" + _sha(canonicalize(record_body)):
+                raise ExperimentRegistryError("LOT-065 target ledger record hash is invalid")
+            for field, expected_value in expected_binding.items():
+                if field in row and row.get(field) != expected_value:
+                    raise ExperimentRegistryError(f"LOT-065 target ledger binding mismatch: {field}")
+            for field in (
+                "experiment_id", "trial_id", "registry_attempt_id", "execution_id",
+                "approval_sha256", "approval_required", "approval_disposition",
+            ):
+                if row.get(field) != expected_binding[field]:
+                    raise ExperimentRegistryError(f"LOT-065 target ledger is missing or mismatches binding field: {field}")
+            if (row.get("training_dates_strictly_before_target") is not True
+                    or not isinstance(row.get("training_last_draw_id"), str)
+                    or row["training_last_draw_id"] >= target_id
+                    or type(row.get("training_row_count")) is not int
+                    or row["training_row_count"] < 1):
+                raise ExperimentRegistryError("LOT-065 target ledger has an invalid chronological training cutoff")
+            status = row.get("terminal_status")
+            if not isinstance(status, str) or not status:
+                raise ExperimentRegistryError("LOT-065 target ledger row has no terminal status")
+            observed_status_counts[status] = observed_status_counts.get(status, 0) + 1
+            for field in ("artifact_id", "diagnostic_ref"):
+                reference = row.get(field)
+                if reference is not None and reference not in artifact_ids:
+                    raise ExperimentRegistryError(f"LOT-065 target ledger references an absent model artifact: {field}")
+        target_sets = list(target_ids_by_pair.values())
+        if (any(len(values) != target_count for values in target_sets)
+                or any(values != target_sets[0] for values in target_sets[1:])):
+            raise ExperimentRegistryError("LOT-065 target ledger has incomplete or inconsistent target coverage")
+        declared_status_counts = manifest.get("terminal_status_counts")
+        if (not isinstance(declared_status_counts, dict)
+                or {key: value for key, value in declared_status_counts.items() if value}
+                != observed_status_counts
+                or sum(declared_status_counts.values()) != expected_target_count):
+            raise ExperimentRegistryError("LOT-065 target ledger terminal counts differ from manifest")
+        expected_scientific_status = (
+            "complete" if set(observed_status_counts) == {"scored"}
+            else "complete_with_explicit_failures"
+        )
+        if manifest.get("status") != expected_scientific_status:
+            raise ExperimentRegistryError("LOT-065 scientific status does not match target ledger terminal outcomes")
+
+        provenance_ids = set()
+        for row in provenance_records:
+            artifact_id = row.get("artifact_id")
+            if artifact_id not in artifact_ids or artifact_id in provenance_ids:
+                raise ExperimentRegistryError("LOT-065 artifact provenance references an absent or duplicate artifact")
+            provenance_ids.add(artifact_id)
+            provenance_expectations = {
+                "experiment_id": expected_binding["experiment_id"],
+                "trial_id": expected_binding["trial_id"],
+                "attempt_id": expected_binding["registry_attempt_id"],
+                "execution_id": expected_binding["execution_id"],
+                "approval_sha256": expected_binding["approval_sha256"],
+                "approval_required": expected_binding["approval_required"],
+                "approval_disposition": expected_binding["approval_disposition"],
+                "experiment_class": expected_binding["experiment_class"],
+                "evaluation_run_id": manifest.get("run_id"),
+            }
+            if any(row.get(field) != value for field, value in provenance_expectations.items()):
+                raise ExperimentRegistryError("LOT-065 artifact provenance does not match registry execution binding")
+        if provenance_ids != artifact_ids:
+            raise ExperimentRegistryError("LOT-065 artifact provenance does not cover the exact model artifact set")
         declared = manifest.get("output_files") if isinstance(manifest, dict) else None
         if not isinstance(declared, dict) or set(bundle) != set(declared) | {"run_manifest.json"}:
             raise ExperimentRegistryError("LOT-065 receipt bundle does not cover the exact manifest output set")
