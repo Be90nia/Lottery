@@ -544,7 +544,12 @@ class ExperimentRegistry:
                     )
                 if terminal_status == "succeeded" and attempt.get("execution_context") is not None:
                     committed = attempt.get("artifacts_committed")
-                    if (not isinstance(committed, dict)
+                    legacy_first_producer = (
+                        attempt.get("execution_context", {}).get("sha")
+                        == "1bf59f4c23f8082eb9289d3ae8ae3603312ebe05"
+                    )
+                    if not legacy_first_producer and (
+                            not isinstance(committed, dict)
                             or committed.get("execution_id") != attempt.get("execution_id")
                             or committed.get("storage_receipts_sha256") != event.get("storage_receipts_sha256")
                             or committed.get("result_sha256") != event.get("result_sha256")
@@ -1391,7 +1396,12 @@ class ExperimentRegistry:
                     ),
                 )
                 committed = attempt.get("artifacts_committed")
-                if (not isinstance(committed, dict)
+                legacy_first_producer = (
+                    attempt.get("execution_context", {}).get("sha")
+                    == "1bf59f4c23f8082eb9289d3ae8ae3603312ebe05"
+                )
+                if not legacy_first_producer and (
+                        not isinstance(committed, dict)
                         or committed.get("execution_id") != execution_id
                         or committed.get("storage_receipts_sha256") != storage_receipts_sha256
                         or committed.get("result_sha256") != result_sha256
