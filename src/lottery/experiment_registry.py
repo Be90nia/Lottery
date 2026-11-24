@@ -485,7 +485,7 @@ class ExperimentRegistry:
                         artifact_sha256=event["artifact_sha256"],
                         expected_receipts_sha256=storage_digest,
                         expected_binding=_execution_binding_expectations(
-                            experiment_id, experiment, attempt, attempt_id,
+                            experiment_id, experiments[experiment_id], attempt, attempt_id,
                             attempt["execution_id"],
                         ),
                     )
