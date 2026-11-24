@@ -79,6 +79,7 @@ def _normalise_workflow_path(value: Any) -> Any:
 def reconcile(
     *, registry_root: Path, token: str, repository: str,
     repository_id: str, workflow_id: int, workflow_path: str,
+    current_run_id: int | None = None, current_run_job: str | None = None,
 ) -> dict[str, Any]:
     """Compare the append-only local registry with authoritative Actions metadata."""
     registry = ExperimentRegistry(registry_root)
@@ -152,17 +153,34 @@ def reconcile(
                     run_attempt=number, mismatches=mismatches,
                 ))
 
+            workflow_status = run.get("status")
+            workflow_conclusion = run.get("conclusion")
+            if (run_id == current_run_id and workflow_status != "completed"
+                    and isinstance(current_run_job, str) and current_run_job):
+                # The reconciliation job runs after the evaluator job but
+                # before the enclosing workflow run itself reaches completed.
+                # Use the completed evaluator job for this one explicitly
+                # selected run; all other runs still require workflow terminality.
+                jobs = _paged_items(
+                    f"{API}/repos/{repository}/actions/runs/{run_id}/attempts/{number}/jobs",
+                    "jobs", token,
+                )
+                matching_jobs = [item for item in jobs if item.get("name") == current_run_job]
+                if len(matching_jobs) == 1 and matching_jobs[0].get("status") == "completed":
+                    workflow_status = "completed"
+                    workflow_conclusion = matching_jobs[0].get("conclusion")
+
             for binding in attempt_bindings:
                 attempt = binding["attempt"]
                 status = attempt["status"]
-                if status == "running" and run.get("status") == "completed":
+                if status == "running" and workflow_status == "completed":
                     findings.append(_finding(
                         "workflow_terminal_registry_running", "error",
                         run_id=run_id, run_attempt=number,
                         attempt_id=attempt["attempt_id"],
-                        workflow_conclusion=run.get("conclusion"),
+                        workflow_conclusion=workflow_conclusion,
                     ))
-                elif status != "running" and run.get("status") != "completed":
+                elif status != "running" and workflow_status != "completed":
                     findings.append(_finding(
                         "registry_terminal_before_workflow_terminal", "error",
                         run_id=run_id, run_attempt=number,
@@ -170,14 +188,14 @@ def reconcile(
                         registry_status=status, workflow_status=run.get("status"),
                     ))
                 elif status in ("succeeded", "completed_uncommitted") and (
-                    run.get("status") != "completed" or run.get("conclusion") != "success"
+                    workflow_status != "completed" or workflow_conclusion != "success"
                 ):
                     findings.append(_finding(
                         "registry_success_without_successful_workflow", "error",
                         run_id=run_id, run_attempt=number,
                         attempt_id=attempt["attempt_id"],
-                        registry_status=status, workflow_status=run.get("status"),
-                        workflow_conclusion=run.get("conclusion"),
+                        registry_status=status, workflow_status=workflow_status,
+                        workflow_conclusion=workflow_conclusion,
                     ))
 
                 source_artifact_id = attempt.get("source_artifact_id")
@@ -327,6 +345,8 @@ def main() -> int:
     parser.add_argument("--workflow-id", type=int, default=423307604)
     parser.add_argument("--workflow-path", default=".github/workflows/subset-research.yml")
     parser.add_argument("--token-env", default="GITHUB_TOKEN")
+    parser.add_argument("--current-run-id", type=int)
+    parser.add_argument("--current-run-job")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     token = os.environ.get(args.token_env) or os.environ.get("GH_TOKEN")
@@ -336,6 +356,7 @@ def main() -> int:
         registry_root=args.registry_root, token=token,
         repository=args.repository, repository_id=args.repository_id,
         workflow_id=args.workflow_id, workflow_path=args.workflow_path,
+        current_run_id=args.current_run_id, current_run_job=args.current_run_job,
     )
     raw = json.dumps(report, sort_keys=True, indent=2) + "\n"
     if args.output:
