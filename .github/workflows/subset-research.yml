@@ -16,6 +16,12 @@ on:
       - src/lottery/subset_model/exponential.py
       - src/lottery/subset_model/rolling_origin_ledger.py
       - scripts/run_subset_rolling_origin.py
+      - scripts/reconcile_experiment_executions.py
+      - scripts/import_g3_historical_execution.py
+      - src/lottery/execution_context.py
+      - src/lottery/experiment_registry.py
+      - src/lottery/storage.py
+      - docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
   workflow_dispatch:
 permissions:
   contents: read
