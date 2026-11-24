@@ -82,11 +82,9 @@ class ExecutionReconciliationTests(unittest.TestCase):
             "event": "push", "ref": "refs/heads/test", "status": "completed",
             "conclusion": "success", "repository": {"id": 1461523125},
         }
-        with patch.object(reconciler, "_api_json", return_value=run), patch.object(
-            reconciler, "_paged_items", return_value={"not": "used"}
+        with patch.object(reconciler, "_api_json", return_value=run) as api, patch.object(
+            reconciler, "_paged_items", return_value=[]
         ):
-            # The second endpoint returns a list of unbound workflow runs.
-            with patch.object(reconciler, "_paged_items", return_value=[]):
                 report = reconciler.reconcile(
                     registry_root=self.root, token="test",
                     repository="Be90nia/Lottery", repository_id="1461523125",
@@ -98,6 +96,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             for item in report["findings"]
         ))
         self.assertEqual(report["mode"], "read_only")
+        self.assertIn("/actions/runs/123456/attempts/1", api.call_args.args[0])
 
     def test_unbound_workflow_run_is_reported(self):
         with patch.object(reconciler, "_api_json", return_value={
