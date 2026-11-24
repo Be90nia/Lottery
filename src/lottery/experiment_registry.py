@@ -930,9 +930,16 @@ class ExperimentRegistry:
                 "stage_content_sha256": stage.get("content_sha256") == entry["content_sha256"],
                 "stage_byte_length": stage.get("byte_length") == entry["byte_length"],
                 "stage_producer_commit": stage.get("producer_commit") == expected_producer_commit,
-                # Older append-only runs predate this operation-level locator;
-                # their bundle and registry event still bind the exact execution.
-                "stage_execution_id": stage.get("execution_id", execution_id) == execution_id,
+                # The first isolated G3 run predates operation-level execution IDs.
+                # Keep this one exact producer commit readable; all later runs must
+                # bind each LOT-065 stage to the concrete execution attempt.
+                "stage_execution_id": (
+                    stage.get("execution_id") == execution_id
+                    or (
+                        stage.get("execution_id") is None
+                        and expected_producer_commit == "1bf59f4c23f8082eb9289d3ae8ae3603312ebe05"
+                    )
+                ),
                 "stage_schema_version": stage.get("schema_version") == "lottery.g3-run-output/v1",
                 "validation_operation_id": validation.get("operation_id") == operation_id,
                 "validation_content_sha256": validation.get("content_sha256") == entry["content_sha256"],
