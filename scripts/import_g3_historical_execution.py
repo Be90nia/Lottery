@@ -48,6 +48,7 @@ HISTORICAL_ARTIFACT_ID = 14612805677
 HISTORICAL_ARTIFACT_NAME = "exact-subset-rolling-origin"
 HISTORICAL_ARTIFACT_SIZE = 21990827
 HISTORICAL_ARTIFACT_SHA256 = "d165d08dc1214e79f31c50101dc5a4920233fb998b14c6ff0f56197919041804"
+HISTORICAL_EVIDENCE_SHA256 = "0795a917cfe590d30042f1f0dafda7808383966a468c35cfd0bd7f9e120a9537"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -359,7 +360,10 @@ def import_historical_execution(
     *, evidence_path: Path, snapshot_path: Path, registration_path: Path,
     registry_root: Path, token: str,
 ) -> dict:
-    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    evidence_raw = evidence_path.read_bytes()
+    if _digest(evidence_raw) != HISTORICAL_EVIDENCE_SHA256:
+        raise ValueError("historical evidence source bytes differ from the fixed evidence allowlist")
+    evidence = json.loads(evidence_raw)
     if evidence.get("schema") != "lottery.github-actions-historical-run-evidence/v1":
         raise ValueError("unsupported historical execution evidence schema")
     run, artifact = _verify_github_sources(evidence, token)
