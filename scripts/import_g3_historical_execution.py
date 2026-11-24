@@ -30,6 +30,7 @@ API = "https://api.github.com"
 REPOSITORY = "Be90nia/Lottery"
 REPOSITORY_ID = "1461523125"
 WORKFLOW_PATH = ".github/workflows/subset-research.yml"
+WORKFLOW_ID = 423307604
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -204,17 +205,25 @@ def _verify_archive(evidence: dict, archive_raw: bytes) -> tuple[dict, bytes, by
 
 
 def _verify_github_sources(evidence: dict, token: str) -> tuple[dict, dict]:
-    run_id = evidence["run"]["id"]
+    if evidence.get("repository") != {
+        "full_name": REPOSITORY, "id": REPOSITORY_ID,
+    }:
+        raise ValueError("historical evidence repository identity differs from the fixed allowlist")
+    expected_run = evidence.get("run")
+    if (not isinstance(expected_run, dict)
+            or expected_run.get("workflow_id") != WORKFLOW_ID
+            or expected_run.get("workflow_path") != WORKFLOW_PATH):
+        raise ValueError("historical evidence workflow identity differs from the fixed allowlist")
+    run_id = expected_run["id"]
     run = _api_json(f"{API}/repos/{REPOSITORY}/actions/runs/{run_id}", token)
     job_payload = _api_json(f"{API}/repos/{REPOSITORY}/actions/runs/{run_id}/jobs?per_page=100", token)
     artifact_payload = _api_json(f"{API}/repos/{REPOSITORY}/actions/runs/{run_id}/artifacts?per_page=100", token)
 
-    expected_run = evidence["run"]
     checks = {
         "id": expected_run["id"],
         "run_attempt": expected_run["run_attempt"],
         "run_number": expected_run["run_number"],
-        "workflow_id": expected_run["workflow_id"],
+        "workflow_id": WORKFLOW_ID,
         "name": expected_run["workflow_name"],
         "path": expected_run["workflow_path"],
         "head_branch": expected_run["head_branch"],
@@ -308,7 +317,7 @@ def import_historical_execution(
         "schema": "lottery.github-actions-execution/v2",
         "repository": REPOSITORY,
         "repository_id": REPOSITORY_ID,
-        "workflow_id": expected_run["workflow_id"],
+        "workflow_id": WORKFLOW_ID,
         "workflow_path": WORKFLOW_PATH,
         "workflow_ref": f"{REPOSITORY}/{WORKFLOW_PATH}@{expected_run['ref']}",
         "run_id": expected_run["id"],
@@ -324,7 +333,7 @@ def import_historical_execution(
     context = validate_execution_context(
         context, expected_repository=REPOSITORY,
         expected_repository_id=REPOSITORY_ID,
-        expected_workflow_id=expected_run["workflow_id"],
+        expected_workflow_id=WORKFLOW_ID,
         expected_workflow_path=WORKFLOW_PATH,
     )
     if context["execution_id"] != expected_run["execution_id"]:
