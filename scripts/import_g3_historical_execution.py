@@ -416,7 +416,10 @@ def import_historical_execution(
         "attempt_id": attempt_id,
         "execution_id": context["execution_id"],
         "source_metadata_sha256": source_metadata_sha256,
-        "source_verification_receipt_sha256": _digest(canonicalize(verification)),
+        # import_completed_trial preserves the first verifier receipt on an
+        # idempotent replay. Reuse that persisted digest so the outer receipt
+        # remains byte-identical instead of drifting with a fresh verified_at.
+        "source_verification_receipt_sha256": attempt["source_verification_receipt_sha256"],
         "source_run_url": source_metadata["source_run_url"],
         "source_started_at_utc": source_metadata["source_started_at_utc"],
         "source_completed_at_utc": source_metadata["source_completed_at_utc"],
