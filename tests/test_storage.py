@@ -76,7 +76,7 @@ class FileSystemObjectStoreTests(unittest.TestCase):
             producer_runtime="CPython 3.12",
             execution_id=execution_id,
         )
-        operation = self.store._read_canonical(self.store._operation_path(staged["operation_id"]))
+        operation = storage_module._read_canonical(self.store._operation_path(staged["operation_id"]))
         self.assertEqual(operation["execution_id"], execution_id)
         with self.assertRaisesRegex(ValueError, "execution_id"):
             self.store.stage(
