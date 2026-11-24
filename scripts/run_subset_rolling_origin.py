@@ -370,6 +370,7 @@ def _finish_registered_execution(
     manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
     artifacts_raw = (output_dir / "model-artifacts.jsonl").read_bytes()
     artifacts_sha256 = hashlib.sha256(artifacts_raw).hexdigest()
+    # Append the independently verifiable LOT-065 commit event before terminal success.
     artifact_commit = registry.record_artifacts_committed(
         experiment_id=binding["experiment_id"],
         attempt_id=binding["attempt_id"],
