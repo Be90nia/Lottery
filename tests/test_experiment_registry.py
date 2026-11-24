@@ -295,6 +295,48 @@ class ExperimentRegistryTests(unittest.TestCase):
                 actor="research-operator",
             )
 
+
+    def test_one_actions_execution_cannot_be_reused_across_trial_attempts(self):
+        first = self.register_confirmatory()
+        context = execution_context()
+        config = experiment_spec()["trial_plan"][0]
+        self.registry.start_trial(
+            experiment_id=first["experiment_id"],
+            attempt_id="actions-45130000000-attempt-1",
+            config=config, actor="research-operator",
+            execution_context=context,
+            expected_repository="Be90nia/Lottery",
+            expected_repository_id="1461523125",
+            expected_workflow_id=423307604,
+            expected_workflow_path=".github/workflows/subset-research.yml",
+        )
+        with self.assertRaisesRegex(ExperimentRegistryError, "cannot be bound to multiple"):
+            self.registry.start_trial(
+                experiment_id=first["experiment_id"],
+                attempt_id="duplicate-attempt-id",
+                config=config, actor="research-operator",
+                execution_context=context,
+                expected_repository="Be90nia/Lottery",
+                expected_repository_id="1461523125",
+                expected_workflow_id=423307604,
+                expected_workflow_path=".github/workflows/subset-research.yml",
+            )
+
+        second_spec = experiment_spec()
+        second_spec["experiment_name"] = "another-experiment"
+        second = self.register_confirmatory(second_spec)
+        with self.assertRaisesRegex(ExperimentRegistryError, "cannot be bound to multiple"):
+            self.registry.start_trial(
+                experiment_id=second["experiment_id"],
+                attempt_id="actions-45130000000-attempt-1",
+                config=second_spec["trial_plan"][0], actor="research-operator",
+                execution_context=context,
+                expected_repository="Be90nia/Lottery",
+                expected_repository_id="1461523125",
+                expected_workflow_id=423307604,
+                expected_workflow_path=".github/workflows/subset-research.yml",
+            )
+
     def test_historical_import_preserves_source_times_and_stays_uncommitted(self):
         spec = experiment_spec(experiment_class="exploratory", outcomes_observed=True)
         registered = self.registry.register_experiment(spec, actor="test-suite")
