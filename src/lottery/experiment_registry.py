@@ -993,6 +993,14 @@ class ExperimentRegistry:
                 "operation_id": operation_id,
                 "previous_object_sha256": pointer.get("previous_object_sha256"),
             }
+            # LOT-065's newer adapter versions add an immutable UTC timestamp
+            # shared by the pointer and publication receipt. Preserve compatibility
+            # with already committed v1 receipts that predate that optional field.
+            if "published_at_utc" in pointer:
+                published_at = pointer["published_at_utc"]
+                if not isinstance(published_at, str) or not published_at:
+                    raise ExperimentRegistryError("LOT-065 pointer publication timestamp is invalid")
+                expected_publication["published_at_utc"] = published_at
             checks = {
                 "stage_operation_id": stage.get("operation_id") == operation_id,
                 "stage_content_sha256": stage.get("content_sha256") == entry["content_sha256"],
