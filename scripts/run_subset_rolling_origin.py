@@ -370,6 +370,15 @@ def _finish_registered_execution(
     manifest_sha256 = hashlib.sha256(manifest_raw).hexdigest()
     artifacts_raw = (output_dir / "model-artifacts.jsonl").read_bytes()
     artifacts_sha256 = hashlib.sha256(artifacts_raw).hexdigest()
+    artifact_commit = registry.record_artifacts_committed(
+        experiment_id=binding["experiment_id"],
+        attempt_id=binding["attempt_id"],
+        execution_id=execution["execution_id"],
+        result_sha256=manifest_sha256,
+        artifact_sha256=artifacts_sha256,
+        storage_receipts_sha256=storage_receipts_sha256,
+        actor=execution["actor"],
+    )
     registry.finish_trial(
         experiment_id=binding["experiment_id"],
         attempt_id=binding["attempt_id"],
@@ -398,8 +407,9 @@ def _finish_registered_execution(
     event_by_id = {event["event_id"]: event for event in events}
     start_event = event_by_id.get(start_event_id)
     terminal_event = event_by_id.get(terminal_event_id)
-    if start_event is None or terminal_event is None:
-        raise ValueError("registry start/terminal events are missing from the verified event chain")
+    artifact_commit_event = event_by_id.get(artifact_commit["event_id"])
+    if start_event is None or artifact_commit_event is None or terminal_event is None:
+        raise ValueError("registry start/artifact-commit/terminal events are missing from the verified event chain")
     receipt = {
         "schema": "lottery.experiment-run-receipt/v1",
         "experiment_id": binding["experiment_id"],
@@ -419,6 +429,8 @@ def _finish_registered_execution(
         "event_count_at_terminal": events.index(terminal_event) + 1,
         "start_event_id": start_event_id,
         "start_event_sha256": start_event["event_hash"],
+        "artifact_commit_event_id": artifact_commit_event["event_id"],
+        "artifact_commit_event_sha256": artifact_commit_event["event_hash"],
         "terminal_event_id": terminal_event_id,
         "terminal_event_sha256": terminal_event["event_hash"],
         "event_chain_head_sha256": terminal_event["event_hash"],
