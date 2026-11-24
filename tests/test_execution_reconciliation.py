@@ -405,7 +405,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
                 workflow_path=".github/workflows/subset-research.yml",
             )
         codes = {item["code"] for item in report["findings"]}
-        self.assertIn("storage_bundle_valid_but_terminal_missing", codes)
+        self.assertIn("storage_bundle_valid_but_terminal_missing", codes, report["findings"])
         self.assertIn("workflow_terminal_registry_running", codes)
         self.assertEqual(
             self.registry.snapshot()["experiments"][self.registered["experiment_id"]]
