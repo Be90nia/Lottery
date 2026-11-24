@@ -237,6 +237,8 @@ jobs:
         run: >-
           python scripts/reconcile_experiment_executions.py
           --registry-root g3-run-artifact/experiment-registry
+          --current-run-id "$GITHUB_RUN_ID"
+          --current-run-job full-rolling-origin
           --output g3-execution-reconciliation.json
       - name: Verify current execution binding and prove reconciliation was read-only
         run: |
