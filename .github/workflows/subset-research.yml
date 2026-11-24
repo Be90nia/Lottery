@@ -93,12 +93,13 @@ jobs:
         run: |
           set -euo pipefail
           branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-          previous="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
+          previous_runs="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
             --json databaseId,status \
-            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed")) | first // empty')"
+            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed")) | .[].databaseId')"
           restored=false
-          if [ -n "$previous" ]; then
-            previous_run="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["databaseId"])' "$previous")"
+          while IFS= read -r previous_run; do
+            [ -n "$previous_run" ] || continue
+            rm -rf previous-history
             mkdir -p previous-history
             if gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-history \
                 && [ -f previous-history/experiment-registry/events.jsonl ]; then
@@ -110,8 +111,9 @@ jobs:
               fi
               echo "Restored append-only registry and LOT-065 objects from run $previous_run."
               restored=true
+              break
             fi
-          fi
+          done <<< "$previous_runs"
           if [ "$restored" != true ]; then
             mkdir -p historical-baseline
             gh run download 45346998296 --name g3-historical-registry-import --dir historical-baseline
@@ -127,35 +129,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          set -euo pipefail
           branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-          previous="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
+          previous_runs="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
             --json databaseId,headSha,status \
-            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed")) | first // empty')"
-          if [ -z "$previous" ]; then
-            echo "No completed prior run; starting with empty checkpoints."
-            exit 0
-          fi
-          previous_run="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["databaseId"])' "$previous")"
-          previous_sha="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["headSha"])' "$previous")"
+            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed")) | .[] | [.databaseId,.headSha] | @tsv')"
           gh auth setup-git
-          git fetch --no-tags origin "$previous_sha" --depth=1
-          if ! git diff --quiet "$previous_sha" "$RESEARCH_CODE_COMMIT" -- scripts/run_subset_rolling_origin.py src/lottery/subset_model src/lottery/backtest.py; then
-            echo "Evaluator source changed since run $previous_run; refusing checkpoint reuse."
-            exit 0
-          fi
-          mkdir -p previous-artifact
-          if ! gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-artifact; then
-            echo "Previous run has no downloadable artifact; starting fresh."
-            exit 0
-          fi
-          if [ ! -d previous-artifact/subset-model-checkpoints ]; then
-            echo "Previous artifact has no checkpoint directory; starting fresh."
-            exit 0
-          fi
-          mkdir -p subset-model-checkpoints
-          cp -a previous-artifact/subset-model-checkpoints/. subset-model-checkpoints/
-          python - <<'PY'
+          restored=false
+          while IFS=$'\t' read -r previous_run previous_sha; do
+            [ -n "$previous_run" ] || continue
+            git fetch --no-tags origin "$previous_sha" --depth=1
+            if ! git diff --quiet "$previous_sha" "$RESEARCH_CODE_COMMIT" -- scripts/run_subset_rolling_origin.py src/lottery/subset_model src/lottery/backtest.py; then
+              echo "Evaluator source differs from run $previous_run; checking an older completed run."
+              continue
+            fi
+            rm -rf previous-artifact
+            mkdir -p previous-artifact
+            if ! gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-artifact; then
+              continue
+            fi
+            if [ ! -d previous-artifact/subset-model-checkpoints ]; then
+              continue
+            fi
+            mkdir -p subset-model-checkpoints
+            cp -a previous-artifact/subset-model-checkpoints/. subset-model-checkpoints/
+            python - <<'PY'
           import json
           from pathlib import Path
           import os
@@ -177,6 +174,12 @@ jobs:
               temporary.replace(path)
           print(f"Restored {len(files)} checkpoint ledgers after confirming evaluator source identity.")
           PY
+            restored=true
+            break
+          done <<< "$previous_runs"
+          if [ "$restored" != true ]; then
+            echo "No compatible completed checkpoint artifact; starting a fresh evaluation."
+          fi
       - name: Append verified historical G3 execution to the persistent registry
         env:
           GITHUB_TOKEN: ${{ github.token }}
