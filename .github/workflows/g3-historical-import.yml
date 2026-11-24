@@ -2,6 +2,17 @@ name: G3 historical execution import
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/lot-064-g3-runtime-binding-isolated
+    paths:
+      - .github/workflows/g3-historical-import.yml
+      - scripts/import_g3_historical_execution.py
+      - scripts/reconcile_experiment_executions.py
+      - docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json
+      - docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
+      - src/lottery/experiment_registry.py
+      - src/lottery/execution_context.py
 
 permissions:
   contents: read
