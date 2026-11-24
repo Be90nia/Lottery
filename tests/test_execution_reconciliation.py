@@ -85,12 +85,12 @@ class ExecutionReconciliationTests(unittest.TestCase):
         with patch.object(reconciler, "_api_json", return_value=run) as api, patch.object(
             reconciler, "_paged_items", return_value=[]
         ):
-                report = reconciler.reconcile(
-                    registry_root=self.root, token="test",
-                    repository="Be90nia/Lottery", repository_id="1461523125",
-                    workflow_id=423307604,
-                    workflow_path=".github/workflows/subset-research.yml",
-                )
+            report = reconciler.reconcile(
+                registry_root=self.root, token="test",
+                repository="Be90nia/Lottery", repository_id="1461523125",
+                workflow_id=423307604,
+                workflow_path=".github/workflows/subset-research.yml",
+            )
         self.assertTrue(any(
             item["code"] == "workflow_terminal_registry_running"
             for item in report["findings"]
@@ -117,6 +117,48 @@ class ExecutionReconciliationTests(unittest.TestCase):
         self.assertTrue(any(
             item["code"] == "workflow_run_without_registry_binding"
             and item["run_id"] == 999999
+            for item in report["findings"]
+        ))
+
+
+    def test_distinct_rerun_attempts_are_checked_independently(self):
+        second_context = dict(self.context)
+        second_context["run_attempt"] = 2
+        from lottery.execution_context import _execution_digest
+        second_context["execution_id"] = _execution_digest(second_context)
+        self.registry.start_trial(
+            experiment_id=self.registered["experiment_id"],
+            attempt_id="attempt-2", config=self.spec["trial_plan"][0],
+            actor="test", execution_context=second_context,
+            expected_repository="Be90nia/Lottery",
+            expected_repository_id="1461523125",
+            expected_workflow_id=423307604,
+            expected_workflow_path=".github/workflows/subset-research.yml",
+        )
+        def run(attempt, status):
+            return {
+                "id": 123456, "run_attempt": attempt, "workflow_id": 423307604,
+                "path": ".github/workflows/subset-research.yml@refs/heads/test",
+                "head_sha": "a" * 40, "event": "push", "ref": "refs/heads/test",
+                "status": status, "conclusion": "success" if status == "completed" else None,
+                "repository": {"id": 1461523125},
+            }
+        with patch.object(
+            reconciler, "_api_json",
+            side_effect=[run(1, "completed"), run(2, "in_progress")],
+        ) as api, patch.object(reconciler, "_paged_items", return_value=[]):
+            report = reconciler.reconcile(
+                registry_root=self.root, token="test",
+                repository="Be90nia/Lottery", repository_id="1461523125",
+                workflow_id=423307604,
+                workflow_path=".github/workflows/subset-research.yml",
+            )
+        requested = [call.args[0] for call in api.call_args_list]
+        self.assertTrue(any(url.endswith("/runs/123456/attempts/1") for url in requested))
+        self.assertTrue(any(url.endswith("/runs/123456/attempts/2") for url in requested))
+        self.assertTrue(any(
+            item["code"] == "workflow_terminal_registry_running"
+            and item["attempt_id"] == "attempt-1"
             for item in report["findings"]
         ))
 
