@@ -20,12 +20,12 @@ def environment(*, run_id="45130000000", attempt="1", sha=COMMIT):
         "GITHUB_REPOSITORY": REPOSITORY,
         "GITHUB_REPOSITORY_ID": REPOSITORY_ID,
         "LOTTERY_WORKFLOW_ID": str(WORKFLOW_ID),
-        "GITHUB_WORKFLOW_REF": f"{REPOSITORY}/{WORKFLOW_PATH}@refs/heads/feature",
+        "GITHUB_WORKFLOW_REF": f"{REPOSITORY}/{WORKFLOW_PATH}@refs/heads/feat/lot-064-g3-runtime-binding-isolated",
         "GITHUB_RUN_ID": run_id,
         "GITHUB_RUN_ATTEMPT": attempt,
         "GITHUB_JOB": "run-evaluation",
         "GITHUB_EVENT_NAME": "workflow_dispatch",
-        "GITHUB_REF": "refs/heads/feature",
+        "GITHUB_REF": "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
         "GITHUB_SHA": sha,
         "GITHUB_ACTOR": "research-operator",
     }
@@ -90,7 +90,7 @@ class ExecutionContextTests(unittest.TestCase):
                 expected_workflow_path=WORKFLOW_PATH,
             )
         wrong_workflow = environment()
-        wrong_workflow["GITHUB_WORKFLOW_REF"] = f"{REPOSITORY}/.github/workflows/other.yml@refs/heads/feature"
+        wrong_workflow["GITHUB_WORKFLOW_REF"] = f"{REPOSITORY}/.github/workflows/other.yml@refs/heads/feat/lot-064-g3-runtime-binding-isolated"
         with self.assertRaisesRegex(ExecutionContextError, "workflow path"):
             execution_context_from_env(
                 wrong_workflow, checked_out_sha=COMMIT,
@@ -102,6 +102,28 @@ class ExecutionContextTests(unittest.TestCase):
             execution_context_from_env(
                 environment(), checked_out_sha="b" * 40,
                 expected_repository=REPOSITORY, expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
+                expected_workflow_path=WORKFLOW_PATH,
+            )
+
+    def test_wrong_event_or_ref_is_rejected(self):
+        wrong_event = self.make_context()
+        wrong_event["event_name"] = "schedule"
+        with self.assertRaisesRegex(ExecutionContextError, "event/ref"):
+            validate_execution_context(
+                wrong_event,
+                expected_repository=REPOSITORY,
+                expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
+                expected_workflow_path=WORKFLOW_PATH,
+            )
+        wrong_ref = self.make_context()
+        wrong_ref["ref"] = "refs/heads/feature"
+        with self.assertRaisesRegex(ExecutionContextError, "event/ref"):
+            validate_execution_context(
+                wrong_ref,
+                expected_repository=REPOSITORY,
+                expected_repository_id=REPOSITORY_ID,
                 expected_workflow_id=WORKFLOW_ID,
                 expected_workflow_path=WORKFLOW_PATH,
             )
