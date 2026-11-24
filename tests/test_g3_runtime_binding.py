@@ -290,7 +290,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
         # artifact-commit event, a current execution cannot become successful.
         event_prefix = registry._read_events()[:2]
         registry.events_path.write_bytes(
-            b"".join(runner.canonicalize(event) + b"\\n" for event in event_prefix)
+            b"".join(runner.canonicalize(event) + b"\n" for event in event_prefix)
         )
         with self.assertRaisesRegex(ExperimentRegistryError, "artifact commit event"):
             registry.finish_trial(
