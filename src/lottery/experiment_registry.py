@@ -1192,11 +1192,22 @@ class ExperimentRegistry:
                 or set(declared) != set(expected_output_schemas)
                 or set(bundle) != set(declared) | {"run_manifest.json"}):
             raise ExperimentRegistryError("LOT-065 receipt bundle does not cover the exact manifest output set")
+        legacy_first_g3_run = (
+            expected_producer_commit == "1bf59f4c23f8082eb9289d3ae8ae3603312ebe05"
+        )
         for filename, declaration in declared.items():
             raw = resolved.get(filename)
-            if (raw is None or not isinstance(declaration, dict)
-                    or set(declaration) != {"schema_version", "sha256", "bytes"}
-                    or declaration.get("schema_version") != expected_output_schemas[filename]
+            legacy_declaration = (
+                legacy_first_g3_run
+                and isinstance(declaration, dict)
+                and set(declaration) == {"sha256", "bytes"}
+            )
+            current_declaration = (
+                isinstance(declaration, dict)
+                and set(declaration) == {"schema_version", "sha256", "bytes"}
+                and declaration.get("schema_version") == expected_output_schemas[filename]
+            )
+            if (raw is None or not (legacy_declaration or current_declaration)
                     or declaration.get("sha256") != _sha(raw)
                     or declaration.get("bytes") != len(raw)):
                 raise ExperimentRegistryError(
