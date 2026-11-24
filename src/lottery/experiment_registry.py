@@ -1162,6 +1162,12 @@ class ExperimentRegistry:
                 "experiment_class": expected_binding["experiment_class"],
                 "evaluation_run_id": manifest.get("run_id"),
             }
+            for field in (
+                "legacy_parent_issue_url", "legacy_child_registration_comment_url",
+                "legacy_child_registration_comment_sha256", "parent_lineage_disposition",
+            ):
+                if field in expected_binding:
+                    provenance_expectations[field] = expected_binding[field]
             if any(row.get(field) != value for field, value in provenance_expectations.items()):
                 raise ExperimentRegistryError("LOT-065 artifact provenance does not match registry execution binding")
         if provenance_ids != artifact_ids:
