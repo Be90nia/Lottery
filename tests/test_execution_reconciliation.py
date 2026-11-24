@@ -162,6 +162,68 @@ class ExecutionReconciliationTests(unittest.TestCase):
             for item in report["findings"]
         ))
 
+
+    def test_imported_source_artifact_digest_mismatch_is_reported(self):
+        source = {
+            "source_run_url": self.context["run_url"],
+            "source_started_at_utc": "2026-11-20T06:06:56Z",
+            "source_completed_at_utc": "2026-11-20T08:07:28Z",
+            "source_artifact_id": 777,
+            "source_artifact_zip_sha256": _sha("expected-zip"),
+            "source_manifest_sha256": _sha("manifest"),
+            "source_model_artifacts_sha256": _sha("model-artifacts"),
+            "source_evidence_sha256": _sha("evidence"),
+            "scientific_result_status": "complete_with_explicit_failures",
+            "confirmatory_eligible": False,
+        }
+        def verifier(metadata, context):
+            import hashlib
+            from lottery.subset_model.artifact import canonicalize
+            return {
+                "schema": "lottery.github-actions-verification/v1",
+                "verifier_id": "test-verifier/v1",
+                "verified": True,
+                "source_metadata_sha256": hashlib.sha256(canonicalize(metadata)).hexdigest(),
+                "artifact_zip_sha256": metadata["source_artifact_zip_sha256"],
+                "source_evidence_sha256": metadata["source_evidence_sha256"],
+                "verified_at_utc": "2026-11-24T00:00:00Z",
+            }
+        self.registry.import_completed_trial(
+            experiment_id=self.registered["experiment_id"],
+            attempt_id="imported-attempt-1",
+            config=self.spec["trial_plan"][0], actor="test",
+            execution_context=self.context, source_metadata=source,
+            metadata_verifier=verifier,
+            expected_repository="Be90nia/Lottery",
+            expected_repository_id="1461523125",
+            expected_workflow_id=423307604,
+            expected_workflow_path=".github/workflows/subset-research.yml",
+        )
+        run = {
+            "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
+            "path": ".github/workflows/subset-research.yml@refs/heads/test",
+            "head_sha": "a" * 40, "event": "push", "ref": "refs/heads/test",
+            "status": "completed", "conclusion": "success",
+            "repository": {"id": 1461523125},
+        }
+        bad_artifact = {
+            "id": 777, "digest": "sha256:" + _sha("tampered-zip"),
+            "expired": False,
+            "workflow_run": {"id": 123456, "repository_id": 1461523125, "head_sha": "a" * 40},
+        }
+        with patch.object(reconciler, "_api_json", return_value=run), patch.object(
+            reconciler, "_paged_items", side_effect=[[bad_artifact], []]
+        ):
+            report = reconciler.reconcile(
+                registry_root=self.root, token="test",
+                repository="Be90nia/Lottery", repository_id="1461523125",
+                workflow_id=423307604,
+                workflow_path=".github/workflows/subset-research.yml",
+            )
+        codes = {item["code"] for item in report["findings"]}
+        self.assertIn("imported_source_artifact_mismatch", codes)
+        self.assertIn("historical_execution_not_durably_committed", codes)
+
     def test_execution_identity_mismatch_is_reported(self):
         run = {
             "id": 123456, "run_attempt": 2, "workflow_id": 423307604,
