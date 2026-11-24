@@ -115,6 +115,35 @@ class ExecutionReconciliationTests(unittest.TestCase):
             {"pull_requests": [{"number": 115}]}, "refs/pull/114/merge"
         ))
 
+    def test_latest_github_rerun_without_registry_attempt_is_an_error(self):
+        run = {
+            "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
+            "path": ".github/workflows/subset-research.yml", "head_sha": "a" * 40,
+            "event": "push", "head_branch": "test", "status": "completed",
+            "conclusion": "success", "repository": {"id": 1461523125},
+        }
+        latest = {
+            "id": 123456, "run_attempt": 2,
+            "path": ".github/workflows/subset-research.yml",
+            "status": "completed", "conclusion": "success",
+        }
+        with patch.object(reconciler, "_api_json", return_value=run), patch.object(
+            reconciler, "_paged_items", return_value=[latest]
+        ):
+            report = reconciler.reconcile(
+                registry_root=self.root, token="test",
+                repository="Be90nia/Lottery", repository_id="1461523125",
+                workflow_id=423307604,
+                workflow_path=".github/workflows/subset-research.yml",
+            )
+        finding = next(
+            item for item in report["findings"]
+            if item["code"] == "workflow_rerun_attempt_without_registry_binding"
+        )
+        self.assertEqual(finding["run_id"], 123456)
+        self.assertEqual(finding["run_attempt"], 2)
+        self.assertEqual(finding["registered_run_attempts"], [1])
+
     def test_unbound_workflow_run_is_reported(self):
         with patch.object(reconciler, "_api_json", return_value={
             "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
