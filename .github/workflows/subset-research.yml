@@ -86,6 +86,40 @@ jobs:
           destination.write_bytes(raw)
           print(f"Verified frozen snapshot: bytes={len(raw)} sha256={expected}")
           PY
+      - name: Restore append-only registry and LOT-065 object history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          previous="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
+            --json databaseId,status \
+            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed")) | first // empty')"
+          restored=false
+          if [ -n "$previous" ]; then
+            previous_run="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["databaseId"])' "$previous")"
+            mkdir -p previous-history
+            if gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-history \
+                && [ -f previous-history/experiment-registry/events.jsonl ]; then
+              mkdir -p experiment-registry
+              cp -a previous-history/experiment-registry/. experiment-registry/
+              if [ -d previous-history/experiment-storage ]; then
+                mkdir -p experiment-storage
+                cp -a previous-history/experiment-storage/. experiment-storage/
+              fi
+              echo "Restored append-only registry and LOT-065 objects from run $previous_run."
+              restored=true
+            fi
+          fi
+          if [ "$restored" != true ]; then
+            mkdir -p historical-baseline
+            gh run download 45346998296 --name g3-historical-registry-import --dir historical-baseline
+            test -f historical-baseline/experiment-registry/events.jsonl
+            mkdir -p experiment-registry
+            cp -a historical-baseline/experiment-registry/. experiment-registry/
+            echo "Restored the pinned retrospective G3 registry baseline."
+          fi
       - name: Restore prior checkpoint when evaluator source is unchanged
         if: github.event_name != 'workflow_dispatch' || inputs.resume_checkpoints
         env:
@@ -106,7 +140,7 @@ jobs:
           previous_sha="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["headSha"])' "$previous")"
           gh auth setup-git
           git fetch --no-tags origin "$previous_sha" --depth=1
-          if ! git diff --quiet "$previous_sha" "$RESEARCH_CODE_COMMIT" -- scripts/run_subset_rolling_origin.py src/lottery/subset_model src/lottery/backtest.py .github/workflows/subset-research.yml; then
+          if ! git diff --quiet "$previous_sha" "$RESEARCH_CODE_COMMIT" -- scripts/run_subset_rolling_origin.py src/lottery/subset_model src/lottery/backtest.py; then
             echo "Evaluator source changed since run $previous_run; refusing checkpoint reuse."
             exit 0
           fi
@@ -143,6 +177,15 @@ jobs:
               temporary.replace(path)
           print(f"Restored {len(files)} checkpoint ledgers after confirming evaluator source identity.")
           PY
+      - name: Append verified historical G3 execution to the persistent registry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/import_g3_historical_execution.py
+          --evidence docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json
+          --snapshot data/processed/draws-20261118.jsonl
+          --registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
+          --registry-root experiment-registry
       - name: Run full frozen 2,649-target exact-subset evaluation
         run: |
           python scripts/run_subset_rolling_origin.py \
@@ -168,4 +211,103 @@ jobs:
             experiment-storage/
             subset-model-checkpoints/
           if-no-files-found: warn
+          retention-days: 90
+
+  reconcile:
+    if: always()
+    needs: full-rolling-origin
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: .:src
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Download this run's immutable execution evidence
+        run: gh run download "$GITHUB_RUN_ID" --name exact-subset-rolling-origin --dir g3-run-artifact
+      - name: Run read-only execution and LOT-065 reconciliation
+        run: >-
+          python scripts/reconcile_experiment_executions.py
+          --registry-root g3-run-artifact/experiment-registry
+          --output g3-execution-reconciliation.json
+      - name: Verify current execution binding and prove reconciliation was read-only
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from lottery.experiment_registry import ExperimentRegistry
+          from lottery.storage import FileSystemObjectStore
+
+          registry_root = Path("g3-run-artifact/experiment-registry")
+          storage_root = Path("g3-run-artifact/experiment-storage")
+          def tree_digest(root):
+              digest = hashlib.sha256()
+              if not root.exists():
+                  return digest.hexdigest()
+              for path in sorted(item for item in root.rglob("*") if item.is_file()):
+                  digest.update(str(path.relative_to(root)).encode("utf-8"))
+                  digest.update(b"\0")
+                  digest.update(path.read_bytes())
+              return digest.hexdigest()
+
+          before = (tree_digest(registry_root), tree_digest(storage_root))
+          report = json.loads(Path("g3-execution-reconciliation.json").read_text(encoding="utf-8"))
+          if report.get("mode") != "read_only":
+              raise SystemExit("reconciliation did not declare read_only mode")
+          if any(item.get("severity") == "error" for item in report.get("findings", [])):
+              raise SystemExit("execution reconciliation reported one or more errors")
+          current_run = int(os.environ["GITHUB_RUN_ID"])
+          if any(item.get("code") == "workflow_run_without_registry_binding"
+                 and item.get("run_id") == current_run for item in report.get("findings", [])):
+              raise SystemExit("current workflow run has no immutable registry binding")
+          snapshot = ExperimentRegistry(registry_root).snapshot()
+          current = []
+          for experiment_id, experiment in snapshot["experiments"].items():
+              for attempt_id, attempt in experiment["attempts"].items():
+                  if attempt.get("execution_context", {}).get("run_id") == current_run:
+                      current.append((experiment_id, attempt_id, attempt))
+          if len(current) != 1:
+              raise SystemExit(f"expected exactly one registry attempt for current run, found {len(current)}")
+          _, _, attempt = current[0]
+          if attempt["status"] == "succeeded" and not attempt.get("storage_receipts_sha256"):
+              raise SystemExit("successful execution is missing its LOT-065 receipt bundle")
+          if attempt["status"] == "running":
+              raise SystemExit("workflow ended with a registry attempt still running")
+          store_report = FileSystemObjectStore(storage_root).reconcile()
+          if any(store_report.get(key) for key in (
+              "staged_without_validation", "validated_without_commit", "dangling_pointers",
+              "corrupt_commit_receipts", "corrupt_objects", "orphan_objects",
+          )):
+              raise SystemExit("LOT-065 storage reconciliation found incomplete or corrupt state")
+          after = (tree_digest(registry_root), tree_digest(storage_root))
+          if before != after:
+              raise SystemExit("read-only reconciliation mutated registry or storage evidence")
+          print(json.dumps({
+              "current_run_id": current_run,
+              "current_attempt_id": attempt_id,
+              "current_attempt_status": attempt["status"],
+              "registry_event_count": snapshot["event_count"],
+              "registered_attempt_count": sum(len(e["attempts"]) for e in snapshot["experiments"].values()),
+              "finding_count": report["finding_count"],
+              "storage_reconciliation": store_report,
+              "read_only_digest_unchanged": True,
+          }, sort_keys=True))
+          PY
+      - name: Upload immutable reconciliation report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: g3-execution-reconciliation
+          path: g3-execution-reconciliation.json
+          if-no-files-found: error
           retention-days: 90
