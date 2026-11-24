@@ -229,6 +229,7 @@ jobs:
           if any(item.get("severity") == "error" for item in report.get("findings", [])):
               raise SystemExit("execution reconciliation reported one or more errors")
           current_run = int(os.environ["GITHUB_RUN_ID"])
+          current_run_attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
           if any(item.get("code") == "workflow_run_without_registry_binding"
                  and item.get("run_id") == current_run for item in report.get("findings", [])):
               raise SystemExit("current workflow run has no immutable registry binding")
@@ -246,7 +247,9 @@ jobs:
           current = []
           for experiment_id, experiment in snapshot["experiments"].items():
               for attempt_id, attempt in experiment["attempts"].items():
-                  if attempt.get("execution_context", {}).get("run_id") == current_run:
+                  context = attempt.get("execution_context", {})
+                  if (context.get("run_id") == current_run
+                          and context.get("run_attempt") == current_run_attempt):
                       current.append((experiment_id, attempt_id, attempt))
           if len(current) != 1:
               raise SystemExit(f"expected exactly one registry attempt for current run, found {len(current)}")
