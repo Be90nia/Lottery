@@ -116,8 +116,10 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
             "head_sha": expected["head_sha"],
             "steps": [{
                 "name": "Run full frozen 2,649-target exact-subset evaluation",
-                "started_at": expected_job["evaluator_step_started_at_utc"],
-                "completed_at": expected_job["evaluator_step_completed_at_utc"],
+                # GitHub's Actions jobs API exposes whole-second timestamps;
+                # the pinned runner evidence retains sub-second precision.
+                "started_at": expected_job["evaluator_step_started_at_utc"][:19] + "Z",
+                "completed_at": expected_job["evaluator_step_completed_at_utc"][:19] + "Z",
                 "conclusion": "success",
             }],
         }
@@ -144,6 +146,17 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
         self.assertEqual(verified_run["id"], expected["id"])
         self.assertEqual(verified_artifact["id"], expected_artifact["id"])
 
+
+    def test_api_timestamp_precision_is_bounded_to_whole_seconds(self):
+        self.assertTrue(importer._api_timestamp_matches_second_precision(
+            "2026-11-20T06:06:56Z", "2026-11-20T06:06:56.6324035Z"
+        ))
+        self.assertFalse(importer._api_timestamp_matches_second_precision(
+            "2026-11-20T06:06:57Z", "2026-11-20T06:06:56.6324035Z"
+        ))
+        self.assertFalse(importer._api_timestamp_matches_second_precision(
+            "2026-11-20T06:06:56", "2026-11-20T06:06:56.6324035Z"
+        ))
 
     def test_evidence_cannot_choose_a_different_workflow_or_repository(self):
         from pathlib import Path
