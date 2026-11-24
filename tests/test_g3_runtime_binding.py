@@ -254,9 +254,16 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertFalse(receipt["confirmatory_eligible"])
         self.assertEqual(receipt["approval_disposition"], "not_required_exploratory")
         self.assertTrue(receipt["start_event_sha256"])
+        self.assertTrue(receipt["artifact_commit_event_id"])
+        self.assertTrue(receipt["artifact_commit_event_sha256"])
         self.assertTrue(receipt["terminal_event_sha256"])
         self.assertEqual(receipt["event_chain_head_sha256"], receipt["terminal_event_sha256"])
-        self.assertEqual(receipt["event_count_at_terminal"], 3)
+        self.assertEqual(receipt["event_count_at_terminal"], 4)
+        self.assertIsNotNone(attempt["artifacts_committed"])
+        self.assertEqual(
+            attempt["artifacts_committed"]["storage_receipts_sha256"],
+            receipt["storage_receipts_sha256"],
+        )
         self.assertEqual(
             receipt["legacy_child_registration_comment_url"],
             "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
