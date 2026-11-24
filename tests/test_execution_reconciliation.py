@@ -80,7 +80,9 @@ class ExecutionReconciliationTests(unittest.TestCase):
         run = {
             "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
             "path": ".github/workflows/subset-research.yml@refs/heads/test", "head_sha": "a" * 40,
-            "event": "push", "ref": "refs/heads/test", "status": "completed",
+            # GitHub Actions API omits ref on this endpoint; head_branch is
+            # the authoritative equivalent for a branch-triggered run.
+            "event": "push", "head_branch": "test", "status": "completed",
             "conclusion": "success", "repository": {"id": 1461523125},
         }
         with patch.object(reconciler, "_api_json", return_value=run) as api, patch.object(
@@ -98,6 +100,20 @@ class ExecutionReconciliationTests(unittest.TestCase):
         ))
         self.assertEqual(report["mode"], "read_only")
         self.assertIn("/actions/runs/123456/attempts/1", api.call_args.args[0])
+
+    def test_missing_api_ref_is_checked_against_head_branch(self):
+        self.assertTrue(reconciler._run_ref_matches(
+            {"head_branch": "feature-x"}, "refs/heads/feature-x"
+        ))
+        self.assertFalse(reconciler._run_ref_matches(
+            {"head_branch": "other"}, "refs/heads/feature-x"
+        ))
+        self.assertTrue(reconciler._run_ref_matches(
+            {"pull_requests": [{"number": 114}]}, "refs/pull/114/merge"
+        ))
+        self.assertFalse(reconciler._run_ref_matches(
+            {"pull_requests": [{"number": 115}]}, "refs/pull/114/merge"
+        ))
 
     def test_unbound_workflow_run_is_reported(self):
         with patch.object(reconciler, "_api_json", return_value={
