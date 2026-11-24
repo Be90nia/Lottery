@@ -153,6 +153,7 @@ class FileSystemObjectStore:
         schema_version: str,
         producer_commit: str,
         producer_runtime: str,
+        execution_id: str | None = None,
     ) -> dict[str, Any]:
         if not isinstance(content, bytes):
             raise TypeError("content must be bytes")
@@ -164,6 +165,9 @@ class FileSystemObjectStore:
             raise ValueError("producer_commit must be a non-empty string")
         if not isinstance(producer_runtime, str) or not producer_runtime:
             raise ValueError("producer_runtime must be a non-empty string")
+        if execution_id is not None and (
+                not isinstance(execution_id, str) or re.fullmatch(r"[0-9a-f]{64}", execution_id) is None):
+            raise ValueError("execution_id must be null or a lowercase SHA-256")
         operation_id = self._operation_id(idempotency_key)
         content_hash = _sha(content)
         manifest = {
@@ -177,6 +181,8 @@ class FileSystemObjectStore:
             "producer_commit": producer_commit,
             "producer_runtime": producer_runtime,
         }
+        if execution_id is not None:
+            manifest["execution_id"] = execution_id
         manifest_raw = canonicalize(manifest)
         operation_path = self._operation_path(operation_id)
         with ledger_lock(operation_path):
