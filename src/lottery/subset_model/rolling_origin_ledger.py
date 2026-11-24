@@ -408,8 +408,14 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
         "actual_target_record_count": len(ledger),
         "model_artifact_count": len(artifact_lines),
         "output_files": {
-            "target-score-ledger.jsonl": {"sha256": _sha256(ledger_bytes), "bytes": len(ledger_bytes)},
-            "model-artifacts.jsonl": {"sha256": _sha256(artifact_file_bytes), "bytes": len(artifact_file_bytes)},
+            "target-score-ledger.jsonl": {
+                "schema_version": "lottery.target-score-ledger/v1",
+                "sha256": _sha256(ledger_bytes), "bytes": len(ledger_bytes),
+            },
+            "model-artifacts.jsonl": {
+                "schema_version": "lottery.subset-probability-model/v1",
+                "sha256": _sha256(artifact_file_bytes), "bytes": len(artifact_file_bytes),
+            },
         },
         "terminal_status_counts": {
             status: sum(1 for row in ledger if row["terminal_status"] == status)
@@ -420,6 +426,7 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
     manifest["manifest_sha256"] = _hash_object(manifest)
     if experiment_binding is not None:
         manifest["output_files"]["model-artifact-provenance.jsonl"] = {
+            "schema_version": "lottery.model-artifact-provenance/v1",
             "sha256": _sha256(artifact_provenance_bytes),
             "bytes": len(artifact_provenance_bytes),
         }

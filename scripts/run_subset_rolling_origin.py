@@ -296,9 +296,11 @@ def _finish_registered_execution(
             raise ValueError("manifest output filename is not a safe basename")
         raw = (output_dir / filename).read_bytes()
         if (not isinstance(declaration, dict)
+                or not isinstance(declaration.get("schema_version"), str)
+                or not declaration["schema_version"]
                 or declaration.get("sha256") != hashlib.sha256(raw).hexdigest()
                 or declaration.get("bytes") != len(raw)):
-            raise ValueError(f"manifest output declaration does not match bytes: {filename}")
+            raise ValueError(f"manifest output declaration schema/digest/length does not match bytes: {filename}")
         payloads[filename] = raw
 
     storage_receipts = {}

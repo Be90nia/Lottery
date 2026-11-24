@@ -219,6 +219,11 @@ class G3RuntimeBindingTests(unittest.TestCase):
             "terminal_status_counts": {"fit_failed": len(target_records)},
             "output_files": {
                 filename: {
+                    "schema_version": {
+                        "target-score-ledger.jsonl": "lottery.target-score-ledger/v1",
+                        "model-artifacts.jsonl": "lottery.subset-probability-model/v1",
+                        "model-artifact-provenance.jsonl": "lottery.model-artifact-provenance/v1",
+                    }[filename],
                     "sha256": runner.hashlib.sha256(raw).hexdigest(),
                     "bytes": len(raw),
                 }
@@ -403,6 +408,18 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertEqual(
             manifest["output_files"]["model-artifact-provenance.jsonl"]["sha256"],
             runner.hashlib.sha256(provenance_raw).hexdigest(),
+        )
+        self.assertEqual(
+            manifest["output_files"]["target-score-ledger.jsonl"]["schema_version"],
+            "lottery.target-score-ledger/v1",
+        )
+        self.assertEqual(
+            manifest["output_files"]["model-artifacts.jsonl"]["schema_version"],
+            "lottery.subset-probability-model/v1",
+        )
+        self.assertEqual(
+            manifest["output_files"]["model-artifact-provenance.jsonl"]["schema_version"],
+            "lottery.model-artifact-provenance/v1",
         )
         self.assertEqual(ledger_first["experiment_id"], binding["experiment_id"])
         self.assertEqual(ledger_first["trial_id"], binding["trial_id"])

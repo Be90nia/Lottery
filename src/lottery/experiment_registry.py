@@ -1183,14 +1183,25 @@ class ExperimentRegistry:
         if provenance_ids != artifact_ids:
             raise ExperimentRegistryError("LOT-065 artifact provenance does not cover the exact model artifact set")
         declared = manifest.get("output_files") if isinstance(manifest, dict) else None
-        if not isinstance(declared, dict) or set(bundle) != set(declared) | {"run_manifest.json"}:
+        expected_output_schemas = {
+            "target-score-ledger.jsonl": "lottery.target-score-ledger/v1",
+            "model-artifacts.jsonl": "lottery.subset-probability-model/v1",
+            "model-artifact-provenance.jsonl": "lottery.model-artifact-provenance/v1",
+        }
+        if (not isinstance(declared, dict)
+                or set(declared) != set(expected_output_schemas)
+                or set(bundle) != set(declared) | {"run_manifest.json"}):
             raise ExperimentRegistryError("LOT-065 receipt bundle does not cover the exact manifest output set")
         for filename, declaration in declared.items():
             raw = resolved.get(filename)
             if (raw is None or not isinstance(declaration, dict)
+                    or set(declaration) != {"schema_version", "sha256", "bytes"}
+                    or declaration.get("schema_version") != expected_output_schemas[filename]
                     or declaration.get("sha256") != _sha(raw)
                     or declaration.get("bytes") != len(raw)):
-                raise ExperimentRegistryError(f"LOT-065 stored output does not match manifest declaration: {filename}")
+                raise ExperimentRegistryError(
+                    f"LOT-065 stored output schema/digest/length does not match manifest declaration: {filename}"
+                )
         if _sha(resolved["model-artifacts.jsonl"]) != artifact_sha256:
             raise ExperimentRegistryError("LOT-065 model artifact bytes do not match the terminal artifact digest")
 

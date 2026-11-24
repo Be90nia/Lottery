@@ -482,6 +482,11 @@ class ExecutionReconciliationTests(unittest.TestCase):
         for filename, raw in outputs.items():
             (output_dir / filename).write_bytes(raw)
             declarations[filename] = {
+                "schema_version": {
+                    "target-score-ledger.jsonl": "lottery.target-score-ledger/v1",
+                    "model-artifacts.jsonl": "lottery.subset-probability-model/v1",
+                    "model-artifact-provenance.jsonl": "lottery.model-artifact-provenance/v1",
+                }[filename],
                 "sha256": __import__("hashlib").sha256(raw).hexdigest(),
                 "bytes": len(raw),
             }
