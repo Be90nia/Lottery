@@ -166,6 +166,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PYTHONPATH: .:src
+      FULL_JOB_RESULT: ${{ needs.full-rolling-origin.result }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -236,11 +237,18 @@ jobs:
           if len(all_attempts) < 2:
               raise SystemExit("independent execution history was not preserved across workflow runs")
           _, _, attempt = current[0]
+          job_result = os.environ["FULL_JOB_RESULT"]
+          if job_result == "success" and attempt["status"] != "succeeded":
+              raise SystemExit("successful evaluator job lacks a succeeded registry attempt")
+          if job_result != "success" and attempt["status"] == "succeeded":
+              raise SystemExit("registry claims success although the evaluator job failed")
           if attempt["status"] == "succeeded" and not attempt.get("storage_receipts_sha256"):
               raise SystemExit("successful execution is missing its LOT-065 receipt bundle")
           if attempt["status"] == "running":
               raise SystemExit("workflow ended with a registry attempt still running")
           store_report = FileSystemObjectStore(storage_root).reconcile()
+          if store_report.get("read_only") is not True:
+              raise SystemExit("LOT-065 reconciliation did not run in read-only mode")
           if any(store_report.get(key) for key in (
               "staged_without_validation", "validated_without_commit", "committed_unreferenced",
               "dangling_pointers", "corrupt_commit_receipts", "corrupt_objects", "orphan_objects",
