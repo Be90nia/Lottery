@@ -32,6 +32,23 @@ REPOSITORY_ID = "1461523125"
 WORKFLOW_PATH = ".github/workflows/subset-research.yml"
 WORKFLOW_ID = 423307604
 
+# This one-shot migration is authorized for exactly one immutable historical
+# evaluator invocation and artifact. The evidence JSON is checked against
+# these constants before any GitHub API request; it cannot redirect the import
+# to another otherwise-valid run of the same workflow.
+HISTORICAL_RUN_ID = 44685498725
+HISTORICAL_RUN_ATTEMPT = 1
+HISTORICAL_RUN_NUMBER = 71
+HISTORICAL_RUN_BRANCH = "feat/lot-055-preregistered-holm-inference"
+HISTORICAL_RUN_SHA = "ca364a3150122e038332df4bbd03d43274503d7e"
+HISTORICAL_RUN_EVENT = "push"
+HISTORICAL_RUN_REF = "refs/heads/feat/lot-055-preregistered-holm-inference"
+HISTORICAL_JOB_ID = 136118730705
+HISTORICAL_ARTIFACT_ID = 14612805677
+HISTORICAL_ARTIFACT_NAME = "exact-subset-rolling-origin"
+HISTORICAL_ARTIFACT_SIZE = 21990827
+HISTORICAL_ARTIFACT_SHA256 = "d165d08dc1214e79f31c50101dc5a4920233fb998b14c6ff0f56197919041804"
+
 
 class _NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -211,9 +228,26 @@ def _verify_github_sources(evidence: dict, token: str) -> tuple[dict, dict]:
         raise ValueError("historical evidence repository identity differs from the fixed allowlist")
     expected_run = evidence.get("run")
     if (not isinstance(expected_run, dict)
+            or expected_run.get("id") != HISTORICAL_RUN_ID
+            or expected_run.get("run_attempt") != HISTORICAL_RUN_ATTEMPT
+            or expected_run.get("run_number") != HISTORICAL_RUN_NUMBER
             or expected_run.get("workflow_id") != WORKFLOW_ID
-            or expected_run.get("workflow_path") != WORKFLOW_PATH):
-        raise ValueError("historical evidence workflow identity differs from the fixed allowlist")
+            or expected_run.get("workflow_path") != WORKFLOW_PATH
+            or expected_run.get("head_branch") != HISTORICAL_RUN_BRANCH
+            or expected_run.get("head_sha") != HISTORICAL_RUN_SHA
+            or expected_run.get("event") != HISTORICAL_RUN_EVENT
+            or expected_run.get("ref") != HISTORICAL_RUN_REF):
+        raise ValueError("historical evidence run identity differs from the fixed historical-run allowlist")
+    expected_artifact = evidence.get("artifact")
+    if (not isinstance(expected_artifact, dict)
+            or expected_artifact.get("id") != HISTORICAL_ARTIFACT_ID
+            or expected_artifact.get("name") != HISTORICAL_ARTIFACT_NAME
+            or expected_artifact.get("size_in_bytes") != HISTORICAL_ARTIFACT_SIZE
+            or expected_artifact.get("digest") != "sha256:" + HISTORICAL_ARTIFACT_SHA256):
+        raise ValueError("historical evidence artifact identity differs from the fixed historical-artifact allowlist")
+    expected_job = evidence.get("job")
+    if not isinstance(expected_job, dict) or expected_job.get("id") != HISTORICAL_JOB_ID:
+        raise ValueError("historical evidence job identity differs from the fixed historical-job allowlist")
     run_id = expected_run["id"]
     run = _api_json(f"{API}/repos/{REPOSITORY}/actions/runs/{run_id}", token)
     job_payload = _api_json(f"{API}/repos/{REPOSITORY}/actions/runs/{run_id}/jobs?per_page=100", token)
@@ -274,8 +308,7 @@ def _verify_github_sources(evidence: dict, token: str) -> tuple[dict, dict]:
             or evaluator_step.get("conclusion") != "success"):
         raise ValueError("historical evaluator step timestamps or conclusion differ from pinned evidence")
 
-    expected_artifact = evidence["artifact"]
-    artifacts = [item for item in artifact_payload.get("artifacts", []) if item.get("id") == expected_artifact["id"]]
+    artifacts = [item for item in artifact_payload.get("artifacts", []) if item.get("id") == HISTORICAL_ARTIFACT_ID]
     if len(artifacts) != 1:
         raise ValueError("live GitHub Actions API did not return exactly one expected artifact")
     artifact = artifacts[0]
