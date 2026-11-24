@@ -1256,15 +1256,6 @@ def _run_impl(
                         "Holm statistics are descriptive only for this post-outcome optimizer-repair child experiment",
                         "not eligible for confirmatory claims under LOT-064/Issue #27"],
     }
-    immutable_outputs = write_immutable_outputs(
-        result, rows, snapshot_path, output_path,
-        experiment_binding=experiment_binding,
-    )
-    result["immutable_outputs"] = immutable_outputs
-    if registry is not None and experiment_binding is not None:
-        result["registry_run_receipt"] = _finish_registered_execution(
-            registry, experiment_binding, output_path,
-        )
     # The canonical model payloads live in model-artifacts.jsonl and the
     # checkpoint ledgers. Keep only their content IDs in the human report.
     for zone in ("front", "back"):
@@ -1274,9 +1265,21 @@ def _run_impl(
                 for name, entry in target_record.pop("model_artifacts").items()
             }
             target_record["checkpoint_record_sha256"] = target_record.pop("record_sha256")
+    # Write the report before the manifest is sealed so its exact bytes, length,
+    # schema and digest can be included in the immutable output set and LOT-065
+    # commit/read-back chain. The post-terminal registry receipt remains separate.
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
                            encoding="utf-8")
+    immutable_outputs = write_immutable_outputs(
+        result, rows, snapshot_path, output_path,
+        experiment_binding=experiment_binding,
+    )
+    result["immutable_outputs"] = immutable_outputs
+    if registry is not None and experiment_binding is not None:
+        result["registry_run_receipt"] = _finish_registered_execution(
+            registry, experiment_binding, output_path,
+        )
     print("SUBSET_MODEL_ROLLING_ORIGIN_RESULT=" + json.dumps({
         "snapshot_sha256": digest, "target_count_per_zone": result["target_count_per_zone"],
         "front_complete": front["complete_coverage"], "back_complete": back["complete_coverage"],
