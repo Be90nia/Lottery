@@ -65,6 +65,30 @@ class FileSystemObjectStoreTests(unittest.TestCase):
                 producer_runtime="CPython 3.12",
             )
 
+    def test_stage_persists_execution_identity_for_reconciliation(self):
+        execution_id = "e" * 64
+        staged = self.store.stage(
+            idempotency_key="execution-bound-stage",
+            content=b"run output",
+            media_type="application/octet-stream",
+            schema_version="g3-output/v1",
+            producer_commit="f" * 40,
+            producer_runtime="CPython 3.12",
+            execution_id=execution_id,
+        )
+        operation = self.store._read_canonical(self.store._operation_path(staged["operation_id"]))
+        self.assertEqual(operation["execution_id"], execution_id)
+        with self.assertRaisesRegex(ValueError, "execution_id"):
+            self.store.stage(
+                idempotency_key="bad-execution-stage",
+                content=b"run output",
+                media_type="application/octet-stream",
+                schema_version="g3-output/v1",
+                producer_commit="f" * 40,
+                producer_runtime="CPython 3.12",
+                execution_id="not-a-digest",
+            )
+
     def test_commit_requires_validation_and_pointer_is_cas_published(self):
         staged = self.store.stage(
             idempotency_key="inventory-1",
