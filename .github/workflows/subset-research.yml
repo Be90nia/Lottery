@@ -276,6 +276,16 @@ jobs:
                  and item.get("run_id") == current_run for item in report.get("findings", [])):
               raise SystemExit("current workflow run has no immutable registry binding")
           snapshot = ExperimentRegistry(registry_root).snapshot()
+          all_attempts = [
+              attempt
+              for experiment in snapshot["experiments"].values()
+              for attempt in experiment["attempts"].values()
+          ]
+          if not any(
+              attempt.get("imported") is True and attempt.get("status") == "completed_uncommitted"
+              for attempt in all_attempts
+          ):
+              raise SystemExit("persistent registry is missing the verified retrospective G3 execution")
           current = []
           for experiment_id, experiment in snapshot["experiments"].items():
               for attempt_id, attempt in experiment["attempts"].items():
@@ -283,6 +293,8 @@ jobs:
                       current.append((experiment_id, attempt_id, attempt))
           if len(current) != 1:
               raise SystemExit(f"expected exactly one registry attempt for current run, found {len(current)}")
+          if len(all_attempts) < 2:
+              raise SystemExit("independent execution history was not preserved across workflow runs")
           _, _, attempt = current[0]
           if attempt["status"] == "succeeded" and not attempt.get("storage_receipts_sha256"):
               raise SystemExit("successful execution is missing its LOT-065 receipt bundle")
