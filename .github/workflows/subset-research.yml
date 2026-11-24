@@ -85,8 +85,9 @@ jobs:
           destination.write_bytes(raw)
           print(f"Verified frozen snapshot: bytes={len(raw)} sha256={expected}")
           PY
-      # Registry and object-store receipts are restored; model checkpoints are not.
-      # A new Actions attempt must produce its own run-bound model artifacts.
+      # Restore registry and LOT-065 receipts across runs, including cancelled runs
+      # when they have an artifact. Never restore model checkpoints: each execution
+      # must produce its own model artifacts bound to its own Actions attempt.
       - name: Restore append-only registry and LOT-065 object history
         env:
           GH_TOKEN: ${{ github.token }}
@@ -95,8 +96,8 @@ jobs:
           set -euo pipefail
           branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           previous_runs="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
-            --json databaseId,status,conclusion \
-            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed" and .conclusion != "cancelled")) | .[].databaseId')"
+            --json databaseId,status \
+            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed")) | .[].databaseId')"
           restored=false
           while IFS= read -r previous_run; do
             [ -n "$previous_run" ] || continue
