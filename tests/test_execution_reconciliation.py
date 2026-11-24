@@ -278,6 +278,25 @@ class ExecutionReconciliationTests(unittest.TestCase):
         output_dir = self.root.parent / "outputs"
         output_dir.mkdir()
         output_path = output_dir / "evaluation.json"
+        trial_id = __import__("hashlib").sha256(
+            runner.canonicalize(self.spec["trial_plan"][0])
+        ).hexdigest()
+        binding = {
+            "experiment_id": self.registered["experiment_id"],
+            "spec_sha256": self.registered["spec_sha256"],
+            "experiment_class": "exploratory",
+            "approval_sha256": None,
+            "approval_required": False,
+            "approval_disposition": "not_required_exploratory",
+            "approval_disposition_reason": "test-only exploratory binding",
+            "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
+            "legacy_child_registration_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
+            "legacy_child_registration_comment_sha256": "a" * 64,
+            "parent_lineage_disposition": "test-only lineage",
+            "trial_id": trial_id,
+            "attempt_id": "attempt-1",
+            "execution_context": self.context,
+        }
         artifact_id = "sha256:" + "a" * 64
         target_row = {
             "zone": "front", "model_name": "candidate", "target_draw_id": "09054",
@@ -322,25 +341,6 @@ class ExecutionReconciliationTests(unittest.TestCase):
                 "sha256": __import__("hashlib").sha256(raw).hexdigest(),
                 "bytes": len(raw),
             }
-        trial_id = __import__("hashlib").sha256(
-            runner.canonicalize(self.spec["trial_plan"][0])
-        ).hexdigest()
-        binding = {
-            "experiment_id": self.registered["experiment_id"],
-            "spec_sha256": self.registered["spec_sha256"],
-            "experiment_class": "exploratory",
-            "approval_sha256": None,
-            "approval_required": False,
-            "approval_disposition": "not_required_exploratory",
-            "approval_disposition_reason": "test-only exploratory binding",
-            "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
-            "legacy_child_registration_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
-            "legacy_child_registration_comment_sha256": "a" * 64,
-            "parent_lineage_disposition": "test-only lineage",
-            "trial_id": trial_id,
-            "attempt_id": "attempt-1",
-            "execution_context": self.context,
-        }
         manifest = {
             "run_id": "evaluation-domain-id",
             "status": "complete_with_explicit_failures",
