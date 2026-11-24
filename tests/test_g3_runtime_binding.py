@@ -129,17 +129,21 @@ class G3RuntimeBindingTests(unittest.TestCase):
         training_last_draw_id = self.rows[runner.MIN_TRAIN - 1]["draw_id"]
         for model in model_pairs:
             for target in target_rows:
+                analytic_uniform = model["model_name"] == "uniform"
                 target_row = {
                     "zone": model["zone"],
                     "model_name": model["model_name"],
+                    "model_family": "uniform_analytic" if analytic_uniform else "test_model",
+                    "converged": analytic_uniform,
+                    "optimizer_solver_status": "analytic_closed_form" if analytic_uniform else "fit_failed",
                     "target_draw_id": target["draw_id"],
                     "target_draw_date": target["draw_date"],
                     "training_last_draw_id": training_last_draw_id,
                     "training_row_count": runner.MIN_TRAIN,
                     "training_dates_strictly_before_target": True,
-                    "terminal_status": "fit_failed",
-                    "artifact_id": artifact_id,
-                    "diagnostic_ref": artifact_id,
+                    "terminal_status": "scored" if analytic_uniform else "fit_failed",
+                    "artifact_id": None if analytic_uniform else artifact_id,
+                    "diagnostic_ref": None if analytic_uniform else artifact_id,
                     "experiment_id": binding["experiment_id"],
                     "trial_id": binding["trial_id"],
                     "registry_attempt_id": binding["attempt_id"],
@@ -217,7 +221,10 @@ class G3RuntimeBindingTests(unittest.TestCase):
             "actual_target_record_count": len(target_records),
             "model_artifact_count": 1,
             "model_artifact_provenance_count": 1,
-            "terminal_status_counts": {"fit_failed": len(target_records)},
+            "terminal_status_counts": {
+                "fit_failed": len(target_records) - 2 * len(target_rows),
+                "scored": 2 * len(target_rows),
+            },
             "output_files": {
                 filename: {
                     "schema_version": {
