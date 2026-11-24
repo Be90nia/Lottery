@@ -208,7 +208,6 @@ jobs:
             registry-run-receipt.json
             experiment-registry/
             experiment-storage/
-            subset-model-checkpoints/
           if-no-files-found: warn
           retention-days: 90
 
