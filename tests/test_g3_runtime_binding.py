@@ -259,6 +259,10 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertTrue(receipt["terminal_event_sha256"])
         self.assertEqual(receipt["event_chain_head_sha256"], receipt["terminal_event_sha256"])
         self.assertEqual(receipt["event_count_at_terminal"], 4)
+        self.assertEqual(
+            [event["event_type"] for event in registry._read_events()],
+            ["experiment_registered", "trial_started", "artifacts_committed", "trial_finished"],
+        )
         self.assertIsNotNone(attempt["artifacts_committed"])
         self.assertEqual(
             attempt["artifacts_committed"]["storage_receipts_sha256"],
