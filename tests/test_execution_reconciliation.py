@@ -51,12 +51,12 @@ class ExecutionReconciliationTests(unittest.TestCase):
             "repository_id": "1461523125",
             "workflow_id": 423307604,
             "workflow_path": ".github/workflows/subset-research.yml",
-            "workflow_ref": "Be90nia/Lottery/.github/workflows/subset-research.yml@refs/heads/test",
+            "workflow_ref": "Be90nia/Lottery/.github/workflows/subset-research.yml@refs/heads/feat/lot-064-g3-runtime-binding-isolated",
             "run_id": 123456,
             "run_attempt": 1,
             "job": "full-rolling-origin",
             "event_name": "push",
-            "ref": "refs/heads/test",
+            "ref": "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
             "sha": "a" * 40,
             "actor": "test",
             "run_url": "https://github.com/Be90nia/Lottery/actions/runs/123456",
@@ -79,7 +79,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
     def test_running_registry_attempt_against_completed_workflow_is_reported(self):
         run = {
             "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
-            "path": ".github/workflows/subset-research.yml@refs/heads/test", "head_sha": "a" * 40,
+            "path": ".github/workflows/subset-research.yml@refs/heads/feat/lot-064-g3-runtime-binding-isolated", "head_sha": "a" * 40,
             # GitHub Actions API omits ref on this endpoint; head_branch is
             # the authoritative equivalent for a branch-triggered run.
             "event": "push", "head_branch": "test", "status": "completed",
@@ -148,7 +148,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
         with patch.object(reconciler, "_api_json", return_value={
             "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
             "path": ".github/workflows/subset-research.yml", "head_sha": "a" * 40,
-            "event": "push", "ref": "refs/heads/test", "status": "in_progress",
+            "event": "push", "ref": "refs/heads/feat/lot-064-g3-runtime-binding-isolated", "status": "in_progress",
             "repository": {"id": 1461523125},
         }), patch.object(reconciler, "_paged_items", return_value=[
             {"id": 999999, "run_attempt": 1, "path": ".github/workflows/subset-research.yml",
@@ -184,8 +184,8 @@ class ExecutionReconciliationTests(unittest.TestCase):
         def run(attempt, status):
             return {
                 "id": 123456, "run_attempt": attempt, "workflow_id": 423307604,
-                "path": ".github/workflows/subset-research.yml@refs/heads/test",
-                "head_sha": "a" * 40, "event": "push", "ref": "refs/heads/test",
+                "path": ".github/workflows/subset-research.yml@refs/heads/feat/lot-064-g3-runtime-binding-isolated",
+                "head_sha": "a" * 40, "event": "push", "ref": "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
                 "status": status, "conclusion": "success" if status == "completed" else None,
                 "repository": {"id": 1461523125},
             }
@@ -250,8 +250,8 @@ class ExecutionReconciliationTests(unittest.TestCase):
         )
         run = {
             "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
-            "path": ".github/workflows/subset-research.yml@refs/heads/test",
-            "head_sha": "a" * 40, "event": "push", "ref": "refs/heads/test",
+            "path": ".github/workflows/subset-research.yml@refs/heads/feat/lot-064-g3-runtime-binding-isolated",
+            "head_sha": "a" * 40, "event": "push", "ref": "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
             "status": "completed", "conclusion": "success",
             "repository": {"id": 1461523125},
         }
@@ -396,8 +396,8 @@ class ExecutionReconciliationTests(unittest.TestCase):
 
         run = {
             "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
-            "path": ".github/workflows/subset-research.yml@refs/heads/test",
-            "head_sha": "a" * 40, "event": "push", "ref": "refs/heads/test",
+            "path": ".github/workflows/subset-research.yml@refs/heads/feat/lot-064-g3-runtime-binding-isolated",
+            "head_sha": "a" * 40, "event": "push", "ref": "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
             "status": "completed", "conclusion": "success",
             "repository": {"id": 1461523125},
         }
@@ -423,7 +423,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
         run = {
             "id": 123456, "run_attempt": 2, "workflow_id": 423307604,
             "path": ".github/workflows/subset-research.yml", "head_sha": "c" * 40,
-            "event": "push", "ref": "refs/heads/test", "status": "in_progress",
+            "event": "push", "ref": "refs/heads/feat/lot-064-g3-runtime-binding-isolated", "status": "in_progress",
             "repository": {"id": 1461523125},
         }
         with patch.object(reconciler, "_api_json", return_value=run), patch.object(
