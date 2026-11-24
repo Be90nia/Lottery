@@ -303,7 +303,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             target_row = {
                 "zone": "front", "model_name": "candidate",
                 "target_draw_id": target_id, "target_draw_date": target_date,
-                "training_last_draw_id": "26130", "training_row_count": 1,
+                "training_last_draw_id": "09053", "training_row_count": 1,
                 "training_dates_strictly_before_target": True, "terminal_status": "fit_failed",
                 "artifact_id": artifact_id, "diagnostic_ref": artifact_id,
                 "experiment_id": self.registered["experiment_id"], "trial_id": trial_id,
