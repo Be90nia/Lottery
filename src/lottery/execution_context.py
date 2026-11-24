@@ -70,6 +70,18 @@ def validate_execution_context(
     for field in ("job", "event_name", "ref", "actor"):
         if not isinstance(context[field], str) or not context[field].strip():
             raise ExecutionContextError(f"{field} must be a non-empty string")
+    allowed_refs_by_event = {
+        "push": {
+            "refs/heads/feat/lot-055-preregistered-holm-inference",
+            "refs/heads/feat/lot-063-prospective-score-ledger",
+            "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
+        },
+        "workflow_dispatch": {
+            "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
+        },
+    }
+    if context["ref"] not in allowed_refs_by_event.get(context["event_name"], set()):
+        raise ExecutionContextError("execution event/ref does not match the explicit workflow allowlist")
     if not isinstance(context["sha"], str) or re.fullmatch(r"[0-9a-f]{40}", context["sha"]) is None:
         raise ExecutionContextError("sha must be a lowercase 40-character commit SHA")
     expected_url = f"https://github.com/{expected_repository}/actions/runs/{context['run_id']}"
