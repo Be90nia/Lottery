@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from lottery.experiment_registry import ExperimentRegistry
 from scripts import reconcile_experiment_executions as reconciler
+from scripts import run_subset_rolling_origin as runner
 
 
 def _sha(value):
@@ -223,6 +224,69 @@ class ExecutionReconciliationTests(unittest.TestCase):
         codes = {item["code"] for item in report["findings"]}
         self.assertIn("imported_source_artifact_mismatch", codes)
         self.assertIn("historical_execution_not_durably_committed", codes)
+
+
+    def test_committed_storage_bundle_without_terminal_event_is_reported_read_only(self):
+        output_dir = self.root.parent / "outputs"
+        output_dir.mkdir()
+        output_path = output_dir / "evaluation.json"
+        outputs = {
+            "target-score-ledger.jsonl": b'{"record_type":"target"}\\n',
+            "model-artifacts.jsonl": b'{"artifact_id":"sha256:' + b"a" * 64 + b'"}\\n',
+            "model-artifact-provenance.jsonl": b'{"artifact_id":"sha256:' + b"a" * 64 + b'"}\\n',
+        }
+        declarations = {}
+        for filename, raw in outputs.items():
+            (output_dir / filename).write_bytes(raw)
+            declarations[filename] = {
+                "sha256": __import__("hashlib").sha256(raw).hexdigest(),
+                "bytes": len(raw),
+            }
+        manifest = {
+            "run_id": "evaluation-domain-id",
+            "status": "complete_with_explicit_failures",
+            "confirmatory_eligible": False,
+            "output_files": declarations,
+        }
+        (output_dir / "run_manifest.json").write_bytes(
+            runner.canonicalize(manifest) + b"\\n"
+        )
+        binding = {
+            "experiment_id": self.registered["experiment_id"],
+            "trial_id": __import__("hashlib").sha256(
+                runner.canonicalize(self.spec["trial_plan"][0])
+            ).hexdigest(),
+            "attempt_id": "attempt-1",
+            "execution_context": self.context,
+        }
+        with patch.object(self.registry, "finish_trial", side_effect=RuntimeError("crash after commit")):
+            with self.assertRaisesRegex(RuntimeError, "crash after commit"):
+                runner._finish_registered_execution(self.registry, binding, output_path)
+
+        run = {
+            "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
+            "path": ".github/workflows/subset-research.yml@refs/heads/test",
+            "head_sha": "a" * 40, "event": "push", "ref": "refs/heads/test",
+            "status": "completed", "conclusion": "success",
+            "repository": {"id": 1461523125},
+        }
+        with patch.object(reconciler, "_api_json", return_value=run), patch.object(
+            reconciler, "_paged_items", return_value=[]
+        ):
+            report = reconciler.reconcile(
+                registry_root=self.root, token="test",
+                repository="Be90nia/Lottery", repository_id="1461523125",
+                workflow_id=423307604,
+                workflow_path=".github/workflows/subset-research.yml",
+            )
+        codes = {item["code"] for item in report["findings"]}
+        self.assertIn("storage_bundle_valid_but_terminal_missing", codes)
+        self.assertIn("workflow_terminal_registry_running", codes)
+        self.assertEqual(
+            self.registry.snapshot()["experiments"][self.registered["experiment_id"]]
+            ["attempts"]["attempt-1"]["status"],
+            "running",
+        )
 
     def test_execution_identity_mismatch_is_reported(self):
         run = {
