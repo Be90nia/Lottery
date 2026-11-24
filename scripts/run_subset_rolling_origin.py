@@ -1257,9 +1257,11 @@ def _run_impl(
                         "not eligible for confirmatory claims under LOT-064/Issue #27"],
     }
     # The canonical model payloads live in model-artifacts.jsonl and the
-    # checkpoint ledgers. Keep only their content IDs in the human report.
+    # checkpoint ledgers. Keep only their content IDs in the human report while
+    # retaining full payloads in the in-memory result for ledger generation.
+    summary_result = json.loads(json.dumps(result, ensure_ascii=False))
     for zone in ("front", "back"):
-        for target_record in result[zone]["target_records"]:
+        for target_record in summary_result[zone]["target_records"]:
             target_record["model_artifact_ids"] = {
                 name: (entry["artifact_id"] if entry is not None else None)
                 for name, entry in target_record.pop("model_artifacts").items()
@@ -1269,7 +1271,7 @@ def _run_impl(
     # schema and digest can be included in the immutable output set and LOT-065
     # commit/read-back chain. The post-terminal registry receipt remains separate.
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+    output_path.write_text(json.dumps(summary_result, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
                            encoding="utf-8")
     immutable_outputs = write_immutable_outputs(
         result, rows, snapshot_path, output_path,
