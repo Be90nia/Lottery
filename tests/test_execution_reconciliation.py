@@ -335,7 +335,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             },
             "output_files": declarations,
         }
-        manifest["manifest_sha256"] = __import__("hashlib").sha256(
+        manifest["manifest_sha256"] = "sha256:" + __import__("hashlib").sha256(
             runner.canonicalize(manifest)
         ).hexdigest()
         (output_dir / "run_manifest.json").write_bytes(
