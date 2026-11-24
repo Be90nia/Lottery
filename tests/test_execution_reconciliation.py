@@ -298,19 +298,23 @@ class ExecutionReconciliationTests(unittest.TestCase):
             "execution_context": self.context,
         }
         artifact_id = "sha256:" + "a" * 64
-        target_row = {
-            "zone": "front", "model_name": "candidate", "target_draw_id": "09054",
-            "training_last_draw_id": "09053", "training_row_count": 1,
-            "training_dates_strictly_before_target": True, "terminal_status": "fit_failed",
-            "artifact_id": artifact_id, "diagnostic_ref": artifact_id,
-            "experiment_id": self.registered["experiment_id"], "trial_id": trial_id,
-            "registry_attempt_id": "attempt-1", "execution_id": self.context["execution_id"],
-            "approval_sha256": None, "approval_required": False,
-            "approval_disposition": "not_required_exploratory",
-        }
-        target_row["record_sha256"] = "sha256:" + __import__("hashlib").sha256(
-            runner.canonicalize(target_row)
-        ).hexdigest()
+        target_records = []
+        for target_id, target_date in (("26131", "2026-11-18"), ("26132", "2026-11-20")):
+            target_row = {
+                "zone": "front", "model_name": "candidate",
+                "target_draw_id": target_id, "target_draw_date": target_date,
+                "training_last_draw_id": "26130", "training_row_count": 1,
+                "training_dates_strictly_before_target": True, "terminal_status": "fit_failed",
+                "artifact_id": artifact_id, "diagnostic_ref": artifact_id,
+                "experiment_id": self.registered["experiment_id"], "trial_id": trial_id,
+                "registry_attempt_id": "attempt-1", "execution_id": self.context["execution_id"],
+                "approval_sha256": None, "approval_required": False,
+                "approval_disposition": "not_required_exploratory",
+            }
+            target_row["record_sha256"] = "sha256:" + __import__("hashlib").sha256(
+                runner.canonicalize(target_row)
+            ).hexdigest()
+            target_records.append(target_row)
         artifact_record = {"artifact_id": artifact_id}
         provenance_record = {
             "schema": "lottery.model-artifact-provenance/v1",
@@ -330,7 +334,9 @@ class ExecutionReconciliationTests(unittest.TestCase):
             "evaluation_run_id": "evaluation-domain-id",
         }
         outputs = {
-            "target-score-ledger.jsonl": runner.canonicalize(target_row) + b"\n",
+            "target-score-ledger.jsonl": b"".join(
+                runner.canonicalize(row) + b"\n" for row in target_records
+            ),
             "model-artifacts.jsonl": runner.canonicalize(artifact_record) + b"\n",
             "model-artifact-provenance.jsonl": runner.canonicalize(provenance_record) + b"\n",
         }
@@ -348,16 +354,16 @@ class ExecutionReconciliationTests(unittest.TestCase):
             "experiment_id": self.registered["experiment_id"],
             "experiment_class": "exploratory",
             "target_manifest": {
-                "target_count_per_zone": 1,
-                "first_target_draw_id": "09054",
-                "last_target_draw_id": "09054",
+                "target_count_per_zone": 2,
+                "first_target_draw_id": "26131",
+                "last_target_draw_id": "26132",
             },
             "models": [{"zone": "front", "model_name": "candidate"}],
-            "expected_target_record_count": 1,
-            "actual_target_record_count": 1,
+            "expected_target_record_count": 2,
+            "actual_target_record_count": 2,
             "model_artifact_count": 1,
             "model_artifact_provenance_count": 1,
-            "terminal_status_counts": {"fit_failed": 1},
+            "terminal_status_counts": {"fit_failed": 2},
             "experiment_binding": {
                 "schema": "lottery.experiment-run-binding/v1",
                 "experiment_id": binding["experiment_id"],
