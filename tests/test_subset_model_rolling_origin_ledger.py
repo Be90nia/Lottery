@@ -261,6 +261,19 @@ class ImmutableRollingOriginLedgerTests(unittest.TestCase):
             artifact_records = artifacts_path.read_text().splitlines()
             self.assertEqual(len(artifact_records), 6)
 
+    def test_human_summary_is_declared_by_exact_bytes_in_run_manifest(self):
+        rows, result = _fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "subset-model-rolling-origin.json"
+            summary_raw = b'{"report":"immutable"}\\n'
+            output.write_bytes(summary_raw)
+            write_immutable_outputs(result, rows, Path("snapshot.jsonl"), output)
+            manifest = json.loads((output.parent / "run_manifest.json").read_text())
+            declaration = manifest["output_files"][output.name]
+            self.assertEqual(declaration["schema_version"], "lottery.g3-summary-report/v1")
+            self.assertEqual(declaration["sha256"], hashlib.sha256(summary_raw).hexdigest())
+            self.assertEqual(declaration["bytes"], len(summary_raw))
+
     def test_failed_fit_is_explicit_and_never_gets_a_score(self):
         rows, result = _fixture(fail_candidate=True)
         with tempfile.TemporaryDirectory() as directory:
