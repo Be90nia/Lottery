@@ -92,10 +92,16 @@ jobs:
           branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           restored=false
           if [ "${GITHUB_RUN_ATTEMPT:-1}" -gt 1 ]; then
+            previous_attempt="$((GITHUB_RUN_ATTEMPT - 1))"
             rm -rf previous-history
             mkdir -p previous-history
-            if gh run download "$GITHUB_RUN_ID" --name exact-subset-rolling-origin --dir previous-history \
-                && [ -f previous-history/experiment-registry/events.jsonl ]; then
+            if ! gh run download "$GITHUB_RUN_ID" \
+                --name "exact-subset-rolling-origin-attempt-$previous_attempt" --dir previous-history; then
+              rm -rf previous-history
+              mkdir -p previous-history
+              gh run download "$GITHUB_RUN_ID" --name exact-subset-rolling-origin --dir previous-history || true
+            fi
+            if [ -f previous-history/experiment-registry/events.jsonl ]; then
               mkdir -p experiment-registry
               cp -a previous-history/experiment-registry/. experiment-registry/
               if [ -d previous-history/experiment-storage ]; then
@@ -112,10 +118,16 @@ jobs:
           while IFS= read -r previous_run; do
             [ "$restored" != true ] || break
             [ -n "$previous_run" ] || continue
+            previous_attempt="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$previous_run" --jq '.run_attempt')"
             rm -rf previous-history
             mkdir -p previous-history
-            if gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-history \
-                && [ -f previous-history/experiment-registry/events.jsonl ]; then
+            if ! gh run download "$previous_run" \
+                --name "exact-subset-rolling-origin-attempt-$previous_attempt" --dir previous-history; then
+              rm -rf previous-history
+              mkdir -p previous-history
+              gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-history || true
+            fi
+            if [ -f previous-history/experiment-registry/events.jsonl ]; then
               mkdir -p experiment-registry
               cp -a previous-history/experiment-registry/. experiment-registry/
               if [ -d previous-history/experiment-storage ]; then
@@ -159,7 +171,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: exact-subset-rolling-origin
+          name: exact-subset-rolling-origin-attempt-${{ github.run_attempt }}
           path: |
             subset-model-rolling-origin.json
             run_manifest.json
@@ -193,7 +205,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Download this run's immutable execution evidence
-        run: gh run download "$GITHUB_RUN_ID" --name exact-subset-rolling-origin --dir g3-run-artifact
+        run: gh run download "$GITHUB_RUN_ID" --name "exact-subset-rolling-origin-attempt-$GITHUB_RUN_ATTEMPT" --dir g3-run-artifact
       - name: Run read-only execution and LOT-065 reconciliation
         run: >-
           python scripts/reconcile_experiment_executions.py
