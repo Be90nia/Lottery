@@ -263,6 +263,11 @@ class ExperimentRegistry:
                 "schema", "event_id", "event_type", "occurred_at_utc", "actor",
                 "experiment_id", "attempt_id", "config_sha256",
             },
+            "artifacts_committed": {
+                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+                "experiment_id", "attempt_id", "execution_id", "storage_receipts_sha256",
+                "result_sha256", "artifact_sha256", "output_files",
+            },
             "trial_finished": {
                 "schema", "event_id", "event_type", "occurred_at_utc", "actor",
                 "experiment_id", "attempt_id", "terminal_status", "artifact_sha256",
@@ -276,6 +281,7 @@ class ExperimentRegistry:
                 "source_verification_receipt_sha256", "source_started_at_utc",
                 "source_run_url", "imported",
             },
+            "artifacts_committed": set(),
             "trial_finished": {
                 "execution_id", "approval_sha256", "storage_receipts_sha256",
                 "source_metadata_sha256", "source_verification_receipt_sha256",
@@ -456,6 +462,51 @@ class ExperimentRegistry:
                     "source_started_at_utc": event.get("source_started_at_utc"),
                     "source_run_url": event.get("source_run_url"),
                     "imported": event.get("imported", False),
+                    "artifacts_committed": None,
+                }
+            elif event.get("event_type") == "artifacts_committed":
+                if experiment_id not in experiments:
+                    raise ExperimentRegistryError("artifact commit references an unregistered experiment")
+                attempt_id = event.get("attempt_id")
+                attempt = experiments[experiment_id]["attempts"].get(attempt_id)
+                if attempt is None or attempt["status"] != "running":
+                    raise ExperimentRegistryError("artifact commit has no running execution attempt")
+                if (attempt.get("execution_context") is None
+                        or event.get("execution_id") != attempt.get("execution_id")):
+                    raise ExperimentRegistryError("artifact commit execution identity does not match trial start")
+                if attempt.get("artifacts_committed") is not None:
+                    raise ExperimentRegistryError("execution attempt has more than one artifact commit event")
+                if (not _is_sha(event.get("storage_receipts_sha256"))
+                        or not _is_sha(event.get("result_sha256"))
+                        or not _is_sha(event.get("artifact_sha256"))
+                        or not isinstance(event.get("output_files"), list)
+                        or not event["output_files"]
+                        or any(not isinstance(name, str) or Path(name).name != name for name in event["output_files"])
+                        or event["output_files"] != sorted(set(event["output_files"]))):
+                    raise ExperimentRegistryError("artifact commit event identity or output list is invalid")
+                self._verify_execution_storage_receipts(
+                    execution_id=attempt["execution_id"],
+                    expected_producer_commit=attempt["execution_context"]["sha"],
+                    result_sha256=event["result_sha256"],
+                    artifact_sha256=event["artifact_sha256"],
+                    expected_receipts_sha256=event["storage_receipts_sha256"],
+                    expected_binding=_execution_binding_expectations(
+                        experiment_id, experiments[experiment_id], attempt, attempt_id,
+                        attempt["execution_id"],
+                    ),
+                )
+                bundle = _read_canonical(self.root / "storage-receipts" / f"{attempt['execution_id']}.json")
+                if event["output_files"] != sorted(bundle):
+                    raise ExperimentRegistryError("artifact commit event output coverage differs from LOT-065 receipt bundle")
+                attempt["artifacts_committed"] = {
+                    "event_id": event["event_id"],
+                    "event_hash": event["event_hash"],
+                    "execution_id": event["execution_id"],
+                    "storage_receipts_sha256": event["storage_receipts_sha256"],
+                    "result_sha256": event["result_sha256"],
+                    "artifact_sha256": event["artifact_sha256"],
+                    "output_files": event["output_files"],
+                    "occurred_at_utc": event["occurred_at_utc"],
                 }
             elif event.get("event_type") == "trial_finished":
                 if experiment_id not in experiments:
@@ -492,6 +543,13 @@ class ExperimentRegistry:
                         source_artifact_sha256=event["artifact_sha256"],
                     )
                 if terminal_status == "succeeded" and attempt.get("execution_context") is not None:
+                    committed = attempt.get("artifacts_committed")
+                    if (not isinstance(committed, dict)
+                            or committed.get("execution_id") != attempt.get("execution_id")
+                            or committed.get("storage_receipts_sha256") != event.get("storage_receipts_sha256")
+                            or committed.get("result_sha256") != event.get("result_sha256")
+                            or committed.get("artifact_sha256") != event.get("artifact_sha256")):
+                        raise ExperimentRegistryError("execution-bound success requires a matching append-only artifact commit event")
                     storage_digest = event.get("storage_receipts_sha256")
                     if not _is_sha(storage_digest):
                         raise ExperimentRegistryError("execution-bound success event is missing LOT-065 receipt digest")
@@ -1215,6 +1273,57 @@ class ExperimentRegistry:
                 )
         if _sha(resolved["model-artifacts.jsonl"]) != artifact_sha256:
             raise ExperimentRegistryError("LOT-065 model artifact bytes do not match the terminal artifact digest")
+
+    def record_artifacts_committed(
+        self, *, experiment_id: str, attempt_id: str, execution_id: str,
+        result_sha256: str, artifact_sha256: str, storage_receipts_sha256: str,
+        actor: str,
+    ) -> dict[str, Any]:
+        """Append a verifiable LOT-065 artifact-commit event before terminal success."""
+        if not all(_is_sha(value) for value in (
+            execution_id, result_sha256, artifact_sha256, storage_receipts_sha256,
+        )):
+            raise ExperimentRegistryError("artifact commit event requires canonical SHA-256 identities")
+        if not isinstance(actor, str) or not actor:
+            raise ValueError("actor must be a non-empty string")
+        with ledger_lock(self.events_path):
+            snapshot = self._snapshot_unlocked()
+            experiment = snapshot["experiments"].get(experiment_id)
+            attempt = experiment["attempts"].get(attempt_id) if experiment else None
+            if attempt is None or attempt.get("status") != "running":
+                raise ExperimentRegistryError("artifact commit requires a running registered execution")
+            if attempt.get("execution_id") != execution_id or attempt.get("execution_context") is None:
+                raise ExperimentRegistryError("artifact commit execution identity does not match the registered attempt")
+            self._verify_execution_storage_receipts(
+                execution_id=execution_id,
+                expected_producer_commit=attempt["execution_context"]["sha"],
+                result_sha256=result_sha256,
+                artifact_sha256=artifact_sha256,
+                expected_receipts_sha256=storage_receipts_sha256,
+                expected_binding=_execution_binding_expectations(
+                    experiment_id, experiment, attempt, attempt_id, execution_id,
+                ),
+            )
+            bundle = _read_canonical(self.root / "storage-receipts" / f"{execution_id}.json")
+            output_files = sorted(bundle)
+            event_id = _sha(
+                f"{experiment_id}:{attempt_id}:artifacts-committed:{storage_receipts_sha256}".encode("utf-8")
+            )
+            self._append_event_locked({
+                "schema": EVENT_SCHEMA,
+                "event_id": event_id,
+                "event_type": "artifacts_committed",
+                "occurred_at_utc": datetime.now(timezone.utc).isoformat(),
+                "actor": actor,
+                "experiment_id": experiment_id,
+                "attempt_id": attempt_id,
+                "execution_id": execution_id,
+                "storage_receipts_sha256": storage_receipts_sha256,
+                "result_sha256": result_sha256,
+                "artifact_sha256": artifact_sha256,
+                "output_files": output_files,
+            })
+            return self._snapshot_unlocked()["experiments"][experiment_id]["attempts"][attempt_id]["artifacts_committed"]
 
     def finish_trial(
         self,
