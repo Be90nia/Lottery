@@ -249,7 +249,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             "output_files": declarations,
         }
         (output_dir / "run_manifest.json").write_bytes(
-            runner.canonicalize(manifest) + b"\\n"
+            __import__("json").dumps(manifest, sort_keys=True).encode("utf-8")
         )
         binding = {
             "experiment_id": self.registered["experiment_id"],
