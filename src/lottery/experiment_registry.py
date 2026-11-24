@@ -1295,8 +1295,8 @@ class ExperimentRegistry:
             snapshot = self._snapshot_unlocked()
             experiment = snapshot["experiments"].get(experiment_id)
             attempt = experiment["attempts"].get(attempt_id) if experiment else None
-            if attempt is None or attempt.get("status") != "running":
-                raise ExperimentRegistryError("artifact commit requires a running registered execution")
+            if attempt is None or attempt.get("status") not in {"running", "succeeded"}:
+                raise ExperimentRegistryError("artifact commit requires a running or already committed registered execution")
             if attempt.get("execution_id") != execution_id or attempt.get("execution_context") is None:
                 raise ExperimentRegistryError("artifact commit execution identity does not match the registered attempt")
             self._verify_execution_storage_receipts(
@@ -1323,6 +1323,8 @@ class ExperimentRegistry:
                 if all(existing.get(key) == value for key, value in expected_existing.items()):
                     return existing
                 raise ExperimentRegistryError("artifact commit event cannot be overwritten")
+            if attempt.get("status") != "running":
+                raise ExperimentRegistryError("terminal execution cannot receive a new artifact commit event")
             event_id = _sha(
                 f"{experiment_id}:{attempt_id}:artifacts-committed:{storage_receipts_sha256}".encode("utf-8")
             )
