@@ -70,6 +70,14 @@ class G3RuntimeBindingTests(unittest.TestCase):
             self.registry_root,
         )
 
+    def test_g3_registration_source_is_immutable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "registration.json"
+            source = Path("docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json").read_bytes()
+            path.write_bytes(source + b" ")
+            with self.assertRaisesRegex(ValueError, "fixed retrospective-registration allowlist"):
+                runner._build_g3_registry_spec(self.rows, self.snapshot_digest, path)
+
     def test_g3_spec_preserves_retrospective_class_lineage_and_no_approval(self):
         spec, config = runner._build_g3_registry_spec(
             self.rows, self.snapshot_digest, self.registration_path
