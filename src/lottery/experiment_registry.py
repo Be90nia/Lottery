@@ -1376,13 +1376,6 @@ class ExperimentRegistry:
             if attempt.get("execution_id") != execution_id:
                 raise ExperimentRegistryError("terminal execution identity does not match trial start")
             if attempt.get("execution_context") is not None and terminal_status == "succeeded":
-                committed = attempt.get("artifacts_committed")
-                if (not isinstance(committed, dict)
-                        or committed.get("execution_id") != execution_id
-                        or committed.get("storage_receipts_sha256") != storage_receipts_sha256
-                        or committed.get("result_sha256") != result_sha256
-                        or committed.get("artifact_sha256") != artifact_sha256):
-                    raise ExperimentRegistryError("execution-bound success requires a matching append-only artifact commit event")
                 if artifact_sha256 is None:
                     raise ExperimentRegistryError("execution-bound successful trial requires an artifact digest")
                 if storage_receipts_sha256 is None:
@@ -1397,6 +1390,13 @@ class ExperimentRegistry:
                         experiment_id, experiment, attempt, attempt_id, execution_id,
                     ),
                 )
+                committed = attempt.get("artifacts_committed")
+                if (not isinstance(committed, dict)
+                        or committed.get("execution_id") != execution_id
+                        or committed.get("storage_receipts_sha256") != storage_receipts_sha256
+                        or committed.get("result_sha256") != result_sha256
+                        or committed.get("artifact_sha256") != artifact_sha256):
+                    raise ExperimentRegistryError("execution-bound success requires a matching append-only artifact commit event")
             if attempt["status"] != "running":
                 same = (
                     attempt["status"] == terminal_status
