@@ -113,10 +113,50 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertFalse(binding["approval_required"])
         self.assertEqual(binding["approval_disposition"], "not_required_exploratory")
 
+        artifact_id = "sha256:" + "a" * 64
+        target_row = {
+            "zone": "front",
+            "model_name": "expanding",
+            "target_draw_id": "09054",
+            "training_last_draw_id": "09053",
+            "training_row_count": 1,
+            "training_dates_strictly_before_target": True,
+            "terminal_status": "fit_failed",
+            "artifact_id": artifact_id,
+            "diagnostic_ref": artifact_id,
+            "experiment_id": binding["experiment_id"],
+            "trial_id": binding["trial_id"],
+            "registry_attempt_id": binding["attempt_id"],
+            "execution_id": binding["execution_context"]["execution_id"],
+            "approval_sha256": binding["approval_sha256"],
+            "approval_required": binding["approval_required"],
+            "approval_disposition": binding["approval_disposition"],
+        }
+        target_row["record_sha256"] = "sha256:" + runner.hashlib.sha256(
+            runner.canonicalize(target_row)
+        ).hexdigest()
+        artifact_record = {"artifact_id": artifact_id}
+        provenance_record = {
+            "schema": "lottery.model-artifact-provenance/v1",
+            "artifact_id": artifact_id,
+            "experiment_id": binding["experiment_id"],
+            "trial_id": binding["trial_id"],
+            "attempt_id": binding["attempt_id"],
+            "execution_id": binding["execution_context"]["execution_id"],
+            "approval_sha256": binding["approval_sha256"],
+            "approval_required": binding["approval_required"],
+            "approval_disposition": binding["approval_disposition"],
+            "experiment_class": binding["experiment_class"],
+            "legacy_parent_issue_url": binding["legacy_parent_issue_url"],
+            "legacy_child_registration_comment_url": binding["legacy_child_registration_comment_url"],
+            "legacy_child_registration_comment_sha256": binding["legacy_child_registration_comment_sha256"],
+            "parent_lineage_disposition": binding["parent_lineage_disposition"],
+            "evaluation_run_id": "lot055-test-evaluation-id",
+        }
         output_payloads = {
-            "target-score-ledger.jsonl": b'{"record_type":"target"}\n',
-            "model-artifacts.jsonl": b'{"artifact_id":"test"}\n',
-            "model-artifact-provenance.jsonl": b'{"artifact_id":"test","execution_id":"bound"}\n',
+            "target-score-ledger.jsonl": runner.canonicalize(target_row) + b"\n",
+            "model-artifacts.jsonl": runner.canonicalize(artifact_record) + b"\n",
+            "model-artifact-provenance.jsonl": runner.canonicalize(provenance_record) + b"\n",
         }
         for filename, raw in output_payloads.items():
             (self.output_dir / filename).write_bytes(raw)
@@ -144,6 +184,17 @@ class G3RuntimeBindingTests(unittest.TestCase):
                 "execution_id": binding["execution_context"]["execution_id"],
                 "execution_context": binding["execution_context"],
             },
+            "target_manifest": {
+                "target_count_per_zone": 1,
+                "first_target_draw_id": "09054",
+                "last_target_draw_id": "09054",
+            },
+            "models": [{"zone": "front", "model_name": "expanding"}],
+            "expected_target_record_count": 1,
+            "actual_target_record_count": 1,
+            "model_artifact_count": 1,
+            "model_artifact_provenance_count": 1,
+            "terminal_status_counts": {"fit_failed": 1},
             "output_files": {
                 filename: {
                     "sha256": runner.hashlib.sha256(raw).hexdigest(),
