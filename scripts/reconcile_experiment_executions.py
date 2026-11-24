@@ -10,6 +10,7 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 from lottery.experiment_registry import ExperimentRegistry, _execution_binding_expectations
+from lottery.storage import FileSystemObjectStore
 from lottery.subset_model.artifact import canonicalize
 
 API = "https://api.github.com"
@@ -274,6 +275,8 @@ def reconcile(
     # Detect a crash after LOT-065 commits but before the registry terminal event.
     # Verification is read-only: no event or storage object is repaired here.
     receipt_root = registry_root / "storage-receipts"
+    store = FileSystemObjectStore(registry_root.parent / "experiment-storage")
+    bundled_operation_ids: set[str] = set()
     if receipt_root.exists():
         for receipt_path in sorted(receipt_root.glob("*.json")):
             execution_id = receipt_path.stem
@@ -304,6 +307,9 @@ def reconcile(
                         attempt["attempt_id"], execution_id,
                     ),
                 )
+                bundled_operation_ids.update(
+                    entry["operation_id"] for entry in bundle.values()
+                )
             except Exception as exc:
                 findings.append(_finding(
                     "storage_bundle_invalid", "error",
@@ -318,6 +324,46 @@ def reconcile(
                     attempt_id=attempt["attempt_id"], registry_status=attempt["status"],
                     experiment_id=binding["experiment_id"],
                 ))
+
+    # A crash after LOT-065 commit/pointer publication but before the
+    # execution receipt bundle must not leave an apparently healthy orphan.
+    if store.operations.exists():
+        for operation_path in sorted(store.operations.glob("*.json")):
+            operation_id = operation_path.stem
+            try:
+                operation_raw = operation_path.read_bytes()
+                operation = json.loads(operation_raw)
+                if not isinstance(operation, dict) or canonicalize(operation) != operation_raw:
+                    raise ValueError("operation manifest is not canonical JSON")
+            except Exception as exc:
+                findings.append(_finding(
+                    "storage_operation_manifest_invalid", "error",
+                    operation_id=operation_id, reason=f"{type(exc).__name__}: {exc}",
+                ))
+                continue
+            execution_id = operation.get("execution_id")
+            if execution_id is None:
+                continue
+            if not isinstance(execution_id, str) or len(execution_id) != 64:
+                findings.append(_finding(
+                    "storage_operation_execution_identity_invalid", "error",
+                    operation_id=operation_id, execution_id=execution_id,
+                ))
+                continue
+            if operation_id in bundled_operation_ids:
+                continue
+            bindings = attempts_by_execution.get(execution_id, [])
+            committed = store._commit_path(operation_id).exists()
+            severity = "error" if committed or len(bindings) != 1 or bindings[0]["attempt"]["status"] == "running" else "warning"
+            findings.append(_finding(
+                "committed_storage_operation_without_registry_bundle" if committed
+                else "staged_storage_operation_without_registry_bundle",
+                severity,
+                operation_id=operation_id,
+                execution_id=execution_id,
+                matching_attempt_count=len(bindings),
+                registry_status=bindings[0]["attempt"]["status"] if len(bindings) == 1 else None,
+            ))
 
     findings.sort(key=lambda item: (
         item.get("run_id", 0), item["code"], item.get("attempt_id", "")
