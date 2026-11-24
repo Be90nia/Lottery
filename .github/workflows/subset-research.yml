@@ -85,6 +85,8 @@ jobs:
       # must produce its own model artifacts bound to its own Actions attempt.
       # Every new LOT-065 stage records that execution ID; only the first isolated
       # G3 producer commit is grandfathered for migration compatibility.
+      # Its manifest also predates per-output schema declarations; that exception
+      # is scoped to the exact first producer SHA in the registry verifier.
       - name: Restore append-only registry and LOT-065 object history
         env:
           GH_TOKEN: ${{ github.token }}
