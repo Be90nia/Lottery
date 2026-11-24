@@ -269,6 +269,10 @@ class G3RuntimeBindingTests(unittest.TestCase):
             receipt["storage_receipts_sha256"],
         )
         self.assertEqual(
+            attempt["artifacts_committed"]["output_files"],
+            sorted(receipt["storage_receipts"]),
+        )
+        self.assertEqual(
             receipt["legacy_child_registration_comment_url"],
             "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
         )
