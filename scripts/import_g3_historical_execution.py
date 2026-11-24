@@ -226,7 +226,11 @@ def _verify_github_sources(evidence: dict, token: str) -> tuple[dict, dict]:
         "html_url": expected_run["run_url"],
     }
     for key, value in checks.items():
-        if run.get(key) != value:
+        actual = run.get(key)
+        # GitHub's workflow-run API may append "@<ref>" to the workflow path.
+        if key == "path" and isinstance(actual, str):
+            actual = actual.split("@", 1)[0]
+        if actual != value:
             raise ValueError(f"live GitHub Actions run metadata mismatch: {key}")
     if str(run.get("repository", {}).get("id")) != REPOSITORY_ID:
         raise ValueError("historical run repository ID differs from the allowlist")
