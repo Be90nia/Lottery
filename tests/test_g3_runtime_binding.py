@@ -152,7 +152,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
                 for filename, raw in output_payloads.items()
             },
         }
-        manifest["manifest_sha256"] = runner.hashlib.sha256(runner.canonicalize(manifest)).hexdigest()
+        manifest["manifest_sha256"] = "sha256:" + runner.hashlib.sha256(runner.canonicalize(manifest)).hexdigest()
         (self.output_dir / "run_manifest.json").write_bytes(runner.canonicalize(manifest) + b"\n")
 
         receipt = runner._finish_registered_execution(registry, binding, self.output_path)
