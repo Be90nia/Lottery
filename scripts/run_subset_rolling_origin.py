@@ -313,6 +313,7 @@ def _finish_registered_execution(
             schema_version="lottery.g3-run-output/v1",
             producer_commit=execution["sha"],
             producer_runtime=f"python/{platform.python_version()}",
+            execution_id=execution["execution_id"],
         )
         def validate_payload(candidate: bytes, *, name: str = filename) -> bool:
             try:
