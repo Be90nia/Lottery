@@ -92,6 +92,9 @@ def reconcile(
             "ref": context.get("ref"),
         }
         actual = {key: run.get(key) for key in expected}
+        if isinstance(actual.get("path"), str):
+            # GitHub's workflow-run API may append "@<ref>" to the workflow path.
+            actual["path"] = actual["path"].split("@", 1)[0]
         if str(run.get("repository", {}).get("id")) != repository_id:
             findings.append(_finding(
                 "repository_identity_mismatch", "error", run_id=run_id,
