@@ -93,7 +93,7 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
             "run_number": expected["run_number"],
             "workflow_id": expected["workflow_id"],
             "name": expected["workflow_name"],
-            "path": expected["workflow_path"],
+            "path": expected["workflow_path"] + "@" + expected["ref"],
             "head_branch": expected["head_branch"],
             "head_sha": expected["head_sha"],
             "event": expected["event"],
