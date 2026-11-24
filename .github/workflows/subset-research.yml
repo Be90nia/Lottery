@@ -246,8 +246,8 @@ jobs:
               raise SystemExit("workflow ended with a registry attempt still running")
           store_report = FileSystemObjectStore(storage_root).reconcile()
           if any(store_report.get(key) for key in (
-              "staged_without_validation", "validated_without_commit", "dangling_pointers",
-              "corrupt_commit_receipts", "corrupt_objects", "orphan_objects",
+              "staged_without_validation", "validated_without_commit", "committed_unreferenced",
+              "dangling_pointers", "corrupt_commit_receipts", "corrupt_objects", "orphan_objects",
           )):
               raise SystemExit("LOT-065 storage reconciliation found incomplete or corrupt state")
           after = (tree_digest(registry_root), tree_digest(storage_root))
