@@ -119,3 +119,11 @@ jobs:
           python -m unittest discover -s tests -p "test_forecast.py" -v
           python -m unittest discover -s tests -p "test_outcomes.py" -v
           python -m unittest discover -s tests -p "test_ledger_lock.py" -v
+      - name: Test LOT-064 execution registry and LOT-065 durable storage on Windows
+        run: |
+          python -m unittest discover -s tests -p "test_execution_context.py" -v
+          python -m unittest discover -s tests -p "test_experiment_registry.py" -v
+          python -m unittest discover -s tests -p "test_execution_reconciliation.py" -v
+          python -m unittest discover -s tests -p "test_storage.py" -v
+          python -m unittest discover -s tests -p "test_g3_runtime_binding.py" -v
+          python -m unittest discover -s tests -p "test_g3_historical_import.py" -v
