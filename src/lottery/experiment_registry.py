@@ -1085,8 +1085,12 @@ class ExperimentRegistry:
                     or row["training_row_count"] < 1):
                 raise ExperimentRegistryError("LOT-065 target ledger has an invalid chronological training cutoff")
             status = row.get("terminal_status")
-            if not isinstance(status, str) or not status:
-                raise ExperimentRegistryError("LOT-065 target ledger row has no terminal status")
+            allowed_target_statuses = {
+                "scored", "fit_failed", "artifact_invalid",
+                "probability_invalid", "runner_error",
+            }
+            if status not in allowed_target_statuses:
+                raise ExperimentRegistryError("LOT-065 target ledger row has an unknown terminal status")
             observed_status_counts[status] = observed_status_counts.get(status, 0) + 1
             for field in ("artifact_id", "diagnostic_ref"):
                 reference = row.get(field)
@@ -1121,6 +1125,8 @@ class ExperimentRegistry:
                 raise ExperimentRegistryError("LOT-065 target manifest digest differs from preregistered target manifest")
         declared_status_counts = manifest.get("terminal_status_counts")
         if (not isinstance(declared_status_counts, dict)
+                or any(key not in allowed_target_statuses or type(value) is not int or value < 0
+                       for key, value in declared_status_counts.items())
                 or {key: value for key, value in declared_status_counts.items() if value}
                 != observed_status_counts
                 or sum(declared_status_counts.values()) != expected_target_count):
