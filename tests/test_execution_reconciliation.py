@@ -278,10 +278,42 @@ class ExecutionReconciliationTests(unittest.TestCase):
         output_dir = self.root.parent / "outputs"
         output_dir.mkdir()
         output_path = output_dir / "evaluation.json"
+        artifact_id = "sha256:" + "a" * 64
+        target_row = {
+            "zone": "front", "model_name": "candidate", "target_draw_id": "09054",
+            "training_last_draw_id": "09053", "training_row_count": 1,
+            "training_dates_strictly_before_target": True, "terminal_status": "fit_failed",
+            "artifact_id": artifact_id, "diagnostic_ref": artifact_id,
+            "experiment_id": self.registered["experiment_id"], "trial_id": trial_id,
+            "registry_attempt_id": "attempt-1", "execution_id": self.context["execution_id"],
+            "approval_sha256": None, "approval_required": False,
+            "approval_disposition": "not_required_exploratory",
+        }
+        target_row["record_sha256"] = "sha256:" + __import__("hashlib").sha256(
+            runner.canonicalize(target_row)
+        ).hexdigest()
+        artifact_record = {"artifact_id": artifact_id}
+        provenance_record = {
+            "schema": "lottery.model-artifact-provenance/v1",
+            "artifact_id": artifact_id,
+            "experiment_id": self.registered["experiment_id"],
+            "trial_id": trial_id,
+            "attempt_id": "attempt-1",
+            "execution_id": self.context["execution_id"],
+            "approval_sha256": None,
+            "approval_required": False,
+            "approval_disposition": "not_required_exploratory",
+            "experiment_class": "exploratory",
+            "legacy_parent_issue_url": binding["legacy_parent_issue_url"],
+            "legacy_child_registration_comment_url": binding["legacy_child_registration_comment_url"],
+            "legacy_child_registration_comment_sha256": binding["legacy_child_registration_comment_sha256"],
+            "parent_lineage_disposition": binding["parent_lineage_disposition"],
+            "evaluation_run_id": "evaluation-domain-id",
+        }
         outputs = {
-            "target-score-ledger.jsonl": b'{"record_type":"target"}',
-            "model-artifacts.jsonl": b'{"artifact_id":"sha256:' + b"a" * 64 + b'"}',
-            "model-artifact-provenance.jsonl": b'{"artifact_id":"sha256:' + b"a" * 64 + b'"}',
+            "target-score-ledger.jsonl": runner.canonicalize(target_row) + b"\n",
+            "model-artifacts.jsonl": runner.canonicalize(artifact_record) + b"\n",
+            "model-artifact-provenance.jsonl": runner.canonicalize(provenance_record) + b"\n",
         }
         declarations = {}
         for filename, raw in outputs.items():
@@ -315,6 +347,17 @@ class ExecutionReconciliationTests(unittest.TestCase):
             "confirmatory_eligible": False,
             "experiment_id": self.registered["experiment_id"],
             "experiment_class": "exploratory",
+            "target_manifest": {
+                "target_count_per_zone": 1,
+                "first_target_draw_id": "09054",
+                "last_target_draw_id": "09054",
+            },
+            "models": [{"zone": "front", "model_name": "candidate"}],
+            "expected_target_record_count": 1,
+            "actual_target_record_count": 1,
+            "model_artifact_count": 1,
+            "model_artifact_provenance_count": 1,
+            "terminal_status_counts": {"fit_failed": 1},
             "experiment_binding": {
                 "schema": "lottery.experiment-run-binding/v1",
                 "experiment_id": binding["experiment_id"],
