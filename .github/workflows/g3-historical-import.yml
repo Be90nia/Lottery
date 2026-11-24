@@ -29,10 +29,17 @@ jobs:
           --snapshot data/processed/draws-20261118.jsonl
           --registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
           --registry-root experiment-registry
-      - name: Upload append-only historical registry import
+      - name: Reconcile imported execution against live GitHub metadata (read-only)
+        run: >-
+          python scripts/reconcile_experiment_executions.py
+          --registry-root experiment-registry
+          --output g3-execution-reconciliation.json
+      - name: Upload append-only historical registry import and reconciliation report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: g3-historical-registry-import
-          path: experiment-registry/
+          path: |
+            experiment-registry/
+            g3-execution-reconciliation.json
           if-no-files-found: error
           retention-days: 90
