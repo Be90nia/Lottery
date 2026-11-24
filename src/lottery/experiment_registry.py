@@ -70,6 +70,9 @@ def _execution_binding_expectations(
         item for item in spec["trial_plan"]
         if _sha(canonicalize(item)) == attempt["config_sha256"]
     )
+    if (config.get("target_manifest_sha256") is not None
+            and config.get("target_manifest_sha256") != spec.get("target_manifest_sha256")):
+        raise ExperimentRegistryError("trial target manifest digest differs from experiment registration")
     expected["_expected_target_draw_ids"] = spec["target_draw_ids"]
     if isinstance(config.get("zones"), list) and isinstance(config.get("model_order"), list):
         expected["_expected_model_pairs"] = [
