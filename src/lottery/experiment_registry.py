@@ -1070,6 +1070,8 @@ class ExperimentRegistry:
             if record_digest != "sha256:" + _sha(canonicalize(record_body)):
                 raise ExperimentRegistryError("LOT-065 target ledger record hash is invalid")
             for field, expected_value in expected_binding.items():
+                if field.startswith("_"):
+                    continue
                 if field in row and row.get(field) != expected_value:
                     raise ExperimentRegistryError(f"LOT-065 target ledger binding mismatch: {field}")
             for field in (
