@@ -49,6 +49,7 @@ HISTORICAL_ARTIFACT_NAME = "exact-subset-rolling-origin"
 HISTORICAL_ARTIFACT_SIZE = 21990827
 HISTORICAL_ARTIFACT_SHA256 = "d165d08dc1214e79f31c50101dc5a4920233fb998b14c6ff0f56197919041804"
 HISTORICAL_EVIDENCE_SHA256 = "0795a917cfe590d30042f1f0dafda7808383966a468c35cfd0bd7f9e120a9537"
+HISTORICAL_REGISTRATION_SHA256 = "d9a92b728708cca513e99d2d1716b242248e0d17404f7deab3fbbbf13620b144"
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -363,6 +364,9 @@ def import_historical_execution(
     evidence_raw = evidence_path.read_bytes()
     if _digest(evidence_raw) != HISTORICAL_EVIDENCE_SHA256:
         raise ValueError("historical evidence source bytes differ from the fixed evidence allowlist")
+    registration_raw = registration_path.read_bytes()
+    if _digest(registration_raw) != HISTORICAL_REGISTRATION_SHA256:
+        raise ValueError("G3 registration source bytes differ from the fixed retrospective-registration allowlist")
     evidence = json.loads(evidence_raw)
     if evidence.get("schema") != "lottery.github-actions-historical-run-evidence/v1":
         raise ValueError("unsupported historical execution evidence schema")
