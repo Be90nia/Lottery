@@ -189,8 +189,11 @@ class ExecutionReconciliationTests(unittest.TestCase):
                 "source_evidence_sha256": metadata["source_evidence_sha256"],
                 "verified_at_utc": "2026-11-24T00:00:00Z",
             }
-        self.registry.import_completed_trial(
-            experiment_id=self.registered["experiment_id"],
+        import_registry_root = self.root.parent / "import-registry"
+        import_registry = ExperimentRegistry(import_registry_root)
+        import_registered = import_registry.register_experiment(self.spec, actor="test")
+        import_registry.import_completed_trial(
+            experiment_id=import_registered["experiment_id"],
             attempt_id="imported-attempt-1",
             config=self.spec["trial_plan"][0], actor="test",
             execution_context=self.context, source_metadata=source,
