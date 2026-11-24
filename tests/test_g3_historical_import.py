@@ -187,6 +187,35 @@ class HistoricalG3ArchiveVerificationTests(unittest.TestCase):
                 importer._verify_github_sources(evidence, "test-token")
             api.assert_not_called()
 
+    def test_evidence_and_registration_sources_are_pinned_before_api_requests(self):
+        from pathlib import Path
+        import tempfile
+        evidence_source = Path("docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json").read_bytes()
+        registration_source = Path("docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json").read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_path = Path(directory) / "evidence.json"
+            registration_path = Path(directory) / "registration.json"
+            evidence_path.write_bytes(evidence_source + b" ")
+            registration_path.write_bytes(registration_source)
+            with patch.object(importer, "_verify_github_sources") as api:
+                with self.assertRaisesRegex(ValueError, "fixed evidence allowlist"):
+                    importer.import_historical_execution(
+                        evidence_path=evidence_path, snapshot_path=Path("unused-snapshot"),
+                        registration_path=registration_path, registry_root=Path(directory) / "registry",
+                        token="test-token",
+                    )
+                api.assert_not_called()
+            evidence_path.write_bytes(evidence_source)
+            registration_path.write_bytes(registration_source + b" ")
+            with patch.object(importer, "_verify_github_sources") as api:
+                with self.assertRaisesRegex(ValueError, "fixed retrospective-registration allowlist"):
+                    importer.import_historical_execution(
+                        evidence_path=evidence_path, snapshot_path=Path("unused-snapshot"),
+                        registration_path=registration_path, registry_root=Path(directory) / "registry",
+                        token="test-token",
+                    )
+                api.assert_not_called()
+
     def test_archive_tampering_fails_before_historical_import(self):
         evidence, archive_raw = self.build_archive()
         tampered = archive_raw + b"tampered"
