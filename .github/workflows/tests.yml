@@ -115,15 +115,25 @@ jobs:
         with:
           python-version: "3.12"
       - name: Test forecast and outcome ledger process locking
+        shell: pwsh
         run: |
-          python -m unittest discover -s tests -p "test_forecast.py" -v
-          python -m unittest discover -s tests -p "test_outcomes.py" -v
-          python -m unittest discover -s tests -p "test_ledger_lock.py" -v
+          function Invoke-Test([string]$Pattern) {
+            python -m unittest discover -s tests -p $Pattern -v
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          Invoke-Test "test_forecast.py"
+          Invoke-Test "test_outcomes.py"
+          Invoke-Test "test_ledger_lock.py"
       - name: Test LOT-064 execution registry and LOT-065 durable storage on Windows
+        shell: pwsh
         run: |
-          python -m unittest discover -s tests -p "test_execution_context.py" -v
-          python -m unittest discover -s tests -p "test_experiment_registry.py" -v
-          python -m unittest discover -s tests -p "test_execution_reconciliation.py" -v
-          python -m unittest discover -s tests -p "test_storage.py" -v
-          python -m unittest discover -s tests -p "test_g3_runtime_binding.py" -v
-          python -m unittest discover -s tests -p "test_g3_historical_import.py" -v
+          function Invoke-Test([string]$Pattern) {
+            python -m unittest discover -s tests -p $Pattern -v
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          Invoke-Test "test_execution_context.py"
+          Invoke-Test "test_experiment_registry.py"
+          Invoke-Test "test_execution_reconciliation.py"
+          Invoke-Test "test_storage.py"
+          Invoke-Test "test_g3_runtime_binding.py"
+          Invoke-Test "test_g3_historical_import.py"
