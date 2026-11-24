@@ -223,7 +223,25 @@ def reconcile(
     workflow_runs = _paged_items(runs_url, "workflow_runs", token)
     for run in workflow_runs:
         run_id = run.get("id")
-        if type(run_id) is not int or run_id in checked_runs:
+        if type(run_id) is not int:
+            continue
+        if run_id in checked_runs:
+            registered_attempts = {
+                binding["attempt"]["execution_context"].get("run_attempt")
+                for binding in attempts_by_run.get(run_id, [])
+            }
+            latest_attempt = run.get("run_attempt")
+            if type(latest_attempt) is int and latest_attempt >= 1:
+                missing_attempts = sorted(set(range(1, latest_attempt + 1)) - registered_attempts)
+                for missing_attempt in missing_attempts:
+                    findings.append(_finding(
+                        "workflow_rerun_attempt_without_registry_binding", "error",
+                        run_id=run_id, run_attempt=missing_attempt,
+                        latest_workflow_run_attempt=latest_attempt,
+                        registered_run_attempts=sorted(
+                            value for value in registered_attempts if type(value) is int
+                        ),
+                    ))
             continue
         if _normalise_workflow_path(run.get("path")) not in (None, workflow_path):
             continue
