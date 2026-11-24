@@ -1097,6 +1097,8 @@ class ExperimentRegistry:
             if status not in allowed_target_statuses:
                 raise ExperimentRegistryError("LOT-065 target ledger row has an unknown terminal status")
             observed_status_counts[status] = observed_status_counts.get(status, 0) + 1
+            if status == "scored" and row.get("artifact_id") is None:
+                raise ExperimentRegistryError("LOT-065 scored target row has no model artifact reference")
             for field in ("artifact_id", "diagnostic_ref"):
                 reference = row.get(field)
                 if reference is not None and reference not in artifact_ids:
