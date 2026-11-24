@@ -423,6 +423,25 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
         },
         "status": "complete" if all(row["terminal_status"] == "scored" for row in ledger) else "complete_with_explicit_failures",
     }
+    if output_path.exists():
+        if output_path.name in manifest["output_files"] or output_path.name == "run_manifest.json":
+            raise ValueError("human-readable summary filename collides with a canonical output")
+        if experiment_binding is not None and output_path.name != "subset-model-rolling-origin.json":
+            raise ValueError("G3 execution binding requires the fixed subset-model summary filename")
+        summary_raw = output_path.read_bytes()
+        try:
+            summary_value = json.loads(summary_raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("human-readable summary output must be valid UTF-8 JSON") from exc
+        if not isinstance(summary_value, dict):
+            raise ValueError("human-readable summary output must be a JSON object")
+        manifest["output_files"][output_path.name] = {
+            "schema_version": "lottery.g3-summary-report/v1",
+            "sha256": _sha256(summary_raw),
+            "bytes": len(summary_raw),
+        }
+    elif experiment_binding is not None:
+        raise ValueError("G3 execution binding requires a prewritten summary output")
     manifest["manifest_sha256"] = _hash_object(manifest)
     if experiment_binding is not None:
         manifest["output_files"]["model-artifact-provenance.jsonl"] = {
