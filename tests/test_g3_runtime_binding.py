@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from scripts import run_subset_rolling_origin as runner
-from lottery.experiment_registry import ExperimentRegistry
+from lottery.experiment_registry import ExperimentRegistry, ExperimentRegistryError
 
 
 REPOSITORY = "Be90nia/Lottery"
@@ -292,7 +292,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
         registry.events_path.write_bytes(
             b"".join(runner.canonicalize(event) + b"\\n" for event in event_prefix)
         )
-        with self.assertRaisesRegex(Exception, "artifact commit event"):
+        with self.assertRaisesRegex(ExperimentRegistryError, "artifact commit event"):
             registry.finish_trial(
                 experiment_id=binding["experiment_id"],
                 attempt_id=binding["attempt_id"],
