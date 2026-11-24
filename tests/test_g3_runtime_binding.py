@@ -124,6 +124,26 @@ class G3RuntimeBindingTests(unittest.TestCase):
             "run_id": "lot055-test-evaluation-id",
             "status": "complete_with_explicit_failures",
             "confirmatory_eligible": False,
+            "experiment_id": binding["experiment_id"],
+            "experiment_class": binding["experiment_class"],
+            "experiment_binding": {
+                "schema": "lottery.experiment-run-binding/v1",
+                "experiment_id": binding["experiment_id"],
+                "spec_sha256": binding["spec_sha256"],
+                "approval_sha256": binding["approval_sha256"],
+                "approval_required": binding["approval_required"],
+                "approval_disposition": binding["approval_disposition"],
+                "approval_disposition_reason": binding["approval_disposition_reason"],
+                "legacy_parent_issue_url": binding["legacy_parent_issue_url"],
+                "legacy_child_registration_comment_url": binding["legacy_child_registration_comment_url"],
+                "legacy_child_registration_comment_sha256": binding["legacy_child_registration_comment_sha256"],
+                "parent_lineage_disposition": binding["parent_lineage_disposition"],
+                "experiment_class": binding["experiment_class"],
+                "trial_id": binding["trial_id"],
+                "registry_attempt_id": binding["attempt_id"],
+                "execution_id": binding["execution_context"]["execution_id"],
+                "execution_context": binding["execution_context"],
+            },
             "output_files": {
                 filename: {
                     "sha256": runner.hashlib.sha256(raw).hexdigest(),
@@ -132,6 +152,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
                 for filename, raw in output_payloads.items()
             },
         }
+        manifest["manifest_sha256"] = runner.hashlib.sha256(runner.canonicalize(manifest)).hexdigest()
         (self.output_dir / "run_manifest.json").write_bytes(runner.canonicalize(manifest) + b"\n")
 
         receipt = runner._finish_registered_execution(registry, binding, self.output_path)
