@@ -970,6 +970,11 @@ class ExperimentRegistry:
                 raise ExperimentRegistryError(
                     f"LOT-065 run manifest binding mismatch: {field}"
                 )
+        if (expected_binding["experiment_class"] == "exploratory"
+                and manifest.get("confirmatory_eligible") is not False):
+            raise ExperimentRegistryError(
+                "exploratory execution manifest cannot claim confirmatory eligibility"
+            )
         declared = manifest.get("output_files") if isinstance(manifest, dict) else None
         if not isinstance(declared, dict) or set(bundle) != set(declared) | {"run_manifest.json"}:
             raise ExperimentRegistryError("LOT-065 receipt bundle does not cover the exact manifest output set")
