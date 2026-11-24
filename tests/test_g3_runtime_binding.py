@@ -114,27 +114,44 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertEqual(binding["approval_disposition"], "not_required_exploratory")
 
         artifact_id = "sha256:" + "a" * 64
-        target_row = {
-            "zone": "front",
-            "model_name": "expanding",
-            "target_draw_id": "09054",
-            "training_last_draw_id": "09053",
-            "training_row_count": 1,
-            "training_dates_strictly_before_target": True,
-            "terminal_status": "fit_failed",
-            "artifact_id": artifact_id,
-            "diagnostic_ref": artifact_id,
-            "experiment_id": binding["experiment_id"],
-            "trial_id": binding["trial_id"],
-            "registry_attempt_id": binding["attempt_id"],
-            "execution_id": binding["execution_context"]["execution_id"],
-            "approval_sha256": binding["approval_sha256"],
-            "approval_required": binding["approval_required"],
-            "approval_disposition": binding["approval_disposition"],
-        }
-        target_row["record_sha256"] = "sha256:" + runner.hashlib.sha256(
-            runner.canonicalize(target_row)
-        ).hexdigest()
+        target_rows = self.rows[runner.MIN_TRAIN:]
+        target_list = [
+            {"target_draw_id": row["draw_id"], "target_draw_date": row["draw_date"]}
+            for row in target_rows
+        ]
+        model_order = ["uniform", "expanding", "ewma", "exponential_family"]
+        model_pairs = [
+            {"zone": zone, "model_name": model_name}
+            for zone in ("front", "back")
+            for model_name in model_order
+        ]
+        target_records = []
+        training_last_draw_id = self.rows[runner.MIN_TRAIN - 1]["draw_id"]
+        for model in model_pairs:
+            for target in target_rows:
+                target_row = {
+                    "zone": model["zone"],
+                    "model_name": model["model_name"],
+                    "target_draw_id": target["draw_id"],
+                    "target_draw_date": target["draw_date"],
+                    "training_last_draw_id": training_last_draw_id,
+                    "training_row_count": runner.MIN_TRAIN,
+                    "training_dates_strictly_before_target": True,
+                    "terminal_status": "fit_failed",
+                    "artifact_id": artifact_id,
+                    "diagnostic_ref": artifact_id,
+                    "experiment_id": binding["experiment_id"],
+                    "trial_id": binding["trial_id"],
+                    "registry_attempt_id": binding["attempt_id"],
+                    "execution_id": binding["execution_context"]["execution_id"],
+                    "approval_sha256": binding["approval_sha256"],
+                    "approval_required": binding["approval_required"],
+                    "approval_disposition": binding["approval_disposition"],
+                }
+                target_row["record_sha256"] = "sha256:" + runner.hashlib.sha256(
+                    runner.canonicalize(target_row)
+                ).hexdigest()
+                target_records.append(target_row)
         artifact_record = {"artifact_id": artifact_id}
         provenance_record = {
             "schema": "lottery.model-artifact-provenance/v1",
@@ -154,7 +171,9 @@ class G3RuntimeBindingTests(unittest.TestCase):
             "evaluation_run_id": "lot055-test-evaluation-id",
         }
         output_payloads = {
-            "target-score-ledger.jsonl": runner.canonicalize(target_row) + b"\n",
+            "target-score-ledger.jsonl": b"".join(
+                runner.canonicalize(row) + b"\n" for row in target_records
+            ),
             "model-artifacts.jsonl": runner.canonicalize(artifact_record) + b"\n",
             "model-artifact-provenance.jsonl": runner.canonicalize(provenance_record) + b"\n",
         }
@@ -185,16 +204,19 @@ class G3RuntimeBindingTests(unittest.TestCase):
                 "execution_context": binding["execution_context"],
             },
             "target_manifest": {
-                "target_count_per_zone": 1,
-                "first_target_draw_id": "09054",
-                "last_target_draw_id": "09054",
+                "target_count_per_zone": len(target_rows),
+                "first_target_draw_id": target_rows[0]["draw_id"],
+                "last_target_draw_id": target_rows[-1]["draw_id"],
+                "target_list_sha256": runner.hashlib.sha256(
+                    runner.canonicalize({"targets": target_list})
+                ).hexdigest(),
             },
-            "models": [{"zone": "front", "model_name": "expanding"}],
-            "expected_target_record_count": 1,
-            "actual_target_record_count": 1,
+            "models": model_pairs,
+            "expected_target_record_count": len(target_rows) * len(model_pairs),
+            "actual_target_record_count": len(target_records),
             "model_artifact_count": 1,
             "model_artifact_provenance_count": 1,
-            "terminal_status_counts": {"fit_failed": 1},
+            "terminal_status_counts": {"fit_failed": len(target_records)},
             "output_files": {
                 filename: {
                     "sha256": runner.hashlib.sha256(raw).hexdigest(),
