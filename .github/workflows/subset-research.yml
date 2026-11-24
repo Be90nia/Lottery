@@ -3,6 +3,7 @@ name: exact-subset-research
 on:
   # Frozen research launch for the preregistered, solver-amendment and G3
   # execution-binding branches. Never run on arbitrary pushes.
+  # Each allowlisted push is a fresh, run-bound execution; cross-run model checkpoints are never reused.
   push:
     branches:
       - feat/lot-055-preregistered-holm-inference
