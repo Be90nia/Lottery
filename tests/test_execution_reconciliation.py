@@ -101,6 +101,51 @@ class ExecutionReconciliationTests(unittest.TestCase):
         self.assertEqual(report["mode"], "read_only")
         self.assertIn("/actions/runs/123456/attempts/1", api.call_args.args[0])
 
+    def test_current_run_uses_completed_evaluator_job_before_workflow_wrap_up(self):
+        self.registry.finish_trial(
+            experiment_id=self.registered["experiment_id"],
+            attempt_id="attempt-1",
+            terminal_status="runner_error",
+            failure_code="simulated_runner_error",
+            execution_id=self.context["execution_id"],
+            actor="test",
+        )
+        run = {
+            "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
+            "path": ".github/workflows/subset-research.yml",
+            "head_sha": "a" * 40,
+            "event": "push",
+            "ref": "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
+            "status": "in_progress", "conclusion": None,
+            "repository": {"id": 1461523125},
+        }
+        def pages(url, key, token):
+            if url.endswith("/attempts/1/jobs"):
+                return [{
+                    "name": "full-rolling-origin",
+                    "status": "completed",
+                    "conclusion": "failure",
+                }]
+            return []
+        with patch.object(reconciler, "_api_json", return_value=run), patch.object(
+            reconciler, "_paged_items", side_effect=pages
+        ) as paged:
+            report = reconciler.reconcile(
+                registry_root=self.root, token="test",
+                repository="Be90nia/Lottery", repository_id="1461523125",
+                workflow_id=423307604,
+                workflow_path=".github/workflows/subset-research.yml",
+                current_run_id=123456, current_run_job="full-rolling-origin",
+            )
+        codes = {item["code"] for item in report["findings"]}
+        self.assertNotIn("registry_terminal_before_workflow_terminal", codes)
+        self.assertNotIn("registry_success_without_successful_workflow", codes)
+        self.assertNotIn("workflow_terminal_registry_running", codes)
+        self.assertTrue(any(
+            call.args[0].endswith("/runs/123456/attempts/1/jobs")
+            for call in paged.call_args_list
+        ))
+
     def test_missing_api_ref_is_checked_against_head_branch(self):
         self.assertTrue(reconciler._run_ref_matches(
             {"head_branch": "feature-x"}, "refs/heads/feature-x"
