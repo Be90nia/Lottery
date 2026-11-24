@@ -308,9 +308,23 @@ class ExperimentRegistry:
         ):
             raise ExperimentRegistryError("historical import terminal event conflicts with its immutable source metadata")
 
+    @staticmethod
+    def _assert_execution_identity_unbound(
+        snapshot: dict[str, Any], *, execution_id: str,
+        experiment_id: str, attempt_id: str,
+    ) -> None:
+        for other_experiment_id, experiment in snapshot["experiments"].items():
+            for other_attempt_id, attempt in experiment["attempts"].items():
+                if (attempt.get("execution_id") == execution_id
+                        and (other_experiment_id, other_attempt_id) != (experiment_id, attempt_id)):
+                    raise ExperimentRegistryError(
+                        "one GitHub Actions execution cannot be bound to multiple trial attempts"
+                    )
+
     def _snapshot_unlocked(self) -> dict[str, Any]:
         events = self._read_events()
         experiments: dict[str, dict[str, Any]] = {}
+        execution_ids: dict[str, tuple[str, str]] = {}
         for event in events:
             experiment_id = event.get("experiment_id")
             if event.get("event_type") == "experiment_registered":
@@ -363,6 +377,12 @@ class ExperimentRegistry:
                         )
                     except (ExecutionContextError, AttributeError) as exc:
                         raise ExperimentRegistryError("trial execution context is invalid") from exc
+                    execution_id = execution_context["execution_id"]
+                    if execution_id in execution_ids:
+                        raise ExperimentRegistryError(
+                            "one GitHub Actions execution cannot be bound to multiple trial attempts"
+                        )
+                    execution_ids[execution_id] = (experiment_id, attempt_id)
                 if event.get("imported") is True:
                     self._verify_historical_import_evidence(
                         source_metadata_sha256=event.get("source_metadata_sha256"),
@@ -585,6 +605,11 @@ class ExperimentRegistry:
                         and existing["status"] == "running"):
                     return existing
                 raise ExperimentRegistryError("attempt_id already exists with a different or terminal state")
+            if execution_context is not None:
+                self._assert_execution_identity_unbound(
+                    snapshot, execution_id=execution_context["execution_id"],
+                    experiment_id=experiment_id, attempt_id=attempt_id,
+                )
             event_id = _sha(f"{experiment_id}:{attempt_id}:start".encode("utf-8"))
             self._append_event_locked({
                 "schema": EVENT_SCHEMA,
@@ -690,6 +715,11 @@ class ExperimentRegistry:
             if config_sha256 not in {_sha(canonicalize(item)) for item in spec["trial_plan"]}:
                 raise ExperimentRegistryError("historical import config was not in the immutable trial plan")
             existing = experiment["attempts"].get(attempt_id)
+            if existing is None:
+                self._assert_execution_identity_unbound(
+                    snapshot, execution_id=context["execution_id"],
+                    experiment_id=experiment_id, attempt_id=attempt_id,
+                )
             resume_partial_import = False
             if existing is not None:
                 same_source = (
