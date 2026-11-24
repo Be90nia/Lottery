@@ -47,6 +47,30 @@ def _finding(code: str, severity: str, **details: Any) -> dict[str, Any]:
     return {"code": code, "severity": severity, **details}
 
 
+def _run_ref_matches(run: dict[str, Any], expected_ref: Any) -> bool:
+    """Verify ref using the strongest field exposed by the Actions API.
+
+    The per-attempt and run-level workflow-run endpoints omit ref in some
+    API responses. For branch refs, GitHub head_branch is the equivalent
+    authoritative field. Pull-request refs are checked against the returned
+    pull-request number rather than guessed from a branch name.
+    """
+    if not isinstance(expected_ref, str):
+        return False
+    actual_ref = run.get("ref")
+    if isinstance(actual_ref, str):
+        return actual_ref == expected_ref
+    if expected_ref.startswith("refs/heads/"):
+        return run.get("head_branch") == expected_ref.removeprefix("refs/heads/")
+    if expected_ref.startswith("refs/tags/"):
+        return run.get("head_branch") == expected_ref.removeprefix("refs/tags/")
+    if expected_ref.startswith("refs/pull/"):
+        parts = expected_ref.split("/")
+        if len(parts) == 4 and parts[2].isdigit() and parts[3] == "merge":
+            return any(item.get("number") == int(parts[2]) for item in run.get("pull_requests", []) if isinstance(item, dict))
+    return False
+
+
 def _normalise_workflow_path(value: Any) -> Any:
     # GitHub's workflow-run API may append "@<ref>" to the workflow path.
     return value.split("@", 1)[0] if isinstance(value, str) else value
@@ -102,10 +126,15 @@ def reconcile(
                 "path": workflow_path,
                 "head_sha": context.get("sha"),
                 "event": context.get("event_name"),
-                "ref": context.get("ref"),
             }
             actual = {key: run.get(key) for key in expected}
             actual["path"] = _normalise_workflow_path(actual.get("path"))
+            if not _run_ref_matches(run, context.get("ref")):
+                findings.append(_finding(
+                    "workflow_ref_mismatch", "error", run_id=run_id,
+                    run_attempt=number, expected_ref=context.get("ref"),
+                    actual_ref=run.get("ref"), actual_head_branch=run.get("head_branch"),
+                ))
             if str(run.get("repository", {}).get("id")) != repository_id:
                 findings.append(_finding(
                     "repository_identity_mismatch", "error", run_id=run_id,
