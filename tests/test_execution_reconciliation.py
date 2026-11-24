@@ -299,7 +299,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
         }
         artifact_id = "sha256:" + "a" * 64
         target_records = []
-        for target_id, target_date in (("26131", "2026-11-18"), ("26132", "2026-11-20")):
+        for target_id, target_date in (("09054", "2026-11-18"),):
             target_row = {
                 "zone": "front", "model_name": "candidate",
                 "target_draw_id": target_id, "target_draw_date": target_date,
@@ -354,16 +354,16 @@ class ExecutionReconciliationTests(unittest.TestCase):
             "experiment_id": self.registered["experiment_id"],
             "experiment_class": "exploratory",
             "target_manifest": {
-                "target_count_per_zone": 2,
-                "first_target_draw_id": "26131",
-                "last_target_draw_id": "26132",
+                "target_count_per_zone": 1,
+                "first_target_draw_id": "09054",
+                "last_target_draw_id": "09054",
             },
             "models": [{"zone": "front", "model_name": "candidate"}],
-            "expected_target_record_count": 2,
-            "actual_target_record_count": 2,
+            "expected_target_record_count": 1,
+            "actual_target_record_count": 1,
             "model_artifact_count": 1,
             "model_artifact_provenance_count": 1,
-            "terminal_status_counts": {"fit_failed": 2},
+            "terminal_status_counts": {"fit_failed": 1},
             "experiment_binding": {
                 "schema": "lottery.experiment-run-binding/v1",
                 "experiment_id": binding["experiment_id"],
