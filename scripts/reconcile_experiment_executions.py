@@ -319,8 +319,13 @@ def reconcile(
                 ))
                 continue
             if attempt.get("artifacts_committed") is None:
+                legacy_first_producer = (
+                    attempt.get("execution_context", {}).get("sha")
+                    == "1bf59f4c23f8082eb9289d3ae8ae3603312ebe05"
+                )
                 findings.append(_finding(
-                    "storage_bundle_without_artifact_commit_event", "error",
+                    "legacy_first_g3_run_missing_artifact_commit_event",
+                    "warning" if legacy_first_producer else "error",
                     execution_id=execution_id, run_id=attempt["execution_context"]["run_id"],
                     attempt_id=attempt["attempt_id"], registry_status=attempt["status"],
                     experiment_id=binding["experiment_id"],
