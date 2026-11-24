@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
@@ -341,10 +342,17 @@ def reconcile(
                     operation_id=operation_id, reason=f"{type(exc).__name__}: {exc}",
                 ))
                 continue
+            if operation.get("operation_id") != operation_id:
+                findings.append(_finding(
+                    "storage_operation_identity_mismatch", "error",
+                    operation_id=operation_id,
+                    manifest_operation_id=operation.get("operation_id"),
+                ))
+                continue
             execution_id = operation.get("execution_id")
             if execution_id is None:
                 continue
-            if not isinstance(execution_id, str) or len(execution_id) != 64:
+            if not isinstance(execution_id, str) or re.fullmatch(r"[0-9a-f]{64}", execution_id) is None:
                 findings.append(_finding(
                     "storage_operation_execution_identity_invalid", "error",
                     operation_id=operation_id, execution_id=execution_id,
@@ -353,6 +361,14 @@ def reconcile(
             if operation_id in bundled_operation_ids:
                 continue
             bindings = attempts_by_execution.get(execution_id, [])
+            if len(bindings) == 1 and operation.get("producer_commit") != (
+                    bindings[0]["attempt"]["execution_context"].get("sha")):
+                findings.append(_finding(
+                    "storage_operation_producer_commit_mismatch", "error",
+                    operation_id=operation_id, execution_id=execution_id,
+                    expected_producer_commit=bindings[0]["attempt"]["execution_context"].get("sha"),
+                    actual_producer_commit=operation.get("producer_commit"),
+                ))
             committed = store._commit_path(operation_id).exists()
             severity = "error" if committed or len(bindings) != 1 or bindings[0]["attempt"]["status"] == "running" else "warning"
             findings.append(_finding(
