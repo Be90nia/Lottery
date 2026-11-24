@@ -1028,6 +1028,14 @@ class ExperimentRegistry:
             if pair in model_pairs:
                 raise ExperimentRegistryError("LOT-065 manifest model family contains duplicate zone/model entries")
             model_pairs.append(pair)
+        expected_model_pairs = expected_binding.get("_expected_model_pairs")
+        if (expected_model_pairs is not None and set(model_pairs) != set(expected_model_pairs)):
+            raise ExperimentRegistryError("LOT-065 manifest model × zone family differs from preregistered trial plan")
+        expected_target_ids = expected_binding.get("_expected_target_draw_ids")
+        if (not isinstance(expected_target_ids, list) or not expected_target_ids
+                or len(set(expected_target_ids)) != len(expected_target_ids)
+                or target_count != len(expected_target_ids)):
+            raise ExperimentRegistryError("LOT-065 manifest target denominator differs from preregistered target IDs")
         expected_target_count = target_count * len(model_pairs)
         if (manifest.get("expected_target_record_count") != expected_target_count
                 or manifest.get("actual_target_record_count") != expected_target_count
@@ -1085,9 +1093,32 @@ class ExperimentRegistry:
                 if reference is not None and reference not in artifact_ids:
                     raise ExperimentRegistryError(f"LOT-065 target ledger references an absent model artifact: {field}")
         target_sets = list(target_ids_by_pair.values())
-        if (any(len(values) != target_count for values in target_sets)
-                or any(values != target_sets[0] for values in target_sets[1:])):
-            raise ExperimentRegistryError("LOT-065 target ledger has incomplete or inconsistent target coverage")
+        expected_target_set = set(expected_target_ids)
+        if (any(values != expected_target_set for values in target_sets)):
+            raise ExperimentRegistryError("LOT-065 target ledger does not exactly cover the preregistered target IDs")
+        ordered_target_ids = sorted(expected_target_ids)
+        if (target_manifest.get("first_target_draw_id") != ordered_target_ids[0]
+                or target_manifest.get("last_target_draw_id") != ordered_target_ids[-1]):
+            raise ExperimentRegistryError("LOT-065 target manifest bounds differ from preregistered target IDs")
+        expected_target_manifest_sha256 = expected_binding.get("_expected_target_manifest_sha256")
+        if expected_target_manifest_sha256 is not None:
+            target_dates: dict[str, str] = {}
+            for row in target_records:
+                target_id = row["target_draw_id"]
+                target_date = row.get("target_draw_date")
+                if not isinstance(target_date, str):
+                    raise ExperimentRegistryError("LOT-065 target ledger omits target draw dates")
+                if target_id in target_dates and target_dates[target_id] != target_date:
+                    raise ExperimentRegistryError("LOT-065 target ledger has inconsistent dates for a target ID")
+                target_dates[target_id] = target_date
+            target_list = [
+                {"target_draw_id": target_id, "target_draw_date": target_dates[target_id]}
+                for target_id in ordered_target_ids
+            ]
+            observed_target_manifest_sha256 = _sha(canonicalize({"targets": target_list}))
+            if (observed_target_manifest_sha256 != expected_target_manifest_sha256
+                    or target_manifest.get("target_list_sha256") != expected_target_manifest_sha256):
+                raise ExperimentRegistryError("LOT-065 target manifest digest differs from preregistered target manifest")
         declared_status_counts = manifest.get("terminal_status_counts")
         if (not isinstance(declared_status_counts, dict)
                 or {key: value for key, value in declared_status_counts.items() if value}
