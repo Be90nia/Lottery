@@ -1306,6 +1306,18 @@ class ExperimentRegistry:
             )
             bundle = _read_canonical(self.root / "storage-receipts" / f"{execution_id}.json")
             output_files = sorted(bundle)
+            existing = attempt.get("artifacts_committed")
+            if existing is not None:
+                expected_existing = {
+                    "execution_id": execution_id,
+                    "storage_receipts_sha256": storage_receipts_sha256,
+                    "result_sha256": result_sha256,
+                    "artifact_sha256": artifact_sha256,
+                    "output_files": output_files,
+                }
+                if all(existing.get(key) == value for key, value in expected_existing.items()):
+                    return existing
+                raise ExperimentRegistryError("artifact commit event cannot be overwritten")
             event_id = _sha(
                 f"{experiment_id}:{attempt_id}:artifacts-committed:{storage_receipts_sha256}".encode("utf-8")
             )
@@ -1364,6 +1376,13 @@ class ExperimentRegistry:
             if attempt.get("execution_id") != execution_id:
                 raise ExperimentRegistryError("terminal execution identity does not match trial start")
             if attempt.get("execution_context") is not None and terminal_status == "succeeded":
+                committed = attempt.get("artifacts_committed")
+                if (not isinstance(committed, dict)
+                        or committed.get("execution_id") != execution_id
+                        or committed.get("storage_receipts_sha256") != storage_receipts_sha256
+                        or committed.get("result_sha256") != result_sha256
+                        or committed.get("artifact_sha256") != artifact_sha256):
+                    raise ExperimentRegistryError("execution-bound success requires a matching append-only artifact commit event")
                 if artifact_sha256 is None:
                     raise ExperimentRegistryError("execution-bound successful trial requires an artifact digest")
                 if storage_receipts_sha256 is None:
