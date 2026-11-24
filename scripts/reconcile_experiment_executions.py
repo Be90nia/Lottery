@@ -318,6 +318,13 @@ def reconcile(
                     reason=f"{type(exc).__name__}: {exc}",
                 ))
                 continue
+            if attempt.get("artifacts_committed") is None:
+                findings.append(_finding(
+                    "storage_bundle_without_artifact_commit_event", "error",
+                    execution_id=execution_id, run_id=attempt["execution_context"]["run_id"],
+                    attempt_id=attempt["attempt_id"], registry_status=attempt["status"],
+                    experiment_id=binding["experiment_id"],
+                ))
             if attempt["status"] != "succeeded":
                 findings.append(_finding(
                     "storage_bundle_valid_but_terminal_missing", "error",
