@@ -286,6 +286,24 @@ class G3RuntimeBindingTests(unittest.TestCase):
         self.assertEqual((self.output_dir / "registry-run-receipt.json").read_bytes(), receipt_bytes)
         self.assertTrue((self.output_dir / "registry-run-receipt.json").exists())
 
+        # A valid receipt bundle alone is not enough: without its append-only
+        # artifact-commit event, a current execution cannot become successful.
+        event_prefix = registry._read_events()[:2]
+        registry.events_path.write_bytes(
+            b"".join(runner.canonicalize(event) + b"\\n" for event in event_prefix)
+        )
+        with self.assertRaisesRegex(Exception, "artifact commit event"):
+            registry.finish_trial(
+                experiment_id=binding["experiment_id"],
+                attempt_id=binding["attempt_id"],
+                terminal_status="succeeded",
+                result_sha256=receipt["run_manifest_sha256"],
+                artifact_sha256=receipt["model_artifacts_sha256"],
+                execution_id=binding["execution_context"]["execution_id"],
+                storage_receipts_sha256=receipt["storage_receipts_sha256"],
+                actor=binding["execution_context"]["actor"],
+            )
+
     def test_manifest_and_every_score_row_carry_content_addressed_binding(self):
         registry, binding = self.start_binding()
         target_rows = self.rows[runner.MIN_TRAIN:]
