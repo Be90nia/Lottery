@@ -219,7 +219,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             reconciler, "_paged_items", side_effect=[[bad_artifact], []]
         ):
             report = reconciler.reconcile(
-                registry_root=self.root, token="test",
+                registry_root=import_registry_root, token="test",
                 repository="Be90nia/Lottery", repository_id="1461523125",
                 workflow_id=423307604,
                 workflow_path=".github/workflows/subset-research.yml",
