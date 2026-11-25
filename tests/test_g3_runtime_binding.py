@@ -212,7 +212,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
                 "target_count_per_zone": len(target_rows),
                 "first_target_draw_id": target_rows[0]["draw_id"],
                 "last_target_draw_id": target_rows[-1]["draw_id"],
-                "target_list_sha256": runner.hashlib.sha256(
+                "target_list_sha256": "sha256:" + runner.hashlib.sha256(
                     runner.canonicalize({"targets": target_list})
                 ).hexdigest(),
             },
