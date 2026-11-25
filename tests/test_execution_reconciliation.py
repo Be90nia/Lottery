@@ -102,6 +102,59 @@ class ExecutionReconciliationTests(unittest.TestCase):
         self.assertEqual(report["mode"], "read_only")
         self.assertIn("/actions/runs/123456/attempts/1", api.call_args.args[0])
 
+    def test_successful_evaluator_is_not_failed_by_downstream_reconcile_job(self):
+        snapshot = {
+            "event_count": 2,
+            "experiments": {
+                self.registered["experiment_id"]: {
+                    "registration": {"spec": {"experiment_class": "exploratory"}},
+                    "attempts": {
+                        "attempt-1": {
+                            "attempt_id": "attempt-1",
+                            "execution_context": self.context,
+                            "status": "succeeded",
+                        }
+                    },
+                }
+            },
+        }
+        run = {
+            "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
+            "path": ".github/workflows/subset-research.yml",
+            "head_sha": "a" * 40, "event": "push",
+            "ref": self.context["ref"], "head_branch": "feat/lot-064-g3-runtime-binding-isolated",
+            "status": "completed", "conclusion": "failure",
+            "repository": {"id": 1461523125},
+        }
+        def pages(url, key, token):
+            if url.endswith("/attempts/1/jobs"):
+                return [{
+                    "name": "full-rolling-origin",
+                    "status": "completed",
+                    "conclusion": "success",
+                }, {
+                    "name": "reconcile",
+                    "status": "completed",
+                    "conclusion": "failure",
+                }]
+            return []
+        with patch.object(reconciler, "_api_json", return_value=run), patch.object(
+            reconciler, "_paged_items", side_effect=pages
+        ), patch.object(ExperimentRegistry, "snapshot", return_value=snapshot):
+            report = reconciler.reconcile(
+                registry_root=self.root, token="test",
+                repository="Be90nia/Lottery", repository_id="1461523125",
+                workflow_id=423307604,
+                workflow_path=".github/workflows/subset-research.yml",
+            )
+        self.assertFalse(any(
+            item["code"] == "registry_success_without_successful_workflow"
+            for item in report["findings"]
+        ), report["findings"])
+        self.assertFalse(any(
+            item["severity"] == "error" for item in report["findings"]
+        ), report["findings"])
+
     def test_current_run_uses_completed_evaluator_job_before_workflow_wrap_up(self):
         self.registry.finish_trial(
             experiment_id=self.registered["experiment_id"],
