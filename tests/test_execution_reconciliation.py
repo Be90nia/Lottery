@@ -535,8 +535,11 @@ class ExecutionReconciliationTests(unittest.TestCase):
         (output_dir / "run_manifest.json").write_bytes(
             runner.canonicalize(manifest) + b"\n"
         )
-        with patch.object(self.registry, "finish_trial", side_effect=RuntimeError("crash after commit")):
-            with self.assertRaisesRegex(RuntimeError, "crash after commit"):
+        with patch.object(
+            self.registry, "record_artifacts_committed",
+            side_effect=RuntimeError("artifact commit event append failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "artifact commit event append failed"):
                 runner._finish_registered_execution(self.registry, binding, output_path)
 
         run = {
@@ -563,6 +566,45 @@ class ExecutionReconciliationTests(unittest.TestCase):
             ["attempts"]["attempt-1"]["status"],
             "running",
         )
+
+        # A later runner_error terminal event is an explicit failed execution,
+        # not a missing terminal event. Its valid immutable bundle must remain
+        # visible without blocking reconciliation of a newer successful run.
+        self.registry.finish_trial(
+            experiment_id=binding["experiment_id"],
+            attempt_id="attempt-1",
+            terminal_status="runner_error",
+            failure_code="artifact_commit_event_append_failed",
+            execution_id=self.context["execution_id"],
+            actor="test",
+        )
+        run["conclusion"] = "failure"
+        with patch.object(reconciler, "_api_json", return_value=run), patch.object(
+            reconciler, "_paged_items", return_value=[]
+        ):
+            failed_report = reconciler.reconcile(
+                registry_root=self.root, token="test",
+                repository="Be90nia/Lottery", repository_id="1461523125",
+                workflow_id=423307604,
+                workflow_path=".github/workflows/subset-research.yml",
+            )
+        failed_findings = [
+            item for item in failed_report["findings"]
+            if item.get("execution_id") == self.context["execution_id"]
+        ]
+        self.assertTrue(any(
+            item["code"] == "execution_missing_artifact_commit_event"
+            and item["severity"] == "warning"
+            for item in failed_findings
+        ), failed_findings)
+        self.assertTrue(any(
+            item["code"] == "storage_bundle_for_failed_execution"
+            and item["severity"] == "warning"
+            for item in failed_findings
+        ), failed_findings)
+        self.assertFalse(any(
+            item["severity"] == "error" for item in failed_findings
+        ), failed_findings)
 
     def test_execution_identity_mismatch_is_reported(self):
         run = {
