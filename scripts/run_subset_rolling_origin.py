@@ -449,7 +449,7 @@ def _finish_registered_execution(
         "recorded_at_utc": terminal_event["occurred_at_utc"],
     }
     receipt_path = output_dir / "registry-run-receipt.json"
-    _write_once_bytes(receipt_path, canonicalize(receipt) + b"\\n")
+    _write_once_bytes(receipt_path, canonicalize(receipt) + b"\n")
     return receipt
 
 
