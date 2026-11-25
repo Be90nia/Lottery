@@ -323,18 +323,31 @@ def reconcile(
                     attempt.get("execution_context", {}).get("sha")
                     == "1bf59f4c23f8082eb9289d3ae8ae3603312ebe05"
                 )
+                failed_terminal = attempt["status"] in {"runner_error", "cancelled", "abandoned"}
                 findings.append(_finding(
-                    "legacy_first_g3_run_missing_artifact_commit_event",
-                    "warning" if legacy_first_producer else "error",
+                    "legacy_first_g3_run_missing_artifact_commit_event"
+                    if legacy_first_producer else "execution_missing_artifact_commit_event",
+                    "warning" if legacy_first_producer or failed_terminal else "error",
                     execution_id=execution_id, run_id=attempt["execution_context"]["run_id"],
                     attempt_id=attempt["attempt_id"], registry_status=attempt["status"],
                     experiment_id=binding["experiment_id"],
                 ))
-            if attempt["status"] != "succeeded":
+            if attempt["status"] == "running":
                 findings.append(_finding(
                     "storage_bundle_valid_but_terminal_missing", "error",
                     execution_id=execution_id, run_id=attempt["execution_context"]["run_id"],
                     attempt_id=attempt["attempt_id"], registry_status=attempt["status"],
+                    experiment_id=binding["experiment_id"],
+                ))
+            elif attempt["status"] in {"runner_error", "cancelled", "abandoned"}:
+                # A recorded failed terminal state is not a missing terminal event.
+                # Preserve the immutable failed attempt and report its committed
+                # but non-successful bundle as a warning rather than blocking later runs.
+                findings.append(_finding(
+                    "storage_bundle_for_failed_execution", "warning",
+                    execution_id=execution_id, run_id=attempt["execution_context"]["run_id"],
+                    attempt_id=attempt["attempt_id"], registry_status=attempt["status"],
+                    failure_code=attempt.get("failure_code"),
                     experiment_id=binding["experiment_id"],
                 ))
 
