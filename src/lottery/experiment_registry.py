@@ -1224,7 +1224,7 @@ class ExperimentRegistry:
             ]
             observed_target_manifest_sha256 = _sha(canonicalize({"targets": target_list}))
             if (observed_target_manifest_sha256 != expected_target_manifest_sha256
-                    or target_manifest.get("target_list_sha256") != expected_target_manifest_sha256):
+                    or target_manifest.get("target_list_sha256") != "sha256:" + expected_target_manifest_sha256):
                 raise ExperimentRegistryError("LOT-065 target manifest digest differs from preregistered target manifest")
         declared_status_counts = manifest.get("terminal_status_counts")
         if (not isinstance(declared_status_counts, dict)
