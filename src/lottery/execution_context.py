@@ -64,8 +64,6 @@ def validate_execution_context(
     workflow_ref_suffix = context["workflow_ref"][len(prefix):]
     if not workflow_ref_suffix:
         raise ExecutionContextError("workflow_ref is missing its ref")
-    if workflow_ref_suffix != context["ref"]:
-        raise ExecutionContextError("workflow_ref ref does not match execution ref")
     if type(context["run_id"]) is not int or context["run_id"] <= 0:
         raise ExecutionContextError("run_id must be a positive integer")
     if type(context["run_attempt"]) is not int or context["run_attempt"] <= 0:
@@ -85,6 +83,8 @@ def validate_execution_context(
     }
     if context["ref"] not in allowed_refs_by_event.get(context["event_name"], set()):
         raise ExecutionContextError("execution event/ref does not match the explicit workflow allowlist")
+    if workflow_ref_suffix != context["ref"]:
+        raise ExecutionContextError("workflow_ref ref does not match execution ref")
     if not isinstance(context["sha"], str) or re.fullmatch(r"[0-9a-f]{40}", context["sha"]) is None:
         raise ExecutionContextError("sha must be a lowercase 40-character commit SHA")
     expected_url = f"https://github.com/{expected_repository}/actions/runs/{context['run_id']}"
