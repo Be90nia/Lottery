@@ -61,8 +61,11 @@ def validate_execution_context(
     prefix = f'{expected_repository}/{expected_workflow_path}@'
     if not isinstance(context["workflow_ref"], str) or not context["workflow_ref"].startswith(prefix):
         raise ExecutionContextError("workflow_ref does not bind the allowed workflow path")
-    if not context["workflow_ref"][len(prefix):]:
+    workflow_ref_suffix = context["workflow_ref"][len(prefix):]
+    if not workflow_ref_suffix:
         raise ExecutionContextError("workflow_ref is missing its ref")
+    if workflow_ref_suffix != context["ref"]:
+        raise ExecutionContextError("workflow_ref ref does not match execution ref")
     if type(context["run_id"]) is not int or context["run_id"] <= 0:
         raise ExecutionContextError("run_id must be a positive integer")
     if type(context["run_attempt"]) is not int or context["run_attempt"] <= 0:
@@ -104,7 +107,7 @@ def execution_context_from_env(
     """Build and validate an execution envelope from the real Actions environment."""
     required = (
         "GITHUB_REPOSITORY", "GITHUB_REPOSITORY_ID", "LOTTERY_WORKFLOW_ID", "GITHUB_WORKFLOW_REF",
-        "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_EVENT_NAME",
+        "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_JOB", "GITHUB_EVENT_NAME",
         "GITHUB_REF", "GITHUB_SHA", "GITHUB_ACTOR",
     )
     missing = [key for key in required if not env.get(key)]
