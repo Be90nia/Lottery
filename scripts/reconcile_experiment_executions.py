@@ -157,20 +157,33 @@ def reconcile(
 
             workflow_status = run.get("status")
             workflow_conclusion = run.get("conclusion")
-            if (run_id == current_run_id and workflow_status != "completed"
-                    and isinstance(current_run_job, str) and current_run_job):
-                # The reconciliation job runs after the evaluator job but
-                # before the enclosing workflow run itself reaches completed.
-                # Use the completed evaluator job for this one explicitly
-                # selected run; all other runs still require workflow terminality.
+            if workflow_status != "completed" or workflow_conclusion != "success":
+                # Registry success/failure describes the evaluator job, not the
+                # enclosing workflow. The later reconciliation job may fail
+                # after a successful evaluator and must not retroactively turn
+                # that immutable execution into a failed evaluator attempt.
+                # The current run can also still be wrapping up while this
+                # reconciliation job is already executing.
+                evaluator_job_name = (
+                    current_run_job
+                    if run_id == current_run_id and isinstance(current_run_job, str) and current_run_job
+                    else "full-rolling-origin"
+                )
                 jobs = _paged_items(
                     f"{API}/repos/{repository}/actions/runs/{run_id}/attempts/{number}/jobs",
                     "jobs", token,
                 )
-                matching_jobs = [item for item in jobs if item.get("name") == current_run_job]
-                if len(matching_jobs) == 1 and matching_jobs[0].get("status") == "completed":
-                    workflow_status = "completed"
+                matching_jobs = [item for item in jobs if item.get("name") == evaluator_job_name]
+                if len(matching_jobs) == 1:
+                    workflow_status = matching_jobs[0].get("status")
                     workflow_conclusion = matching_jobs[0].get("conclusion")
+                elif len(matching_jobs) > 1:
+                    findings.append(_finding(
+                        "workflow_evaluator_job_ambiguous", "error",
+                        run_id=run_id, run_attempt=number,
+                        evaluator_job_name=evaluator_job_name,
+                        matching_job_count=len(matching_jobs),
+                    ))
 
             for binding in attempt_bindings:
                 attempt = binding["attempt"]
