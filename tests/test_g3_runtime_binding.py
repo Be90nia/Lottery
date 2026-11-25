@@ -292,7 +292,7 @@ class G3RuntimeBindingTests(unittest.TestCase):
         )
         receipt_bytes = (self.output_dir / "registry-run-receipt.json").read_bytes()
         self.assertEqual(json.loads(receipt_bytes), receipt)
-        self.assertTrue(receipt_bytes.endswith(b"\\n"))
+        self.assertTrue(receipt_bytes.endswith(b"\n"))
         replayed = runner._finish_registered_execution(registry, binding, self.output_path)
         self.assertEqual(replayed, receipt)
         self.assertEqual((self.output_dir / "registry-run-receipt.json").read_bytes(), receipt_bytes)
