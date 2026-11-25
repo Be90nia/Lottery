@@ -28,12 +28,10 @@ def ledger_lock(ledger_path: Path, timeout: float = 30.0) -> Iterator[None]:
         if os.name == "nt":
             import msvcrt
 
-            # All contenders initialize the same byte offset; never append to
-            # the lock file, which could create different lock regions.
-            if os.fstat(handle.fileno()).st_size == 0:
-                handle.seek(0)
-                handle.write(b"\0")
-                handle.flush()
+            # Lock byte zero before initializing it. Initializing an empty lock
+            # file before acquiring the OS lock lets simultaneous first writers
+            # race to write the same byte; Windows may reject one with
+            # PermissionError while the winner holds the byte-range lock.
             deadline = time.monotonic() + timeout
             while True:
                 try:
@@ -47,6 +45,10 @@ def ledger_lock(ledger_path: Path, timeout: float = 30.0) -> Iterator[None]:
                             f"timed out acquiring ledger lock {lock_path}"
                         ) from exc
                     time.sleep(0.05)
+            if os.fstat(handle.fileno()).st_size == 0:
+                handle.seek(0)
+                handle.write(b"\0")
+                handle.flush()
         else:
             import fcntl
 

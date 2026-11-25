@@ -1,24 +1,29 @@
 name: exact-subset-research
 
 on:
-  # One-shot launch path for the explicitly requested frozen research run.
-  # Restrict to this exact PR branch and workflow-file changes only.
+  # Frozen research launch for the preregistered, solver-amendment and G3
+  # execution-binding branches. Never run on arbitrary pushes.
+  # Each allowlisted push is a fresh, run-bound execution; cross-run model checkpoints are never reused.
   push:
     branches:
       - feat/lot-055-preregistered-holm-inference
+      - feat/lot-063-prospective-score-ledger
+      - feat/lot-064-g3-runtime-binding-isolated
     paths:
       - .github/workflows/subset-research.yml
-      - src/lottery/subset_model/exponential.py
       - src/lottery/subset_model/artifact.py
+      - src/lottery/subset_model/conditional_poisson.py
+      - src/lottery/subset_model/exponential.py
       - src/lottery/subset_model/rolling_origin_ledger.py
       - scripts/run_subset_rolling_origin.py
+      - scripts/reconcile_experiment_executions.py
+      - scripts/import_g3_historical_execution.py
+      - src/lottery/execution_context.py
+      - src/lottery/experiment_registry.py
+      - src/lottery/storage.py
+      - docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
+      - docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json
   workflow_dispatch:
-    inputs:
-      resume_checkpoints:
-        description: "Restore checkpoints from the latest completed run only when evaluator source and frozen data are unchanged"
-        type: boolean
-        required: false
-        default: true
 permissions:
   contents: read
 
@@ -34,8 +39,9 @@ jobs:
       actions: read
     timeout-minutes: 360
     env:
-      PYTHONPATH: src
+      PYTHONPATH: .:src
       RUN_FULL_SUBSET_RESEARCH: "1"
+      LOTTERY_WORKFLOW_ID: "423307604"
       RESEARCH_CODE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
       RESEARCH_SNAPSHOT_COMMIT: fb33963442170bd212d039f3debd07bde58feac6
       RESEARCH_SNAPSHOT_TRUST_STATUS: manifest_complete_not_officially_authenticated
@@ -81,79 +87,297 @@ jobs:
           destination.write_bytes(raw)
           print(f"Verified frozen snapshot: bytes={len(raw)} sha256={expected}")
           PY
-      - name: Restore prior checkpoint when evaluator source is unchanged
-        if: github.event_name != 'workflow_dispatch' || inputs.resume_checkpoints
+      # Restore only closed registry histories. Failed/cancelled attempts remain
+      # first-class when terminalized; never carry an open attempt into a new run.
+      # Never restore model checkpoints: each execution
+      # must produce its own model artifacts bound to its own Actions attempt.
+      # Every new LOT-065 stage records that execution ID; only the first isolated
+      # G3 producer commit is grandfathered for migration compatibility.
+      # Its manifest also predates per-output schema declarations; that exception
+      # is scoped to the exact first producer SHA in the registry verifier.
+      - name: Restore append-only registry and LOT-065 object history
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          set -euo pipefail
           branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
-          previous="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
-            --json databaseId,headSha,status \
-            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed")) | first // empty')"
-          if [ -z "$previous" ]; then
-            echo "No completed prior run; starting with empty checkpoints."
-            exit 0
-          fi
-          previous_run="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["databaseId"])' "$previous")"
-          previous_sha="$(python -c 'import json,sys; print(json.loads(sys.argv[1])["headSha"])' "$previous")"
-          gh auth setup-git
-          git fetch --no-tags origin "$previous_sha" --depth=1
-          if ! git diff --quiet "$previous_sha" "$RESEARCH_CODE_COMMIT" -- scripts/run_subset_rolling_origin.py src/lottery/subset_model src/lottery/backtest.py .github/workflows/subset-research.yml; then
-            echo "Evaluator source changed since run $previous_run; refusing checkpoint reuse."
-            exit 0
-          fi
-          mkdir -p previous-artifact
-          if ! gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-artifact; then
-            echo "Previous run has no downloadable artifact; starting fresh."
-            exit 0
-          fi
-          if [ ! -d previous-artifact/subset-model-checkpoints ]; then
-            echo "Previous artifact has no checkpoint directory; starting fresh."
-            exit 0
-          fi
-          mkdir -p subset-model-checkpoints
-          cp -a previous-artifact/subset-model-checkpoints/. subset-model-checkpoints/
-          python - <<'PY'
-          import json
+          restored=false
+          history_is_closed() {
+            local registry_path="$1"
+            python - "$registry_path" <<'PY'
+          import sys
           from pathlib import Path
-          import os
-          files = sorted(Path("subset-model-checkpoints").glob("*.jsonl"))
-          if not files:
-              raise SystemExit("restored checkpoint directory is empty")
-          current = os.environ["RESEARCH_CODE_COMMIT"]
-          for path in files:
-              lines = path.read_text(encoding="utf-8").splitlines()
-              if not lines:
-                  raise SystemExit(f"empty checkpoint: {path}")
-              header = json.loads(lines[0])
-              if header.get("schema") != "lot-055-checkpoint-v3":
-                  raise SystemExit(f"unsupported checkpoint schema: {path}")
-              header["code_commit"] = current
-              lines[0] = json.dumps(header, sort_keys=True)
-              temporary = path.with_name(path.name + ".tmp")
-              temporary.write_text("\n".join(lines) + "\n", encoding="utf-8")
-              temporary.replace(path)
-          print(f"Restored {len(files)} checkpoint ledgers after confirming evaluator source identity.")
+          from lottery.experiment_registry import ExperimentRegistry
+
+          try:
+              snapshot = ExperimentRegistry(Path(sys.argv[1])).snapshot()
+          except Exception as exc:
+              print(f"Rejecting invalid registry history: {type(exc).__name__}: {exc}")
+              raise SystemExit(1)
+          attempts = [
+              attempt
+              for experiment in snapshot["experiments"].values()
+              for attempt in experiment["attempts"].values()
+          ]
+          open_attempts = [attempt for attempt in attempts if attempt.get("status") == "running"]
+          if open_attempts:
+              print(f"Rejecting registry history with {len(open_attempts)} nonterminal execution attempt(s)")
+              raise SystemExit(1)
+          print(f"Accepted closed registry history with {len(attempts)} terminal execution attempt(s)")
           PY
+          }
+          if [ "${GITHUB_RUN_ATTEMPT:-1}" -gt 1 ]; then
+            for ((previous_attempt=GITHUB_RUN_ATTEMPT - 1; previous_attempt>=1; previous_attempt--)); do
+              rm -rf previous-history
+              mkdir -p previous-history
+              if gh run download "$GITHUB_RUN_ID" \
+                  --name "exact-subset-rolling-origin-attempt-$previous_attempt" --dir previous-history \
+                  && [ -f previous-history/experiment-registry/events.jsonl ] \
+                  && history_is_closed previous-history/experiment-registry; then
+                restored=true
+                break
+              fi
+            done
+            if [ "$restored" != true ]; then
+              rm -rf previous-history
+              mkdir -p previous-history
+              gh run download "$GITHUB_RUN_ID" --name exact-subset-rolling-origin --dir previous-history || true
+              if [ -f previous-history/experiment-registry/events.jsonl ] \
+                  && history_is_closed previous-history/experiment-registry; then
+                restored=true
+              fi
+            fi
+            if [ "$restored" = true ]; then
+              mkdir -p experiment-registry
+              cp -a previous-history/experiment-registry/. experiment-registry/
+              if [ -d previous-history/experiment-storage ]; then
+                mkdir -p experiment-storage
+                cp -a previous-history/experiment-storage/. experiment-storage/
+              fi
+              echo "Restored the latest available prior attempt of this workflow run ($GITHUB_RUN_ID)."
+            fi
+          fi
+          previous_runs="$(gh run list --workflow subset-research.yml --branch "$branch" --limit 50 \
+            --json databaseId,status \
+            --jq 'map(select(.databaseId != (env.GITHUB_RUN_ID | tonumber) and .status == "completed")) | .[].databaseId')"
+          while IFS= read -r previous_run; do
+            [ "$restored" != true ] || break
+            [ -n "$previous_run" ] || continue
+            previous_attempt="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$previous_run" --jq '.run_attempt')"
+            for ((attempt=previous_attempt; attempt>=1; attempt--)); do
+              rm -rf previous-history
+              mkdir -p previous-history
+              if gh run download "$previous_run" \
+                  --name "exact-subset-rolling-origin-attempt-$attempt" --dir previous-history \
+                  && [ -f previous-history/experiment-registry/events.jsonl ] \
+                  && history_is_closed previous-history/experiment-registry; then
+                restored=true
+                break
+              fi
+            done
+            if [ "$restored" != true ]; then
+              rm -rf previous-history
+              mkdir -p previous-history
+              gh run download "$previous_run" --name exact-subset-rolling-origin --dir previous-history || true
+              if [ -f previous-history/experiment-registry/events.jsonl ] \
+                  && history_is_closed previous-history/experiment-registry; then
+                restored=true
+              fi
+            fi
+            if [ "$restored" = true ]; then
+              mkdir -p experiment-registry
+              cp -a previous-history/experiment-registry/. experiment-registry/
+              if [ -d previous-history/experiment-storage ]; then
+                mkdir -p experiment-storage
+                cp -a previous-history/experiment-storage/. experiment-storage/
+              fi
+              echo "Restored append-only registry and LOT-065 objects from run $previous_run."
+              break
+            fi
+          done <<< "$previous_runs"
+          if [ "$restored" != true ]; then
+            mkdir -p historical-baseline
+            gh run download 45346998296 --name g3-historical-registry-import --dir historical-baseline
+            test -f historical-baseline/experiment-registry/events.jsonl
+            mkdir -p experiment-registry
+            cp -a historical-baseline/experiment-registry/. experiment-registry/
+            history_is_closed experiment-registry
+            echo "Restored the pinned retrospective G3 registry baseline."
+          fi
+      # Cross-run model checkpoints are intentionally not restored here:
+      # each execution must produce its own run-bound model artifacts.
+      - name: Append verified historical G3 execution to the persistent registry
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/import_g3_historical_execution.py
+          --evidence docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json
+          --snapshot data/processed/draws-20261118.jsonl
+          --registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
+          --registry-root experiment-registry
       - name: Run full frozen 2,649-target exact-subset evaluation
         run: |
           python scripts/run_subset_rolling_origin.py \
             --snapshot data/processed/draws-20261118.jsonl \
             --output subset-model-rolling-origin.json \
-            --checkpoint-dir subset-model-checkpoints
+            --checkpoint-dir subset-model-checkpoints \
+            --registry-root experiment-registry \
+            --registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json \
+            --require-execution-binding
       - name: Upload full research result (including failure diagnostics)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: exact-subset-rolling-origin
+          name: exact-subset-rolling-origin-attempt-${{ github.run_attempt }}
           path: |
             subset-model-rolling-origin.json
             run_manifest.json
             target-score-ledger.jsonl
             model-artifacts.jsonl
-            subset-model-checkpoints/
+            model-artifact-provenance.jsonl
+            registry-run-receipt.json
+            experiment-registry/
+            experiment-storage/
           if-no-files-found: warn
           retention-days: 90
+
+  reconcile:
+    if: always()
+    needs: full-rolling-origin
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONPATH: .:src
+      FULL_JOB_RESULT: ${{ needs.full-rolling-origin.result }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Download this run's immutable execution evidence
+        run: gh run download "$GITHUB_RUN_ID" --name "exact-subset-rolling-origin-attempt-$GITHUB_RUN_ATTEMPT" --dir g3-run-artifact
+      - name: Run read-only execution and LOT-065 reconciliation
+        run: >-
+          python scripts/reconcile_experiment_executions.py
+          --registry-root g3-run-artifact/experiment-registry
+          --current-run-id "$GITHUB_RUN_ID"
+          --current-run-job full-rolling-origin
+          --output g3-execution-reconciliation.json
+      - name: Verify current execution binding and prove reconciliation was read-only
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          from lottery.experiment_registry import ExperimentRegistry
+          from lottery.storage import FileSystemObjectStore
+
+          registry_root = Path("g3-run-artifact/experiment-registry")
+          storage_root = Path("g3-run-artifact/experiment-storage")
+          def tree_digest(root):
+              digest = hashlib.sha256()
+              if not root.exists():
+                  return digest.hexdigest()
+              for path in sorted(item for item in root.rglob("*") if item.is_file()):
+                  digest.update(str(path.relative_to(root)).encode("utf-8"))
+                  digest.update(b"\0")
+                  digest.update(path.read_bytes())
+              return digest.hexdigest()
+
+          before = (tree_digest(registry_root), tree_digest(storage_root))
+          report = json.loads(Path("g3-execution-reconciliation.json").read_text(encoding="utf-8"))
+          if report.get("mode") != "read_only":
+              raise SystemExit("reconciliation did not declare read_only mode")
+          if any(item.get("severity") == "error" for item in report.get("findings", [])):
+              raise SystemExit("execution reconciliation reported one or more errors")
+          current_run = int(os.environ["GITHUB_RUN_ID"])
+          current_run_attempt = int(os.environ["GITHUB_RUN_ATTEMPT"])
+          if any(item.get("code") == "workflow_run_without_registry_binding"
+                 and item.get("run_id") == current_run for item in report.get("findings", [])):
+              raise SystemExit("current workflow run has no immutable registry binding")
+          snapshot = ExperimentRegistry(registry_root).snapshot()
+          all_attempts = [
+              attempt
+              for experiment in snapshot["experiments"].values()
+              for attempt in experiment["attempts"].values()
+          ]
+          historical = [
+              (experiment_id, attempt)
+              for experiment_id, experiment in snapshot["experiments"].items()
+              for attempt in experiment["attempts"].values()
+              if attempt.get("imported") is True
+          ]
+          if len(historical) != 1 or historical[0][1].get("status") != "completed_uncommitted":
+              raise SystemExit("persistent registry must contain exactly one verified exploratory historical G3 execution")
+          current = []
+          for experiment_id, experiment in snapshot["experiments"].items():
+              for attempt_id, attempt in experiment["attempts"].items():
+                  context = attempt.get("execution_context", {})
+                  if (context.get("run_id") == current_run
+                          and context.get("run_attempt") == current_run_attempt):
+                      current.append((experiment_id, attempt_id, attempt))
+          if len(current) != 1:
+              raise SystemExit(f"expected exactly one registry attempt for current run, found {len(current)}")
+          if len(all_attempts) < 2:
+              raise SystemExit("independent execution history was not preserved across workflow runs")
+          current_experiment_id, _, attempt = current[0]
+          historical_experiment_id, historical_attempt = historical[0]
+          if (historical_experiment_id != current_experiment_id
+                  or historical_attempt.get("trial_id") != attempt.get("trial_id")
+                  or historical_attempt.get("execution_id") == attempt.get("execution_id")):
+              raise SystemExit("historical and live executions are not distinct attempts of the same preregistered trial")
+          experiment_spec = snapshot["experiments"][current_experiment_id]["registration"]["spec"]
+          if (experiment_spec.get("experiment_class") != "exploratory"
+                  or experiment_spec.get("outcomes_observed") is not True
+                  or any(item.get("trial_id") != attempt.get("trial_id")
+                         for item in snapshot["experiments"][current_experiment_id]["attempts"].values())):
+              raise SystemExit("G3 registration or trial lineage escaped its immutable exploratory plan")
+          job_result = os.environ["FULL_JOB_RESULT"]
+          if job_result == "success" and attempt["status"] != "succeeded":
+              raise SystemExit("successful evaluator job lacks a succeeded registry attempt")
+          if job_result != "success" and attempt["status"] == "succeeded":
+              raise SystemExit("registry claims success although the evaluator job failed")
+          if attempt["status"] == "succeeded" and not attempt.get("storage_receipts_sha256"):
+              raise SystemExit("successful execution is missing its LOT-065 receipt bundle")
+          if attempt["status"] == "running":
+              raise SystemExit("workflow ended with a registry attempt still running")
+          store_report = FileSystemObjectStore(storage_root).reconcile()
+          if store_report.get("read_only") is not True:
+              raise SystemExit("LOT-065 reconciliation did not run in read-only mode")
+          if any(store_report.get(key) for key in (
+              "staged_without_validation", "validated_without_commit", "committed_unreferenced",
+              "dangling_pointers", "corrupt_commit_receipts", "corrupt_objects", "orphan_objects",
+          )):
+              raise SystemExit("LOT-065 storage reconciliation found incomplete or corrupt state")
+          after = (tree_digest(registry_root), tree_digest(storage_root))
+          if before != after:
+              raise SystemExit("read-only reconciliation mutated registry or storage evidence")
+          print(json.dumps({
+              "current_run_id": current_run,
+              "current_attempt_id": attempt_id,
+              "current_attempt_status": attempt["status"],
+              "registry_event_count": snapshot["event_count"],
+              "registered_attempt_count": sum(len(e["attempts"]) for e in snapshot["experiments"].values()),
+              "finding_count": report["finding_count"],
+              "storage_reconciliation": store_report,
+              "read_only_digest_unchanged": True,
+          }, sort_keys=True))
+          PY
+      - name: Upload immutable reconciliation report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: g3-execution-reconciliation-attempt-${{ github.run_attempt }}
+          path: g3-execution-reconciliation.json
+          if-no-files-found: error
+          retention-days: 90
+
+# G3 live acceptance execution: fresh run-bound 2,649-target evaluation.

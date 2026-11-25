@@ -1,0 +1,51 @@
+{
+  "schema": "lottery.g3-preregistration/v1",
+  "protocol_id": "LOT-055-v1",
+  "experiment_class": "exploratory_diagnostic",
+  "outcomes_observed_at_registration": true,
+  "snapshot_sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa",
+  "target_manifest_sha256": "9eb25115725b67e95bcf68f38342cf717d71c3233ddf244997c03c03a57316ba",
+  "model_ids": {
+    "candidate": "exponential_family",
+    "uniform": "uniform",
+    "expanding": "expanding",
+    "ewma": "ewma"
+  },
+  "bootstrap_replicates": 1000,
+  "block_length": 50,
+  "bootstrap_seed": 20261118,
+  "bootstrap_seeds_by_zone": {
+    "front": 20261118,
+    "back": 20261119
+  },
+  "bootstrap_seeds_by_zone_and_comparison": {
+    "front": {
+      "uniform": 20261118,
+      "expanding": 20261119,
+      "ewma": 20261120
+    },
+    "back": {
+      "uniform": 20261119,
+      "expanding": 20261120,
+      "ewma": 20261121
+    }
+  },
+  "multiplicity_family": [
+    "candidate_vs_uniform:front",
+    "candidate_vs_uniform:back"
+  ],
+  "alpha": 0.05,
+  "calibration_method": "UNSPECIFIED_NO_PREREGISTERED_METHOD",
+  "calibration_tolerance": 0,
+  "holdout_accessed": false,
+  "migration_mode": "retrospective_registry_materialization",
+  "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
+  "legacy_child_registration_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
+  "parent_lineage_disposition": "external_issue_reference_only; no synthetic content-addressed parent ID is asserted",
+  "approval_required": false,
+  "approval_disposition": "not_required_exploratory",
+  "approval_disposition_reason": "The child registration is outcome-informed and exploratory; protected confirmatory approval is not applicable and no approval receipt is fabricated.",
+  "legacy_child_registration_comment_sha256": "161a14dc087702780917ec020685f6c85f696e7f90f607d1ede9959abc8cb8c2",
+  "legacy_experiment_label": "LOT055-OPT-DIAG-20261120",
+  "legacy_experiment_label_sha256": "4eceab2eab2cc9cdd2961634815f5ed586ddd9f54df5496d7d2754f60039a12a"
+}
