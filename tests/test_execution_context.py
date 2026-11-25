@@ -128,6 +128,32 @@ class ExecutionContextTests(unittest.TestCase):
                 expected_workflow_path=WORKFLOW_PATH,
             )
 
+    def test_missing_github_job_is_reported_as_context_error(self):
+        env = environment()
+        del env["GITHUB_JOB"]
+        with self.assertRaisesRegex(ExecutionContextError, "GITHUB_JOB"):
+            execution_context_from_env(
+                env, checked_out_sha=COMMIT,
+                expected_repository=REPOSITORY,
+                expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
+                expected_workflow_path=WORKFLOW_PATH,
+            )
+
+    def test_workflow_ref_must_match_execution_ref(self):
+        env = environment()
+        env["GITHUB_WORKFLOW_REF"] = (
+            f"{REPOSITORY}/{WORKFLOW_PATH}@refs/heads/feat/lot-055-preregistered-holm-inference"
+        )
+        with self.assertRaisesRegex(ExecutionContextError, "workflow_ref ref"):
+            execution_context_from_env(
+                env, checked_out_sha=COMMIT,
+                expected_repository=REPOSITORY,
+                expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
+                expected_workflow_path=WORKFLOW_PATH,
+            )
+
     def test_tampered_execution_id_and_extra_fields_are_rejected(self):
         context = self.make_context()
         context["execution_id"] = "0" * 64
