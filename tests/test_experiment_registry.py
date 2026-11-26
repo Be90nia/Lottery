@@ -372,6 +372,8 @@ class ExperimentRegistryTests(unittest.TestCase):
                 "spec": {
                     "experiment_class": "exploratory",
                     "trial_plan": [config],
+                    "target_draw_ids": ["00001"],
+                    "target_manifest_sha256": digest("target-manifest"),
                 },
                 "spec_sha256": digest("cp-spec"),
             }
