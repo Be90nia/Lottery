@@ -150,9 +150,9 @@ def _strong_wolfe_search(
     initial_objective: float,
     initial_gradient: tuple[float, ...],
     *,
-    c1: float = 1e-4,
-    c2: float = 0.9,
-    max_iterations: int = 60,
+    c1: float = CALIBRATION_LINE_SEARCH_C1,
+    c2: float = CALIBRATION_LINE_SEARCH_C2,
+    max_iterations: int = CALIBRATION_LINE_SEARCH_MAX_ITERATIONS,
     initial_step: float = CALIBRATION_INITIAL_STEP,
 ):
     """Deterministic strong-Wolfe search with a bounded float64 roundoff envelope."""
