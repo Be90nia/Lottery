@@ -578,7 +578,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             "run_id": "evaluation-domain-id",
             "status": "complete_with_explicit_failures",
             "confirmatory_eligible": False,
-            "experiment_id": self.registered["experiment_id"],
+            "experiment_id": registered["experiment_id"],
             "experiment_class": "exploratory",
             "target_manifest": {
                 "target_count_per_zone": 1,
@@ -667,7 +667,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             reconciler, "_paged_items", return_value=[]
         ):
             failed_report = reconciler.reconcile(
-                registry_root=self.root, token="test",
+                registry_root=registry_root, token="test",
                 repository="Be90nia/Lottery", repository_id="1461523125",
                 workflow_id=423307604,
                 workflow_path=".github/workflows/subset-research.yml",
