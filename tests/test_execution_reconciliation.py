@@ -90,7 +90,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             reconciler, "_paged_items", return_value=[]
         ):
             report = reconciler.reconcile(
-                registry_root=registry_root, token="test",
+                registry_root=self.root, token="test",
                 repository="Be90nia/Lottery", repository_id="1461523125",
                 workflow_id=423307604,
                 workflow_path=".github/workflows/subset-research.yml",
@@ -508,11 +508,11 @@ class ExecutionReconciliationTests(unittest.TestCase):
             "approval_sha256": None,
             "approval_required": False,
             "approval_disposition": "not_required_exploratory",
-            "approval_disposition_reason": "test-only exploratory binding",
+            "approval_disposition_reason": cp_config["approval_disposition_reason"],
             "legacy_parent_issue_url": cp_config["legacy_parent_issue_url"],
             "legacy_child_registration_comment_url": cp_config["legacy_child_registration_comment_url"],
             "legacy_child_registration_comment_sha256": cp_config["legacy_child_registration_comment_sha256"],
-            "parent_lineage_disposition": "test-only lineage",
+            "parent_lineage_disposition": cp_config["parent_lineage_disposition"],
             "trial_id": trial_id,
             "attempt_id": "attempt-1",
             "execution_context": self.context,
@@ -526,7 +526,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
                 "training_last_draw_id": "09053", "training_row_count": 1,
                 "training_dates_strictly_before_target": True, "terminal_status": "fit_failed",
                 "artifact_id": artifact_id, "diagnostic_ref": artifact_id,
-                "experiment_id": self.registered["experiment_id"], "trial_id": trial_id,
+                "experiment_id": registered["experiment_id"], "trial_id": trial_id,
                 "registry_attempt_id": "attempt-1", "execution_id": self.context["execution_id"],
                 "approval_sha256": None, "approval_required": False,
                 "approval_disposition": "not_required_exploratory",
@@ -539,7 +539,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
         provenance_record = {
             "schema": "lottery.model-artifact-provenance/v1",
             "artifact_id": artifact_id,
-            "experiment_id": self.registered["experiment_id"],
+            "experiment_id": registered["experiment_id"],
             "trial_id": trial_id,
             "attempt_id": "attempt-1",
             "execution_id": self.context["execution_id"],
@@ -620,7 +620,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             runner.canonicalize(manifest) + b"\n"
         )
         with patch.object(
-            self.registry, "record_artifacts_committed",
+            registry, "record_artifacts_committed",
             side_effect=RuntimeError("artifact commit event append failed"),
         ):
             with self.assertRaisesRegex(RuntimeError, "artifact commit event append failed"):
@@ -637,7 +637,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             reconciler, "_paged_items", return_value=[]
         ):
             report = reconciler.reconcile(
-                registry_root=self.root, token="test",
+                registry_root=registry_root, token="test",
                 repository="Be90nia/Lottery", repository_id="1461523125",
                 workflow_id=423307604,
                 workflow_path=".github/workflows/subset-research.yml",
