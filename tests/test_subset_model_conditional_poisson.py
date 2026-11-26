@@ -184,27 +184,61 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
         derivative = gradient[0]
         self.assertLessEqual(abs(derivative), 0.9 * 0.5)
 
+    def test_strong_wolfe_accepts_an_ordinary_first_step(self):
+        def evaluate(point):
+            x = point[0]
+            return 0.5 * (x - 1.0) ** 2, (x - 1.0,), (0.5,)
+
+        accepted = _strong_wolfe_search(
+            evaluate, (0.0,), (1.0,), 0.5, (-1.0,),
+        )
+        self.assertIsNotNone(accepted)
+        point, objective, gradient, _ = accepted
+        step = point[0]
+        derivative_zero = -1.0
+        derivative = gradient[0]
+        self.assertLessEqual(objective, 0.5 + 1e-4 * step * derivative_zero + 1e-14)
+        self.assertLessEqual(abs(derivative), -0.9 * derivative_zero)
+
     def test_strong_wolfe_zoom_handles_derivative_sign_transition(self):
         def evaluate(point):
             x = point[0]
-            objective = (x - 0.75) ** 2
-            gradient = (2.0 * (x - 0.75),)
+            objective = -x + 0.55 * x**4
+            gradient = (-1.0 + 2.2 * x**3,)
             return objective, gradient, (0.5,)
 
+        # The first trial satisfies Armijo but violates curvature with a
+        # positive directional derivative, so the derivative-sign zoom path
+        # must run before a smaller step can satisfy both Wolfe conditions.
+        first_trial = evaluate((1.0,))
+        self.assertLessEqual(first_trial[0], 0.0 + 1e-4 * -1.0 + 1e-14)
+        self.assertGreater(first_trial[1][0], 0.9)
         first = _strong_wolfe_search(
-            evaluate, (0.0,), (1.0,), 0.75**2, (-1.5,),
+            evaluate, (0.0,), (1.0,), 0.0, (-1.0,),
         )
         second = _strong_wolfe_search(
-            evaluate, (0.0,), (1.0,), 0.75**2, (-1.5,),
+            evaluate, (0.0,), (1.0,), 0.0, (-1.0,),
         )
         self.assertIsNotNone(first)
         self.assertEqual(first, second)
         point, objective, gradient, _ = first
         step = point[0]
-        derivative_zero = -1.5
+        derivative_zero = -1.0
         derivative = gradient[0]
-        self.assertLessEqual(objective, 0.75**2 + 1e-4 * step * derivative_zero + 1e-14)
+        self.assertLessEqual(objective, 0.0 + 1e-4 * step * derivative_zero + 1e-14)
         self.assertLessEqual(abs(derivative), -0.9 * derivative_zero)
+
+    def test_strong_wolfe_zoom_stops_at_its_iteration_bound(self):
+        def evaluate(_point):
+            # A deliberately inconsistent oracle keeps every zoom candidate
+            # outside Armijo; the bounded search must return None, not loop.
+            return 1.0, (-1.0,), (0.5,)
+
+        accepted = _strong_wolfe_search(
+            evaluate, (0.0,), (1.0,), 0.0, (-1.0,),
+            max_iterations=3,
+        )
+        self.assertIsNone(accepted)
 
     def test_calibration_rejects_boundary_and_wrong_sum_without_repair(self):
         with self.assertRaises(ValueError):
