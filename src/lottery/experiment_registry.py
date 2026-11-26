@@ -91,9 +91,16 @@ def _execution_binding_expectations(
         "approval_disposition_reason", "legacy_parent_issue_url",
         "legacy_child_registration_comment_url",
         "legacy_child_registration_comment_sha256", "parent_lineage_disposition",
+        "registration_schema", "registration_source_sha256",
     ):
         if field in config:
             expected[field] = config[field]
+    if ("registration_schema" in expected) != ("registration_source_sha256" in expected):
+        raise ExperimentRegistryError("registration source binding must include both schema and digest")
+    if "registration_schema" in expected:
+        if (expected["registration_schema"] != "lottery.cp-calibration-preregistration/v1"
+                or not _is_sha(expected["registration_source_sha256"])):
+            raise ExperimentRegistryError("conditional-Poisson registration source binding is invalid")
     return expected
 
 
@@ -1062,8 +1069,15 @@ class ExperimentRegistry:
             "experiment_class", "trial_id", "registry_attempt_id", "execution_id",
             "execution_context",
         }
+        registration_binding_fields = {"registration_schema", "registration_source_sha256"}
+        expected_manifest_binding_fields = required_binding_fields | (
+            registration_binding_fields & set(expected_binding)
+        )
+        if (registration_binding_fields & set(expected_binding)
+                and registration_binding_fields & set(expected_binding) != registration_binding_fields):
+            raise ExperimentRegistryError("conditional-Poisson registration binding is incomplete")
         if (not isinstance(manifest_binding, dict)
-                or set(manifest_binding) != required_binding_fields
+                or set(manifest_binding) != expected_manifest_binding_fields
                 or manifest_binding.get("schema") != "lottery.experiment-run-binding/v1"
                 or manifest.get("experiment_id") != expected_binding["experiment_id"]
                 or manifest.get("experiment_class") != expected_binding["experiment_class"]):
