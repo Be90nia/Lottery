@@ -374,6 +374,7 @@ class ExperimentRegistryTests(unittest.TestCase):
                     "trial_plan": [config],
                     "target_draw_ids": ["00001"],
                     "target_manifest_sha256": digest("target-manifest"),
+                    "source_evidence_sha256": digest("cp-registration-source"),
                 },
                 "spec_sha256": digest("cp-spec"),
             }
@@ -394,6 +395,22 @@ class ExperimentRegistryTests(unittest.TestCase):
             binding["registration_source_sha256"],
             digest("cp-registration-source"),
         )
+        mismatched_config = dict(config, registration_source_sha256=digest("other-source"))
+        mismatched_attempt = dict(
+            attempt,
+            config_sha256=hashlib.sha256(canonicalize(mismatched_config)).hexdigest(),
+        )
+        mismatched_experiment = {
+            "registration": {
+                "spec": dict(experiment["registration"]["spec"], trial_plan=[mismatched_config]),
+                "spec_sha256": digest("cp-spec"),
+            }
+        }
+        with self.assertRaisesRegex(ExperimentRegistryError, "registration source binding"):
+            _execution_binding_expectations(
+                experiment_id, mismatched_experiment, mismatched_attempt,
+                attempt_id, execution_id,
+            )
 
     def test_historical_import_preserves_source_times_and_stays_uncommitted(self):
         spec = experiment_spec(experiment_class="exploratory", outcomes_observed=True)
