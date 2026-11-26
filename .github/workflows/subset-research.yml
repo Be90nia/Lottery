@@ -9,6 +9,7 @@ on:
       - feat/lot-055-preregistered-holm-inference
       - feat/lot-063-prospective-score-ledger
       - feat/lot-064-g3-runtime-binding-isolated
+      - feat/lot055-cp-calibration-lineage
     paths:
       - .github/workflows/subset-research.yml
       - src/lottery/subset_model/artifact.py
@@ -22,6 +23,7 @@ on:
       - src/lottery/experiment_registry.py
       - src/lottery/storage.py
       - docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
+      - docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json
       - docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json
   workflow_dispatch:
 permissions:
@@ -223,7 +225,7 @@ jobs:
             --output subset-model-rolling-origin.json \
             --checkpoint-dir subset-model-checkpoints \
             --registry-root experiment-registry \
-            --registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json \
+            --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json \
             --require-execution-binding
       - name: Upload full research result (including failure diagnostics)
         if: always()
@@ -328,18 +330,56 @@ jobs:
               raise SystemExit(f"expected exactly one registry attempt for current run, found {len(current)}")
           if len(all_attempts) < 2:
               raise SystemExit("independent execution history was not preserved across workflow runs")
-          current_experiment_id, _, attempt = current[0]
+          current_experiment_id, current_attempt_id, attempt = current[0]
           historical_experiment_id, historical_attempt = historical[0]
-          if (historical_experiment_id != current_experiment_id
-                  or historical_attempt.get("trial_id") != attempt.get("trial_id")
+          if (historical_experiment_id == current_experiment_id
                   or historical_attempt.get("execution_id") == attempt.get("execution_id")):
-              raise SystemExit("historical and live executions are not distinct attempts of the same preregistered trial")
+              raise SystemExit("historical optimizer child and live calibration child must remain separate experiments/executions")
           experiment_spec = snapshot["experiments"][current_experiment_id]["registration"]["spec"]
-          if (experiment_spec.get("experiment_class") != "exploratory"
+          if (experiment_spec.get("experiment_name") != "LOT055-CP-CALIBRATION-DIAG-20261126"
+                  or experiment_spec.get("experiment_class") != "exploratory"
                   or experiment_spec.get("outcomes_observed") is not True
                   or any(item.get("trial_id") != attempt.get("trial_id")
                          for item in snapshot["experiments"][current_experiment_id]["attempts"].values())):
-              raise SystemExit("G3 registration or trial lineage escaped its immutable exploratory plan")
+              raise SystemExit("conditional-Poisson calibration registration or trial lineage escaped its immutable exploratory plan")
+          trial_plan = experiment_spec.get("trial_plan")
+          if not isinstance(trial_plan, list) or len(trial_plan) != 1:
+              raise SystemExit("conditional-Poisson calibration trial plan is missing or ambiguous")
+          trial_config = trial_plan[0]
+          solver_config = trial_config.get("baselines", {}).get("calibration_solver")
+          if (not isinstance(solver_config, dict)
+                  or solver_config.get("solver_id") != "conditional_poisson_calibration_lbfgs_strong_wolfe_v2"
+                  or solver_config.get("source_sha256") != hashlib.sha256(
+                      Path("src/lottery/subset_model/conditional_poisson.py").read_bytes()
+                  ).hexdigest()
+                  or trial_config.get("registration_source_sha256") != experiment_spec.get("source_evidence_sha256")):
+              raise SystemExit("registered solver identity/source digest does not match the checked-out implementation")
+          manifest = json.loads(Path("g3-run-artifact/run_manifest.json").read_text(encoding="utf-8"))
+          if (manifest.get("baseline_solver") != solver_config.get("solver_id")
+                  or manifest.get("baseline_calibration") != solver_config
+                  or manifest.get("experiment_id") != current_experiment_id):
+              raise SystemExit("run manifest solver or experiment identity differs from the immutable trial plan")
+          from lottery.subset_model.artifact import canonicalize, verify_artifact
+          artifact_path = Path("g3-run-artifact/model-artifacts.jsonl")
+          conditional_artifacts = []
+          for line in artifact_path.read_text(encoding="utf-8").splitlines():
+              if not line:
+                  continue
+              payload = json.loads(line)
+              if payload.get("model_family") != "conditional_poisson":
+                  continue
+              verified = verify_artifact(canonicalize(payload))
+              if (verified.get("solver_provenance") != solver_config
+                      or verified.get("model_configuration", {}).get("calibration_configuration") != solver_config
+                      or verified.get("code_revision") != attempt.get("execution_context", {}).get("sha")):
+                  raise SystemExit("conditional-Poisson fitted/failed artifact has mismatched solver or source provenance")
+              conditional_artifacts.append(verified)
+          if len(conditional_artifacts) != 2 * 2 * 2649:
+              raise SystemExit(
+                  f"expected 10,596 conditional-Poisson baseline artifacts, found {len(conditional_artifacts)}"
+              )
+          if attempt.get("trial_id") != hashlib.sha256(canonicalize(trial_config)).hexdigest():
+              raise SystemExit("live execution trial ID does not match its exact registered solver configuration")
           job_result = os.environ["FULL_JOB_RESULT"]
           if job_result == "success" and attempt["status"] != "succeeded":
               raise SystemExit("successful evaluator job lacks a succeeded registry attempt")
