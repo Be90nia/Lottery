@@ -105,6 +105,36 @@ def _execution_binding_expectations(
     return expected
 
 
+def _validate_manifest_experiment_binding(
+    manifest_binding: Any, manifest: dict[str, Any], expected_binding: dict[str, Any],
+) -> None:
+    """Validate the closed run-binding schema, including the CP source extension."""
+    required_fields = {
+        "schema", "experiment_id", "spec_sha256", "approval_sha256",
+        "approval_required", "approval_disposition", "approval_disposition_reason",
+        "legacy_parent_issue_url", "legacy_child_registration_comment_url",
+        "legacy_child_registration_comment_sha256", "parent_lineage_disposition",
+        "experiment_class", "trial_id", "registry_attempt_id", "execution_id",
+        "execution_context",
+    }
+    registration_fields = {"registration_schema", "registration_source_sha256"}
+    present_registration_fields = registration_fields & set(expected_binding)
+    if present_registration_fields and present_registration_fields != registration_fields:
+        raise ExperimentRegistryError("conditional-Poisson registration binding is incomplete")
+    expected_fields = required_fields | present_registration_fields
+    if (not isinstance(manifest_binding, dict)
+            or set(manifest_binding) != expected_fields
+            or manifest_binding.get("schema") != "lottery.experiment-run-binding/v1"
+            or manifest.get("experiment_id") != expected_binding["experiment_id"]
+            or manifest.get("experiment_class") != expected_binding["experiment_class"]):
+        raise ExperimentRegistryError("LOT-065 run manifest is missing its closed registry experiment binding")
+    for field, expected_value in expected_binding.items():
+        if field.startswith("_"):
+            continue
+        if manifest_binding.get(field) != expected_value:
+            raise ExperimentRegistryError(f"LOT-065 run manifest binding mismatch: {field}")
+
+
 def _write_once(path: Path, raw: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(
@@ -1062,34 +1092,9 @@ class ExperimentRegistry:
         if manifest_self_digest != "sha256:" + _sha(canonicalize(manifest_body)):
             raise ExperimentRegistryError("LOT-065 run manifest self-digest is invalid")
         manifest_binding = manifest.get("experiment_binding")
-        required_binding_fields = {
-            "schema", "experiment_id", "spec_sha256", "approval_sha256",
-            "approval_required", "approval_disposition", "approval_disposition_reason",
-            "legacy_parent_issue_url", "legacy_child_registration_comment_url",
-            "legacy_child_registration_comment_sha256", "parent_lineage_disposition",
-            "experiment_class", "trial_id", "registry_attempt_id", "execution_id",
-            "execution_context",
-        }
-        registration_binding_fields = {"registration_schema", "registration_source_sha256"}
-        expected_manifest_binding_fields = required_binding_fields | (
-            registration_binding_fields & set(expected_binding)
+        _validate_manifest_experiment_binding(
+            manifest_binding, manifest, expected_binding,
         )
-        if (registration_binding_fields & set(expected_binding)
-                and registration_binding_fields & set(expected_binding) != registration_binding_fields):
-            raise ExperimentRegistryError("conditional-Poisson registration binding is incomplete")
-        if (not isinstance(manifest_binding, dict)
-                or set(manifest_binding) != expected_manifest_binding_fields
-                or manifest_binding.get("schema") != "lottery.experiment-run-binding/v1"
-                or manifest.get("experiment_id") != expected_binding["experiment_id"]
-                or manifest.get("experiment_class") != expected_binding["experiment_class"]):
-            raise ExperimentRegistryError("LOT-065 run manifest is missing its closed registry experiment binding")
-        for field, expected_value in expected_binding.items():
-            if field.startswith("_"):
-                continue
-            if manifest_binding.get(field) != expected_value:
-                raise ExperimentRegistryError(
-                    f"LOT-065 run manifest binding mismatch: {field}"
-                )
         if (expected_binding["experiment_class"] == "exploratory"
                 and manifest.get("confirmatory_eligible") is not False):
             raise ExperimentRegistryError(
