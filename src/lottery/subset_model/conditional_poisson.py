@@ -348,6 +348,11 @@ class ConditionalPoisson:
             raise ValueError("max_iterations must be a positive integer")
         if type(history_size) is not int or history_size < 1:
             raise ValueError("history_size must be a positive integer")
+        if not (isfinite(line_search_c1) and isfinite(line_search_c2)
+                and 0.0 < line_search_c1 < line_search_c2 < 1.0):
+            raise ValueError("Strong-Wolfe constants must satisfy 0 < c1 < c2 < 1")
+        if type(line_search_max_iterations) is not int or line_search_max_iterations < 1:
+            raise ValueError("line_search_max_iterations must be a positive integer")
 
         def evaluate(eta: tuple[float, ...]):
             model = cls(eta, k)
