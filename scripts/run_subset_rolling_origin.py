@@ -1424,13 +1424,16 @@ def _run_impl(
             "multiplicity_note": "intersection-union non-regression gate; all four zone-by-comparator conditions must pass",
         },
         "experiment_id": (
-            experiment_binding["experiment_name"]
+            experiment_binding["trial_config"].get("experiment_name", "LOT055-OPT-DIAG-20261120")
             if experiment_binding is not None else "LOT055-OPT-DIAG-20261120"
         ),
         "experiment_class": "exploratory_diagnostic",
         "confirmatory_eligible": False,
         "experiment_registration_approved": False,
-        "confirmatory_ineligibility_reason": "post-outcome optimizer repair; see Issue #27 child registration",
+        "confirmatory_ineligibility_reason": (
+            "post-outcome conditional-Poisson baseline calibration child; "
+            "descriptive only under the append-only Issue #27 registration"
+        ),
         "confirmatory_candidate_pass": bool(passed),
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",
