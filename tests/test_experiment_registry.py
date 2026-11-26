@@ -10,6 +10,7 @@ from lottery.experiment_registry import (
     ExperimentRegistry,
     ExperimentRegistryError,
     _execution_binding_expectations,
+    _validate_manifest_experiment_binding,
 )
 from lottery.execution_context import execution_context_from_env
 from lottery.subset_model.artifact import canonicalize
@@ -395,6 +396,29 @@ class ExperimentRegistryTests(unittest.TestCase):
             binding["registration_source_sha256"],
             digest("cp-registration-source"),
         )
+        binding_fields = (
+            "experiment_id", "spec_sha256", "approval_sha256",
+            "approval_required", "approval_disposition",
+            "approval_disposition_reason", "legacy_parent_issue_url",
+            "legacy_child_registration_comment_url",
+            "legacy_child_registration_comment_sha256",
+            "parent_lineage_disposition", "experiment_class", "trial_id",
+            "registry_attempt_id", "execution_id", "execution_context",
+            "registration_schema", "registration_source_sha256",
+        )
+        manifest_binding = {
+            "schema": "lottery.experiment-run-binding/v1",
+            **{field: binding[field] for field in binding_fields},
+        }
+        manifest = {
+            "experiment_id": experiment_id,
+            "experiment_class": "exploratory",
+        }
+        _validate_manifest_experiment_binding(manifest_binding, manifest, binding)
+        tampered_binding = dict(manifest_binding, unregistered_extension=True)
+        with self.assertRaisesRegex(ExperimentRegistryError, "closed registry experiment binding"):
+            _validate_manifest_experiment_binding(tampered_binding, manifest, binding)
+
         mismatched_config = dict(config, registration_source_sha256=digest("other-source"))
         mismatched_attempt = dict(
             attempt,
