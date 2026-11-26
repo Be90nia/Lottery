@@ -792,7 +792,6 @@ def _create_fit_failure_artifact(*, model_family: str, zone: str, population_siz
         "feature_schema_hash": feature_schema_hash,
         "model_configuration": config,
         "model_configuration_hash": _jcs_hash(config),
-        "solver_provenance": config.get("calibration_configuration"),
         "parameters": {
             "parameter_order": "feature_schema.names",
             "parameters_available": False,
@@ -833,6 +832,8 @@ def _create_fit_failure_artifact(*, model_family: str, zone: str, population_siz
         "failure_reason": reason or status,
         "forecast_ready": False,
     }
+    if config.get("calibration_configuration") is not None:
+        payload["solver_provenance"] = config["calibration_configuration"]
     raw, artifact_id = create_artifact(payload)
     return {"artifact_id": artifact_id, "payload": verify_artifact(raw)}
 
