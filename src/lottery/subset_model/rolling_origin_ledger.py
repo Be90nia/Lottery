@@ -338,13 +338,19 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             experiment_binding["experiment_id"]
             if experiment_binding is not None else "LOT055-OPT-DIAG-20261120"
         ),
-        "legacy_experiment_label": "LOT055-OPT-DIAG-20261120",
+        "legacy_experiment_label": (
+            experiment_binding.get("experiment_name", "LOT055-OPT-DIAG-20261120")
+            if experiment_binding is not None else "LOT055-OPT-DIAG-20261120"
+        ),
         "experiment_class": (
             experiment_binding["experiment_class"]
             if experiment_binding is not None else "exploratory_diagnostic"
         ),
         "confirmatory_eligible": False,
-        "confirmatory_ineligibility_reason": "post-outcome optimizer repair; see Issue #27 child registration",
+        "confirmatory_ineligibility_reason": (
+            "post-outcome exploratory conditional-Poisson calibration child; "
+            "see the append-only Issue #27 registration"
+        ),
         "snapshot": {
             "path": str(snapshot_path),
             "sha256": snapshot_digest,
@@ -375,8 +381,9 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             "approval_disposition_reason": experiment_binding["approval_disposition_reason"],
             "legacy_parent_issue_url": experiment_binding["legacy_parent_issue_url"],
             "legacy_child_registration_comment_url": experiment_binding["legacy_child_registration_comment_url"],
-            "legacy_child_registration_comment_sha256": experiment_binding["legacy_child_registration_comment_sha256"],
-            "parent_lineage_disposition": experiment_binding["parent_lineage_disposition"],
+            "legacy_child_registration_comment_sha256": experiment_binding.get("legacy_child_registration_comment_sha256"),
+            "parent_lineage_disposition": experiment_binding.get("parent_lineage_disposition"),
+            "registration_schema": experiment_binding.get("registration_schema"),
             "experiment_class": experiment_binding["experiment_class"],
             "trial_id": experiment_binding["trial_id"],
             "registry_attempt_id": experiment_binding["attempt_id"],
@@ -397,6 +404,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             for zone in ("front", "back") for name in MODEL_ORDER
         ],
         "bootstrap": result["bootstrap"],
+        "baseline_solver": result.get("baseline_solver"),
+        "baseline_calibration": result.get("baseline_calibration"),
         "metrics": {
             "primary": "exact observed unordered-subset negative log probability",
             "paired_difference": "candidate NLL minus comparator NLL; negative favors candidate",
