@@ -98,5 +98,6 @@
     "candidate_vs_uniform:front",
     "candidate_vs_uniform:back"
   ],
-  "alpha": 0.05
+  "alpha": 0.05,
+  "child_registration_comment_sha256": "ce10d1d7f20988c1d321c95e36caec302f0a51f0931e29e36ce31c4c1dafccdd"
 }
