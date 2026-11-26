@@ -90,7 +90,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             reconciler, "_paged_items", return_value=[]
         ):
             report = reconciler.reconcile(
-                registry_root=self.root, token="test",
+                registry_root=registry_root, token="test",
                 repository="Be90nia/Lottery", repository_id="1461523125",
                 workflow_id=423307604,
                 workflow_path=".github/workflows/subset-research.yml",
@@ -466,23 +466,52 @@ class ExecutionReconciliationTests(unittest.TestCase):
         self.assertEqual(finding["actual_producer_commit"], "b" * 40)
 
     def test_committed_storage_bundle_without_terminal_event_is_reported_read_only(self):
-        output_dir = self.root.parent / "outputs"
+        registration_source_sha256 = _sha("cp-registration-source")
+        cp_config = {
+            "seed": 1,
+            "registration_schema": "lottery.cp-calibration-preregistration/v1",
+            "registration_source_sha256": registration_source_sha256,
+            "approval_disposition_reason": "post-outcome exploratory registration",
+            "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
+            "legacy_child_registration_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184888699",
+            "legacy_child_registration_comment_sha256": _sha("cp-child-comment"),
+            "parent_lineage_disposition": "append-only exploratory child",
+        }
+        cp_spec = dict(
+            self.spec,
+            experiment_name="cp-reconcile-test",
+            source_evidence_sha256=registration_source_sha256,
+            trial_plan=[cp_config],
+        )
+        registry_root = self.root.parent / "cp-registry"
+        registry = ExperimentRegistry(registry_root)
+        registered = registry.register_experiment(cp_spec, actor="test")
+        registry.start_trial(
+            experiment_id=registered["experiment_id"],
+            attempt_id="attempt-1", config=cp_config, actor="test",
+            execution_context=self.context,
+            expected_repository="Be90nia/Lottery",
+            expected_repository_id="1461523125",
+            expected_workflow_id=423307604,
+            expected_workflow_path=".github/workflows/subset-research.yml",
+        )
+        output_dir = registry_root.parent / "outputs"
         output_dir.mkdir()
         output_path = output_dir / "evaluation.json"
         trial_id = __import__("hashlib").sha256(
-            runner.canonicalize(self.spec["trial_plan"][0])
+            runner.canonicalize(cp_config)
         ).hexdigest()
         binding = {
-            "experiment_id": self.registered["experiment_id"],
-            "spec_sha256": self.registered["spec_sha256"],
+            "experiment_id": registered["experiment_id"],
+            "spec_sha256": registered["spec_sha256"],
             "experiment_class": "exploratory",
             "approval_sha256": None,
             "approval_required": False,
             "approval_disposition": "not_required_exploratory",
             "approval_disposition_reason": "test-only exploratory binding",
-            "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
-            "legacy_child_registration_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751",
-            "legacy_child_registration_comment_sha256": "a" * 64,
+            "legacy_parent_issue_url": cp_config["legacy_parent_issue_url"],
+            "legacy_child_registration_comment_url": cp_config["legacy_child_registration_comment_url"],
+            "legacy_child_registration_comment_sha256": cp_config["legacy_child_registration_comment_sha256"],
             "parent_lineage_disposition": "test-only lineage",
             "trial_id": trial_id,
             "attempt_id": "attempt-1",
@@ -574,6 +603,8 @@ class ExecutionReconciliationTests(unittest.TestCase):
                 "legacy_child_registration_comment_url": binding["legacy_child_registration_comment_url"],
                 "legacy_child_registration_comment_sha256": binding["legacy_child_registration_comment_sha256"],
                 "parent_lineage_disposition": binding["parent_lineage_disposition"],
+                "registration_schema": cp_config["registration_schema"],
+                "registration_source_sha256": cp_config["registration_source_sha256"],
                 "experiment_class": binding["experiment_class"],
                 "trial_id": binding["trial_id"],
                 "registry_attempt_id": binding["attempt_id"],
@@ -593,7 +624,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
             side_effect=RuntimeError("artifact commit event append failed"),
         ):
             with self.assertRaisesRegex(RuntimeError, "artifact commit event append failed"):
-                runner._finish_registered_execution(self.registry, binding, output_path)
+                runner._finish_registered_execution(registry, binding, output_path)
 
         run = {
             "id": 123456, "run_attempt": 1, "workflow_id": 423307604,
@@ -615,7 +646,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
         self.assertIn("storage_bundle_valid_but_terminal_missing", codes, report["findings"])
         self.assertIn("workflow_terminal_registry_running", codes)
         self.assertEqual(
-            self.registry.snapshot()["experiments"][self.registered["experiment_id"]]
+            registry.snapshot()["experiments"][registered["experiment_id"]]
             ["attempts"]["attempt-1"]["status"],
             "running",
         )
@@ -623,7 +654,7 @@ class ExecutionReconciliationTests(unittest.TestCase):
         # A later runner_error terminal event is an explicit failed execution,
         # not a missing terminal event. Its valid immutable bundle must remain
         # visible without blocking reconciliation of a newer successful run.
-        self.registry.finish_trial(
+        registry.finish_trial(
             experiment_id=binding["experiment_id"],
             attempt_id="attempt-1",
             terminal_status="runner_error",
