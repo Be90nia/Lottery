@@ -250,6 +250,9 @@ def _build_cp_calibration_registry_spec(
         raise ValueError("conditional-Poisson child eligibility boundary was changed")
     if registration.get("holdout_accessed") is not False:
         raise ValueError("conditional-Poisson child must preserve the LOT-042 holdout firewall")
+    if (not isinstance(registration.get("child_registration_comment_sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", registration["child_registration_comment_sha256"])):
+        raise ValueError("conditional-Poisson child registration comment digest is missing or malformed")
     if registration.get("snapshot_sha256") != snapshot_digest:
         raise ValueError("conditional-Poisson registration snapshot digest mismatch")
 
@@ -314,7 +317,10 @@ def _build_cp_calibration_registry_spec(
     trial_config = {
         "protocol_id": registration["protocol_id"],
         "registration_id": registration["experiment_id"],
+        "experiment_name": registration["experiment_id"],
+        "registration_schema": registration["schema"],
         "registration_source_sha256": hashlib.sha256(raw).hexdigest(),
+        "legacy_child_registration_comment_sha256": registration["child_registration_comment_sha256"],
         "registration_timing": registration["registration_timing"],
         "candidate": {
             "model_family": "complete_subset_exponential",
@@ -432,8 +438,6 @@ def _start_registered_execution(
         "legacy_child_registration_comment_url": trial_config.get("legacy_child_registration_comment_url"),
         "legacy_child_registration_comment_sha256": trial_config.get("legacy_child_registration_comment_sha256"),
         "parent_lineage_disposition": trial_config.get("parent_lineage_disposition"),
-        "experiment_name": spec["experiment_name"],
-        "registration_schema": registration_document["schema"],
         "trial_id": hashlib.sha256(canonicalize(trial_config)).hexdigest(),
         "trial_config": trial_config,
         "attempt_id": attempt_id,
