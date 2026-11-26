@@ -147,6 +147,7 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
             "max_iterations": 60,
             "initial_step": 1.0,
             "bracketing": "step_doubling",
+            "bracketing_factor": 2.0,
             "zoom": "deterministic_midpoint_bisection",
             "roundoff_policy": "bounded_float64_ulp_envelope",
         })
