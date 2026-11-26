@@ -168,19 +168,21 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
     def test_strong_wolfe_zoom_accepts_after_initial_objective_increase(self):
         def evaluate(point):
             x = point[0]
-            objective = x**4 - 2.0*x**3 + 2.0*x**2 - x
-            gradient = (4.0*x**3 - 6.0*x**2 + 4.0*x - 1.0,)
+            objective = x**4 - 2.0*x**3 + 2.0*x**2 - 0.5*x
+            gradient = (4.0*x**3 - 6.0*x**2 + 4.0*x - 0.5,)
             return objective, gradient, (0.5,)
 
+        # The first trial at step=1 must increase the objective, forcing zoom.
+        self.assertGreater(evaluate((1.0,))[0], evaluate((0.0,))[0])
         accepted = _strong_wolfe_search(
-            evaluate, (0.0,), (1.0,), 0.0, (-1.0,),
+            evaluate, (0.0,), (1.0,), 0.0, (-0.5,),
         )
         self.assertIsNotNone(accepted)
         point, objective, gradient, _ = accepted
         step = point[0]
-        self.assertLessEqual(objective, 0.0 + 1e-4 * step * -1.0 + 1e-14)
+        self.assertLessEqual(objective, 0.0 + 1e-4 * step * -0.5 + 1e-14)
         derivative = gradient[0]
-        self.assertLessEqual(abs(derivative), 0.9)
+        self.assertLessEqual(abs(derivative), 0.9 * 0.5)
 
     def test_strong_wolfe_zoom_handles_derivative_sign_transition(self):
         def evaluate(point):
