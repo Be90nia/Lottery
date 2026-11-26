@@ -1104,6 +1104,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                         line_search_c1=baseline_calibration["line_search"]["c1"],
                         line_search_c2=baseline_calibration["line_search"]["c2"],
                         line_search_max_iterations=baseline_calibration["line_search"]["max_iterations"],
+                        line_search_initial_step=baseline_calibration["line_search"]["initial_step"],
                     )
                     statuses[baseline] = calibration.terminal_status
                     scores[baseline] = None
