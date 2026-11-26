@@ -9,7 +9,6 @@ on:
       - feat/lot-055-preregistered-holm-inference
       - feat/lot-063-prospective-score-ledger
       - feat/lot-064-g3-runtime-binding-isolated
-      - feat/lot055-cp-calibration-lineage
     paths:
       - .github/workflows/subset-research.yml
       - src/lottery/subset_model/artifact.py
