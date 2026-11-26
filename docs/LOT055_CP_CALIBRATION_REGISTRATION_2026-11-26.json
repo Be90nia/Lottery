@@ -46,7 +46,8 @@
       "initial_step": 1,
       "bracketing": "step_doubling",
       "zoom": "deterministic_midpoint_bisection",
-      "roundoff_policy": "bounded_float64_ulp_envelope"
+      "roundoff_policy": "bounded_float64_ulp_envelope",
+      "bracketing_factor": 2
     },
     "stopping": {
       "gradient_infinity_norm_tolerance": 1e-8,
