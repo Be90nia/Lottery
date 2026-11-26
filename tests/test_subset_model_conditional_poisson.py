@@ -113,6 +113,27 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
 
 
 
+    def test_calibration_uses_strong_wolfe_and_not_armijo(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "src/lottery/subset_model/conditional_poisson.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("def _strong_wolfe_search(", source)
+        self.assertIn("accepted = _strong_wolfe_search(", source)
+        self.assertNotIn("Armijo search failed", source)
+
+    def test_strong_wolfe_calibration_handles_high_dynamic_range_marginals(self):
+        source = ConditionalPoisson(
+            tuple((index - 17) * 0.07 for index in range(35)), 5
+        )
+        target = source.inclusion_marginals()
+        first = ConditionalPoisson.calibrate(target, 5)
+        second = ConditionalPoisson.calibrate(target, 5)
+        self.assertTrue(first.converged, msg=first)
+        self.assertLessEqual(first.maximum_absolute_residual, 1e-8)
+        self.assertLessEqual(first.gradient_infinity_norm, 1e-8)
+        self.assertEqual(first, second)
+
     def test_calibration_configuration_is_complete_and_source_bound(self):
         import hashlib
 
