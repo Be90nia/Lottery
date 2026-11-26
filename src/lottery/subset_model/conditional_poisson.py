@@ -22,6 +22,7 @@ CALIBRATION_LINE_SEARCH_C1 = 1e-4
 CALIBRATION_LINE_SEARCH_C2 = 0.9
 CALIBRATION_LINE_SEARCH_MAX_ITERATIONS = 60
 CALIBRATION_INITIAL_STEP = 1.0
+CALIBRATION_BRACKETING_FACTOR = 2.0
 
 
 def calibration_configuration(
@@ -46,6 +47,7 @@ def calibration_configuration(
             "max_iterations": CALIBRATION_LINE_SEARCH_MAX_ITERATIONS,
             "initial_step": CALIBRATION_INITIAL_STEP,
             "bracketing": "step_doubling",
+            "bracketing_factor": CALIBRATION_BRACKETING_FACTOR,
             "zoom": "deterministic_midpoint_bisection",
             "roundoff_policy": "bounded_float64_ulp_envelope",
         },
@@ -151,6 +153,7 @@ def _strong_wolfe_search(
     c1: float = 1e-4,
     c2: float = 0.9,
     max_iterations: int = 60,
+    initial_step: float = CALIBRATION_INITIAL_STEP,
 ):
     """Deterministic strong-Wolfe search with a bounded float64 roundoff envelope."""
     derivative_zero = _dot(initial_gradient, direction)
@@ -192,9 +195,11 @@ def _strong_wolfe_search(
             low_objective = candidate[1]
         return None
 
+    if not isfinite(initial_step) or initial_step <= 0.0:
+        return None
     previous_step = 0.0
     previous_value = (point, initial_objective, initial_gradient, ())
-    step = 1.0
+    step = initial_step
     for iteration in range(max_iterations):
         candidate = at(step)
         if candidate is None:
@@ -210,7 +215,7 @@ def _strong_wolfe_search(
             return zoom(step, previous_step, candidate)
         previous_step = step
         previous_value = candidate
-        step *= 2.0
+        step *= CALIBRATION_BRACKETING_FACTOR
     return None
 
 
@@ -330,6 +335,7 @@ class ConditionalPoisson:
         line_search_c1: float = CALIBRATION_LINE_SEARCH_C1,
         line_search_c2: float = CALIBRATION_LINE_SEARCH_C2,
         line_search_max_iterations: int = CALIBRATION_LINE_SEARCH_MAX_ITERATIONS,
+        line_search_initial_step: float = CALIBRATION_INITIAL_STEP,
     ) -> CalibrationResult:
         """Fit centered log-weights with deterministic strong-Wolfe L-BFGS."""
         target = tuple(float(value) for value in target_marginals)
@@ -353,6 +359,8 @@ class ConditionalPoisson:
             raise ValueError("Strong-Wolfe constants must satisfy 0 < c1 < c2 < 1")
         if type(line_search_max_iterations) is not int or line_search_max_iterations < 1:
             raise ValueError("line_search_max_iterations must be a positive integer")
+        if not isfinite(line_search_initial_step) or line_search_initial_step <= 0.0:
+            raise ValueError("line_search_initial_step must be finite and positive")
 
         def evaluate(eta: tuple[float, ...]):
             model = cls(eta, k)
@@ -416,6 +424,7 @@ class ConditionalPoisson:
                 evaluate, eta, direction, objective, gradient,
                 c1=line_search_c1, c2=line_search_c2,
                 max_iterations=line_search_max_iterations,
+                initial_step=line_search_initial_step,
             )
             if accepted is None:
                 status = "line_search_failed"
