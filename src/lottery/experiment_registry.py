@@ -99,7 +99,8 @@ def _execution_binding_expectations(
         raise ExperimentRegistryError("registration source binding must include both schema and digest")
     if "registration_schema" in expected:
         if (expected["registration_schema"] != "lottery.cp-calibration-preregistration/v1"
-                or not _is_sha(expected["registration_source_sha256"])):
+                or not _is_sha(expected["registration_source_sha256"])
+                or expected["registration_source_sha256"] != spec.get("source_evidence_sha256")):
             raise ExperimentRegistryError("conditional-Poisson registration source binding is invalid")
     return expected
 
