@@ -128,6 +128,31 @@ class ExecutionContextTests(unittest.TestCase):
                 expected_workflow_path=WORKFLOW_PATH,
             )
 
+    def test_new_calibration_branch_is_allowlisted_only_for_push(self):
+        env = environment()
+        branch_ref = "refs/heads/feat/lot055-cp-calibration-lineage"
+        env["GITHUB_EVENT_NAME"] = "push"
+        env["GITHUB_REF"] = branch_ref
+        env["GITHUB_WORKFLOW_REF"] = f"{REPOSITORY}/{WORKFLOW_PATH}@{branch_ref}"
+        context = execution_context_from_env(
+            env, checked_out_sha=COMMIT,
+            expected_repository=REPOSITORY,
+            expected_repository_id=REPOSITORY_ID,
+            expected_workflow_id=WORKFLOW_ID,
+            expected_workflow_path=WORKFLOW_PATH,
+        )
+        self.assertEqual(context["ref"], branch_ref)
+
+        env["GITHUB_EVENT_NAME"] = "workflow_dispatch"
+        with self.assertRaisesRegex(ExecutionContextError, "event/ref"):
+            execution_context_from_env(
+                env, checked_out_sha=COMMIT,
+                expected_repository=REPOSITORY,
+                expected_repository_id=REPOSITORY_ID,
+                expected_workflow_id=WORKFLOW_ID,
+                expected_workflow_path=WORKFLOW_PATH,
+            )
+
     def test_missing_github_job_is_reported_as_context_error(self):
         env = environment()
         del env["GITHUB_JOB"]
