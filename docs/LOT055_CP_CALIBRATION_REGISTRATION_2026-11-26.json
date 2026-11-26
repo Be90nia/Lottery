@@ -24,13 +24,13 @@
   "baselines": {
     "expanding": {
       "model_family": "conditional_poisson",
-      "alpha": 100.0,
+      "alpha": 100,
       "weighting": "expanding"
     },
     "ewma": {
       "model_family": "conditional_poisson",
-      "alpha": 100.0,
-      "half_life": 100.0,
+      "alpha": 100,
+      "half_life": 100,
       "weighting": "2^(-lag/100)"
     }
   },
@@ -43,14 +43,14 @@
       "c1": 0.0001,
       "c2": 0.9,
       "max_iterations": 60,
-      "initial_step": 1.0,
+      "initial_step": 1,
       "bracketing": "step_doubling",
       "zoom": "deterministic_midpoint_bisection",
       "roundoff_policy": "bounded_float64_ulp_envelope"
     },
     "stopping": {
-      "gradient_infinity_norm_tolerance": 1e-08,
-      "independent_marginal_residual_tolerance": 1e-08,
+      "gradient_infinity_norm_tolerance": 1e-8,
+      "independent_marginal_residual_tolerance": 1e-8,
       "max_iterations": 5000,
       "history_size": 10
     },
@@ -78,5 +78,25 @@
     "no_historical_artifact_receipt_or_event_rewrite",
     "no_PR_merge",
     "descriptive_only_no_confirmatory_p_values_or_predictive_advantage_claim"
-  ]
+  ],
+  "bootstrap_replicates": 1000,
+  "block_length": 50,
+  "bootstrap_seed": 20261118,
+  "bootstrap_seeds_by_zone_and_comparison": {
+    "front": {
+      "uniform": 20261118,
+      "expanding": 20261119,
+      "ewma": 20261120
+    },
+    "back": {
+      "uniform": 20261119,
+      "expanding": 20261120,
+      "ewma": 20261121
+    }
+  },
+  "multiplicity_family": [
+    "candidate_vs_uniform:front",
+    "candidate_vs_uniform:back"
+  ],
+  "alpha": 0.05
 }
