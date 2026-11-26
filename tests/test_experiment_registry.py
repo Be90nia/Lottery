@@ -364,6 +364,11 @@ class ExperimentRegistryTests(unittest.TestCase):
             "regularization_lambda": 1.0,
             "registration_schema": "lottery.cp-calibration-preregistration/v1",
             "registration_source_sha256": digest("cp-registration-source"),
+            "approval_disposition_reason": "post-outcome exploratory registration",
+            "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
+            "legacy_child_registration_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184888699",
+            "legacy_child_registration_comment_sha256": digest("child-registration-comment"),
+            "parent_lineage_disposition": "append-only exploratory child",
         }
         experiment_id = digest("cp-experiment")
         attempt_id = "exec-" + digest("cp-execution")
