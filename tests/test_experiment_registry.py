@@ -9,6 +9,7 @@ from lottery.experiment_registry import (
     ExperimentApprovalError,
     ExperimentRegistry,
     ExperimentRegistryError,
+    _execution_binding_expectations,
 )
 from lottery.execution_context import execution_context_from_env
 from lottery.subset_model.artifact import canonicalize
@@ -356,6 +357,41 @@ class ExperimentRegistryTests(unittest.TestCase):
                 expected_workflow_id=423307604,
                 expected_workflow_path=".github/workflows/subset-research.yml",
             )
+
+    def test_cp_registration_source_binding_is_closed_and_content_addressed(self):
+        config = {
+            "regularization_lambda": 1.0,
+            "registration_schema": "lottery.cp-calibration-preregistration/v1",
+            "registration_source_sha256": digest("cp-registration-source"),
+        }
+        experiment_id = digest("cp-experiment")
+        attempt_id = "exec-" + digest("cp-execution")
+        execution_id = digest("cp-execution")
+        experiment = {
+            "registration": {
+                "spec": {
+                    "experiment_class": "exploratory",
+                    "trial_plan": [config],
+                },
+                "spec_sha256": digest("cp-spec"),
+            }
+        }
+        attempt = {
+            "approval_sha256": None,
+            "config_sha256": hashlib.sha256(canonicalize(config)).hexdigest(),
+            "execution_context": {"execution_id": execution_id},
+        }
+        binding = _execution_binding_expectations(
+            experiment_id, experiment, attempt, attempt_id, execution_id,
+        )
+        self.assertEqual(
+            binding["registration_schema"],
+            "lottery.cp-calibration-preregistration/v1",
+        )
+        self.assertEqual(
+            binding["registration_source_sha256"],
+            digest("cp-registration-source"),
+        )
 
     def test_historical_import_preserves_source_times_and_stays_uncommitted(self):
         spec = experiment_spec(experiment_class="exploratory", outcomes_observed=True)
