@@ -16,6 +16,7 @@ on:
       - src/lottery/subset_model/exponential.py
       - src/lottery/subset_model/rolling_origin_ledger.py
       - scripts/run_subset_rolling_origin.py
+      - scripts/verify_cp_registration_source.py
       - scripts/reconcile_experiment_executions.py
       - scripts/import_g3_historical_execution.py
       - src/lottery/execution_context.py
@@ -88,6 +89,13 @@ jobs:
           destination.write_bytes(raw)
           print(f"Verified frozen snapshot: bytes={len(raw)} sha256={expected}")
           PY
+      - name: Verify append-only CP child registration source comment before any evaluation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/verify_cp_registration_source.py
+          --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json
+          --repository "$GITHUB_REPOSITORY"
       # Restore only closed registry histories. Failed/cancelled attempts remain
       # first-class when terminalized; never carry an open attempt into a new run.
       # Never restore model checkpoints: each execution
