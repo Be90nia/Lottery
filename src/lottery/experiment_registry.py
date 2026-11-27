@@ -284,6 +284,17 @@ class ExperimentRegistry:
                     or event.get("prev_event_hash") != previous
                     or event.get("event_hash") != _sha(canonicalize(body))):
                 raise ExperimentRegistryError(f"experiment event hash chain failed at line {line_number}")
+            try:
+                occurred_at = datetime.fromisoformat(event["occurred_at_utc"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ExperimentRegistryError(
+                    f"experiment event timestamp is invalid at line {line_number}"
+                ) from exc
+            if (occurred_at.tzinfo is None
+                    or occurred_at.utcoffset() != timezone.utc.utcoffset(occurred_at)):
+                raise ExperimentRegistryError(
+                    f"experiment event timestamp must be explicitly UTC at line {line_number}"
+                )
             seen.add(event_id)
             previous = event["event_hash"]
             events.append(event)
