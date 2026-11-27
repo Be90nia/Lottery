@@ -186,7 +186,7 @@ class ExperimentRegistryTests(unittest.TestCase):
         persisted["occurred_at_utc"] = "2026-11-23T00:00:00"
         body = {key: value for key, value in persisted.items() if key != "event_hash"}
         persisted["event_hash"] = hashlib.sha256(canonicalize(body)).hexdigest()
-        self.registry.events_path.write_bytes(canonicalize(persisted) + b"\\n")
+        self.registry.events_path.write_bytes(canonicalize(persisted) + b"\n")
         with self.assertRaisesRegex(ExperimentRegistryError, "must be explicitly UTC"):
             self.registry._read_events()
 
