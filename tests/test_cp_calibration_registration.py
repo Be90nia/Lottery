@@ -33,6 +33,27 @@ class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
         self.assertEqual(trial["registration_id"], spec["experiment_name"])
         self.assertFalse(trial["candidate"].get("production_ready", False))
 
+    def test_registration_rejects_mismatched_parent_or_governance_issue(self):
+        import json
+        import tempfile
+
+        snapshot = ROOT / "data/processed/draws-20261118.jsonl"
+        registration = ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json"
+        rows, digest = _load_and_validate(snapshot)
+        original = json.loads(registration.read_text(encoding="utf-8"))
+        for field, value in (
+            ("parent_issue_url", "https://github.com/Be90nia/Lottery/issues/19"),
+            ("governance_issue_url", "https://github.com/Be90nia/Lottery/issues/28"),
+        ):
+            changed = dict(original)
+            changed[field] = value
+            with tempfile.TemporaryDirectory() as directory:
+                candidate = Path(directory) / registration.name
+                candidate.write_text(json.dumps(changed), encoding="utf-8")
+                with self.subTest(field=field):
+                    with self.assertRaisesRegex(ValueError, "lineage is missing or mismatched"):
+                        _build_cp_calibration_registry_spec(rows, digest, candidate)
+
     def test_registration_rejects_armijo_or_unregistered_solver_settings(self):
         snapshot = ROOT / "data/processed/draws-20261118.jsonl"
         registration = ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json"
