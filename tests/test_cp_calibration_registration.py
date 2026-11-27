@@ -17,7 +17,7 @@ from scripts.run_subset_rolling_origin import (
 
 class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
     def _write_registration_fixture(self, directory):
-        source = ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json"
+        source = ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json"
         registration = json.loads(source.read_text(encoding="utf-8"))
         registration["solver_source_sha256"] = calibration_configuration()["source_sha256"]
         candidate = Path(directory) / source.name
@@ -32,7 +32,7 @@ class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
             spec, trial = _build_cp_calibration_registry_spec(rows, digest, registration)
 
         effective = calibration_configuration()
-        self.assertEqual(spec["experiment_name"], "LOT055-CP-CALIBRATION-DIAG-20261126")
+        self.assertEqual(spec["experiment_name"], "LOT055-CP-CALIBRATION-DIAG-20261127-G3-02")
         self.assertEqual(spec["experiment_class"], "exploratory")
         self.assertIs(spec["outcomes_observed"], True)
         self.assertIs(spec["holdout_accessed"], False)
