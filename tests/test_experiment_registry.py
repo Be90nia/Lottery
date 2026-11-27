@@ -209,6 +209,12 @@ class ExperimentRegistryTests(unittest.TestCase):
         with self.assertRaisesRegex(ExperimentRegistryError, "closed event schema"):
             self.registry._read_events()
 
+    def test_event_replay_rejects_non_object_json_lines(self):
+        self.registry.events_path.parent.mkdir(parents=True, exist_ok=True)
+        self.registry.events_path.write_bytes(canonicalize(["not", "an", "event"]) + b"\n")
+        with self.assertRaisesRegex(ExperimentRegistryError, "is not an object"):
+            self.registry._read_events()
+
     def test_registration_retry_is_idempotent(self):
         first = self.register_confirmatory()
         second = self.registry.register_experiment(
