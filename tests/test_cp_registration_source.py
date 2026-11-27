@@ -6,7 +6,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.verify_cp_registration_source import (\n    verify_legacy_registration_comment,\n    verify_registration_comment,\n)
+from scripts.verify_cp_registration_source import (
+    verify_legacy_registration_comment,
+    verify_registration_comment,
+)
 
 
 class CpRegistrationSourceVerificationTests(unittest.TestCase):
