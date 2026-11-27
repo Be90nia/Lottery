@@ -33,7 +33,7 @@ class WorkflowSecurityGateOrderingTests(unittest.TestCase):
         lines = [
             "- name: Restore append-only registry and LOT-065 object history",
             "- name: Verify append-only CP child registration source comment before any evaluation",
-            "  --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json",
+            "  --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json",
             "  --legacy-registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json",
             '  --repository "$GITHUB_REPOSITORY"',
             '  --solver-parameter-comment-sha256 "d9a451cc1bb9b5a62ace3aa47ae34ca016e2f1d66c5bc65ea4003222c9c296e5"',
@@ -47,7 +47,7 @@ class WorkflowSecurityGateOrderingTests(unittest.TestCase):
     def test_requires_scoped_issue_read_permission_for_comment_lookup(self):
         lines = [
             "- name: Verify append-only CP child registration source comment before any evaluation",
-            "  --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json",
+            "  --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json",
             "  --legacy-registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json",
             '  --repository "$GITHUB_REPOSITORY"',
             '  --solver-parameter-comment-sha256 "d9a451cc1bb9b5a62ace3aa47ae34ca016e2f1d66c5bc65ea4003222c9c296e5"',
@@ -70,7 +70,7 @@ class WorkflowSecurityGateOrderingTests(unittest.TestCase):
             "    branches:",
             "      - feat/lot055-cp-calibration-lineage",
             "- name: Verify append-only CP child registration source comment before any evaluation",
-            "  --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json",
+            "  --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json",
             "  --legacy-registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json",
             '  --repository "$GITHUB_REPOSITORY"',
             '  --solver-parameter-comment-sha256 "d9a451cc1bb9b5a62ace3aa47ae34ca016e2f1d66c5bc65ea4003222c9c296e5"',
