@@ -43,7 +43,7 @@ def validate_subset_research_gate(lines: list[str]) -> list[str]:
         )
     gate = "\n".join(lines[positions["verify"]:positions["restore"]])
     for required in (
-        "--registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json",
+        "--registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json",
         "--legacy-registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json",
         '--repository "$GITHUB_REPOSITORY"',
         '--solver-parameter-comment-sha256 "d9a451cc1bb9b5a62ace3aa47ae34ca016e2f1d66c5bc65ea4003222c9c296e5"',
