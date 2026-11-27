@@ -212,7 +212,7 @@ class ExperimentRegistryTests(unittest.TestCase):
     def test_event_replay_rejects_non_object_json_lines(self):
         self.registry.events_path.parent.mkdir(parents=True, exist_ok=True)
         self.registry.events_path.write_bytes(canonicalize(["not", "an", "event"]) + b"\n")
-        with self.assertRaisesRegex(ExperimentRegistryError, "is not an object"):
+        with self.assertRaisesRegex(ExperimentRegistryError, "line 1 is invalid"):
             self.registry._read_events()
 
     def test_registration_retry_is_idempotent(self):
