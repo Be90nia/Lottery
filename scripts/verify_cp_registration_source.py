@@ -134,11 +134,41 @@ def verify_legacy_registration_comment(
     )
 
 
+
+def verify_solver_parameter_comment(
+    registration: dict,
+    repository: str,
+    *,
+    digest_expected: str,
+    token: str,
+    fetch_json=_github_json,
+) -> str:
+    """Verify the immutable Issue #27 comment that fixes Strong-Wolfe parameters."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("repository must be owner/name")
+    comment_id = registration.get("solver_parameter_comment_id")
+    comment_url = registration.get("solver_parameter_comment_url")
+    if comment_id != 7184937843:
+        raise ValueError("solver parameter comment ID is missing or not the registered clarification")
+    if not isinstance(digest_expected, str) or not re.fullmatch(r"[0-9a-f]{64}", digest_expected):
+        raise ValueError("solver parameter comment SHA-256 is missing or malformed")
+    return _verify_comment(
+        repository=repository,
+        issue_number=27,
+        comment_url=comment_url,
+        comment_id=comment_id,
+        digest_expected=digest_expected,
+        token=token,
+        fetch_json=fetch_json,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--registration", type=Path, required=True)
     parser.add_argument("--legacy-registration", type=Path, required=True)
     parser.add_argument("--repository", required=True)
+    parser.add_argument("--solver-parameter-comment-sha256", required=True)
     args = parser.parse_args()
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if not token:
@@ -150,12 +180,17 @@ def main() -> int:
         legacy_digest = verify_legacy_registration_comment(
             legacy_registration, args.repository, token=token,
         )
+        solver_digest = verify_solver_parameter_comment(
+            registration, args.repository,
+            digest_expected=args.solver_parameter_comment_sha256, token=token,
+        )
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"Registration provenance verification failed: {exc}", file=sys.stderr)
         return 1
     print(
         "Verified CP and legacy G3 source comments: "
-        f"cp_sha256={cp_digest} legacy_sha256={legacy_digest}"
+        f"cp_sha256={cp_digest} legacy_sha256={legacy_digest} "
+        f"solver_parameters_sha256={solver_digest}"
     )
     return 0
 
