@@ -337,9 +337,12 @@ class ExperimentRegistry:
                 or not _is_sha(body.get("experiment_id"))):
             raise ExperimentRegistryError("experiment event identity fields are invalid")
         try:
-            datetime.fromisoformat(body["occurred_at_utc"])
+            occurred_at = datetime.fromisoformat(body["occurred_at_utc"])
         except (TypeError, ValueError) as exc:
             raise ExperimentRegistryError("experiment event timestamp is invalid") from exc
+        if (occurred_at.tzinfo is None
+                or occurred_at.utcoffset() != timezone.utc.utcoffset(occurred_at)):
+            raise ExperimentRegistryError("experiment event timestamp must be explicitly UTC")
         approval_hash = body.get("approval_sha256")
         if approval_hash is not None and not _is_sha(approval_hash):
             raise ExperimentRegistryError("experiment event approval digest is invalid")
