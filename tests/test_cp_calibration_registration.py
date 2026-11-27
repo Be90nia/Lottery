@@ -47,9 +47,9 @@ class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
     def test_registration_rejects_mismatched_parent_or_governance_issue(self):
         snapshot = ROOT / "data/processed/draws-20261118.jsonl"
         rows, digest = _load_and_validate(snapshot)
-        original = json.loads((ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json").read_text(encoding="utf-8"))
+        original = json.loads((ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json").read_text(encoding="utf-8"))
         original["solver_source_sha256"] = calibration_configuration()["source_sha256"]
-        registration_name = "LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json"
+        registration_name = "LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json"
         for field, value in (
             ("parent_issue_url", "https://github.com/Be90nia/Lottery/issues/19"),
             ("governance_issue_url", "https://github.com/Be90nia/Lottery/issues/28"),
@@ -79,7 +79,7 @@ class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
     def test_registration_rejects_missing_or_mismatched_solver_source_digest(self):
         snapshot = ROOT / "data/processed/draws-20261118.jsonl"
         rows, digest = _load_and_validate(snapshot)
-        original = json.loads((ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json").read_text(encoding="utf-8"))
+        original = json.loads((ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json").read_text(encoding="utf-8"))
         with tempfile.TemporaryDirectory() as directory:
             for field_value, message in (
                 (None, "missing or malformed"),
