@@ -24,7 +24,6 @@ on:
       - src/lottery/experiment_registry.py
       - src/lottery/storage.py
       - docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
-      - docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json
       - docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json
       - docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json
   workflow_dispatch:
@@ -237,7 +236,7 @@ jobs:
             --output subset-model-rolling-origin.json \
             --checkpoint-dir subset-model-checkpoints \
             --registry-root experiment-registry \
-            --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json \
+            --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json \
             --require-execution-binding
       - name: Upload full research result (including failure diagnostics)
         if: always()
