@@ -19,6 +19,12 @@ class WorkflowSecurityGateOrderingTests(unittest.TestCase):
             "- name: Append verified historical G3 execution to the persistent registry",
             "- name: Run full frozen 2,649-target exact-subset evaluation",
             "workflow_dispatch:",
+            "full-rolling-origin:",
+            "  permissions:",
+            "    contents: read",
+            "    actions: read",
+            "    issues: read",
+            "reconcile:",
         ]
         self.assertEqual(validate_subset_research_gate(lines), [])
 
@@ -34,6 +40,25 @@ class WorkflowSecurityGateOrderingTests(unittest.TestCase):
             "workflow_dispatch:",
         ]
         self.assertTrue(any("must precede" in item for item in validate_subset_research_gate(lines)))
+
+
+    def test_requires_scoped_issue_read_permission_for_comment_lookup(self):
+        lines = [
+            "- name: Verify append-only CP child registration source comment before any evaluation",
+            "  --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json",
+            "  --legacy-registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json",
+            '  --repository "$GITHUB_REPOSITORY"',
+            "- name: Restore append-only registry and LOT-065 object history",
+            "- name: Append verified historical G3 execution to the persistent registry",
+            "- name: Run full frozen 2,649-target exact-subset evaluation",
+            "workflow_dispatch:",
+            "full-rolling-origin:",
+            "  permissions:",
+            "    contents: read",
+            "    actions: read",
+            "reconcile:",
+        ]
+        self.assertTrue(any("requires issues: read" in item for item in validate_subset_research_gate(lines)))
 
     def test_rejects_cp_branch_in_automatic_push_allowlist(self):
         lines = [
