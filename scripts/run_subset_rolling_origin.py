@@ -12,6 +12,7 @@ import math
 import os
 import platform
 import random
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ from lottery.execution_context import execution_context_from_env
 from lottery.experiment_registry import EXPERIMENT_SCHEMA, ExperimentRegistry
 from lottery.storage import FileSystemObjectStore
 from lottery.subset_model.artifact import canonicalize, create_artifact, verify_artifact
+from lottery.subset_model.conditional_poisson import calibration_configuration
 from lottery.subset_model.rolling_origin_ledger import write_immutable_outputs
 from lottery.subset_model import (
     BACK_POPULATION,
@@ -226,6 +228,179 @@ def _build_g3_registry_spec(
     return spec, trial_config
 
 
+
+
+def _build_cp_calibration_registry_spec(
+    rows: list[dict], snapshot_digest: str, registration_path: Path,
+) -> tuple[dict, dict]:
+    """Build the separate post-outcome child registration for baseline calibration."""
+    raw = registration_path.read_bytes()
+    registration = json.loads(raw)
+    if registration.get("schema") != "lottery.cp-calibration-preregistration/v1":
+        raise ValueError("unsupported conditional-Poisson calibration registration schema")
+    if registration.get("experiment_id") != "LOT055-CP-CALIBRATION-DIAG-20261126":
+        raise ValueError("conditional-Poisson child registration ID mismatch")
+    if registration.get("experiment_class") != "exploratory_diagnostic":
+        raise ValueError("conditional-Poisson calibration child must remain exploratory")
+    if registration.get("registration_timing") != "post_outcome_exploratory":
+        raise ValueError("conditional-Poisson registration timing must remain post-outcome")
+    if (registration.get("outcomes_observed_at_registration") is not True
+            or registration.get("confirmatory_eligible") is not False
+            or registration.get("production_eligible") is not False
+            or registration.get("candidate_selection_or_promotion") is not False):
+        raise ValueError("conditional-Poisson child eligibility boundary was changed")
+    if registration.get("holdout_accessed") is not False:
+        raise ValueError("conditional-Poisson child must preserve the LOT-042 holdout firewall")
+    if registration.get("parent_issue_url") != "https://github.com/Be90nia/Lottery/issues/18":
+        raise ValueError("conditional-Poisson child parent LOT-055 protocol lineage is missing or mismatched")
+    if registration.get("governance_issue_url") != "https://github.com/Be90nia/Lottery/issues/27":
+        raise ValueError("conditional-Poisson child LOT-064 governance lineage is missing or mismatched")
+    if (not isinstance(registration.get("child_registration_comment_sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", registration["child_registration_comment_sha256"])):
+        raise ValueError("conditional-Poisson child registration comment digest is missing or malformed")
+    if registration.get("snapshot_sha256") != snapshot_digest:
+        raise ValueError("conditional-Poisson registration snapshot digest mismatch")
+
+    targets = rows[MIN_TRAIN:]
+    target_list = [
+        {"target_draw_id": row["draw_id"], "target_draw_date": row["draw_date"]}
+        for row in targets
+    ]
+    target_manifest_sha256 = hashlib.sha256(
+        canonicalize({"targets": target_list})
+    ).hexdigest()
+    if registration.get("target_manifest_sha256") != target_manifest_sha256:
+        raise ValueError("conditional-Poisson target manifest differs from frozen evaluator targets")
+    if registration.get("targets_per_zone") != len(targets):
+        raise ValueError("conditional-Poisson registration target count mismatch")
+    if registration.get("trial_budget") != {"full_corrected_diagnostic_executions": 1}:
+        raise ValueError("conditional-Poisson registration trial budget changed")
+
+    effective_solver = calibration_configuration()
+    registered_solver = registration.get("solver_configuration")
+    effective_solver_without_source = {
+        key: value for key, value in effective_solver.items() if key != "source_sha256"
+    }
+    registered_source_sha256 = registration.get("solver_source_sha256")
+    if (not isinstance(registered_source_sha256, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", registered_source_sha256)):
+        raise ValueError("registered Strong-Wolfe solver source SHA-256 is missing or malformed")
+    if registered_source_sha256 != effective_solver["source_sha256"]:
+        raise ValueError("registered solver source SHA-256 does not match the imported implementation")
+    if registered_solver != effective_solver_without_source:
+        raise ValueError("registered solver settings do not exactly match the imported Strong-Wolfe implementation")
+    if registration.get("baselines") != {
+        "expanding": {"model_family": "conditional_poisson", "alpha": 100.0, "weighting": "expanding"},
+        "ewma": {"model_family": "conditional_poisson", "alpha": 100.0, "half_life": 100.0,
+                 "weighting": "2^(-lag/100)"},
+    }:
+        raise ValueError("conditional-Poisson baseline formulas differ from the fixed child registration")
+    expected_seeds = {
+        "front": {"uniform": 20261118, "expanding": 20261119, "ewma": 20261120},
+        "back": {"uniform": 20261119, "expanding": 20261120, "ewma": 20261121},
+    }
+    seeds = registration.get("bootstrap_seeds_by_zone_and_comparison")
+    if (registration.get("bootstrap_replicates") != BOOTSTRAP_REPLICATES
+            or registration.get("block_length") != BOOTSTRAP_BLOCK
+            or registration.get("bootstrap_seed") != BOOTSTRAP_SEED
+            or seeds != expected_seeds
+            or registration.get("multiplicity_family") != [
+                "candidate_vs_uniform:front", "candidate_vs_uniform:back"
+            ]
+            or registration.get("alpha") != 0.05):
+        raise ValueError("conditional-Poisson child bootstrap/inference plan changed")
+
+    feature_contract = {
+        "schema": "lottery.g3-feature-contract/v1",
+        "front": {
+            "population_size": FRONT_POPULATION,
+            "selection_size": FRONT_SELECTION,
+            "candidate_features": ["sum", "odd_count", "range", "adjacent_count", "gap_variance"],
+        },
+        "back": {
+            "population_size": BACK_POPULATION,
+            "selection_size": BACK_SELECTION,
+            "candidate_features": ["sum", "odd_count", "range", "adjacent_count"],
+        },
+        "baseline_feature_schema": "lottery-item-inclusion/v1",
+        "feature_definition_revision": "PR-16@aec3a864ea14d84b8b9fac971e0d4b08e72cb0c0",
+    }
+    trial_config = {
+        "protocol_id": registration["protocol_id"],
+        "registration_id": registration["experiment_id"],
+        "experiment_name": registration["experiment_id"],
+        "registration_schema": registration["schema"],
+        "registration_source_sha256": hashlib.sha256(raw).hexdigest(),
+        "legacy_child_registration_comment_sha256": registration["child_registration_comment_sha256"],
+        "registration_timing": registration["registration_timing"],
+        "candidate": {
+            "model_family": "complete_subset_exponential",
+            "objective_scale": "mean_nll",
+            "regularization_lambda": 1.0,
+            "solver": "deterministic_unbounded_lbfgsb_strong_wolfe_v1",
+            "max_iterations": 5000,
+            "gradient_tolerance": 1e-8,
+            "accumulation": "compensated_float64",
+        },
+        "baselines": {
+            "uniform": {"probability": "1/C(m,k)"},
+            **registration["baselines"],
+            "calibration_solver": effective_solver,
+        },
+        "zones": ["front", "back"],
+        "model_order": ["uniform", "expanding", "ewma", "exponential_family"],
+        "target_manifest_sha256": target_manifest_sha256,
+        "bootstrap": {
+            "replicates": BOOTSTRAP_REPLICATES,
+            "block_length": BOOTSTRAP_BLOCK,
+            "seed": BOOTSTRAP_SEED,
+            "seeds_by_zone_and_comparison": seeds,
+            "multiplicity_family": registration["multiplicity_family"],
+            "alpha": registration["alpha"],
+        },
+        "feature_contract_sha256": hashlib.sha256(canonicalize(feature_contract)).hexdigest(),
+        "approval_disposition_reason": (
+            "This child was registered after the relevant outcomes were observed; "
+            "it is descriptive exploratory work and cannot support confirmatory or production claims."
+        ),
+        "legacy_parent_issue_url": registration["parent_issue_url"],
+        "legacy_child_registration_comment_url": registration["child_registration_comment_url"],
+        "parent_lineage_disposition": (
+            "LOT-055 Issue #18 parent protocol and LOT-064 Issue #27 governance; "
+            "append-only post-outcome child; no synthetic parent registry ID asserted."
+        ),
+    }
+    spec = {
+        "schema": EXPERIMENT_SCHEMA,
+        "experiment_name": registration["experiment_id"],
+        "experiment_class": "exploratory",
+        "parent_experiment_id": None,
+        "hypothesis": (
+            "Evaluate the reviewed deterministic Strong-Wolfe conditional-Poisson "
+            "baseline calibration on the frozen expanding/EWMA formulas; descriptive only."
+        ),
+        "model_family": "conditional_poisson_baseline_calibration",
+        "population_key": "pooled_equipment_blind",
+        "zone": "joint",
+        "training_snapshot_sha256": snapshot_digest,
+        "training_cutoff_draw_id": rows[MIN_TRAIN - 1]["draw_id"],
+        "target_draw_ids": [row["draw_id"] for row in targets],
+        "target_manifest_sha256": target_manifest_sha256,
+        "source_evidence_sha256": hashlib.sha256(raw).hexdigest(),
+        "feature_schema_sha256": hashlib.sha256(canonicalize(feature_contract)).hexdigest(),
+        "trial_plan": [trial_config],
+        "primary_metric": "exact_set_nll",
+        "multiplicity_family": registration["multiplicity_family"],
+        "bootstrap_replicates": BOOTSTRAP_REPLICATES,
+        "block_length": BOOTSTRAP_BLOCK,
+        "seed_commitment_sha256": hashlib.sha256(canonicalize(seeds)).hexdigest(),
+        "holdout_accessed": False,
+        "outcomes_observed": True,
+        "population_claim": "pooled",
+        "population_evidence_sha256": None,
+    }
+    return spec, trial_config
+
 def _start_registered_execution(
     rows: list[dict], snapshot_digest: str, registration_path: Path,
     registry_root: Path,
@@ -241,7 +416,13 @@ def _start_registered_execution(
         expected_workflow_id=EXPECTED_WORKFLOW_ID,
         expected_workflow_path=EXPECTED_WORKFLOW_PATH,
     )
-    spec, trial_config = _build_g3_registry_spec(rows, snapshot_digest, registration_path)
+    registration_document = json.loads(registration_path.read_bytes())
+    if registration_document.get("schema") == "lottery.cp-calibration-preregistration/v1":
+        spec, trial_config = _build_cp_calibration_registry_spec(
+            rows, snapshot_digest, registration_path,
+        )
+    else:
+        spec, trial_config = _build_g3_registry_spec(rows, snapshot_digest, registration_path)
     registry = ExperimentRegistry(registry_root)
     registration = registry.register_experiment(spec, actor=execution["actor"])
     attempt_id = "exec-" + execution["execution_id"]
@@ -264,10 +445,10 @@ def _start_registered_execution(
         "approval_required": spec["experiment_class"] == "confirmatory",
         "approval_disposition": "not_required_exploratory",
         "approval_disposition_reason": trial_config["approval_disposition_reason"],
-        "legacy_parent_issue_url": trial_config["legacy_parent_issue_url"],
-        "legacy_child_registration_comment_url": trial_config["legacy_child_registration_comment_url"],
-        "legacy_child_registration_comment_sha256": trial_config["legacy_child_registration_comment_sha256"],
-        "parent_lineage_disposition": trial_config["parent_lineage_disposition"],
+        "legacy_parent_issue_url": trial_config.get("legacy_parent_issue_url"),
+        "legacy_child_registration_comment_url": trial_config.get("legacy_child_registration_comment_url"),
+        "legacy_child_registration_comment_sha256": trial_config.get("legacy_child_registration_comment_sha256"),
+        "parent_lineage_disposition": trial_config.get("parent_lineage_disposition"),
         "trial_id": hashlib.sha256(canonicalize(trial_config)).hexdigest(),
         "trial_config": trial_config,
         "attempt_id": attempt_id,
@@ -661,6 +842,8 @@ def _create_fit_failure_artifact(*, model_family: str, zone: str, population_siz
         "failure_reason": reason or status,
         "forecast_ready": False,
     }
+    if config.get("calibration_configuration") is not None:
+        payload["solver_provenance"] = config["calibration_configuration"]
     raw, artifact_id = create_artifact(payload)
     return {"artifact_id": artifact_id, "payload": verify_artifact(raw)}
 
@@ -750,6 +933,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
     observations = [tuple(row[field]) for row in rows]
     uniform_nll = math.log(math.comb(m, k))
     expected = len(rows) - MIN_TRAIN
+    baseline_calibration = calibration_configuration()
     header = {
         "record_type": "header", "schema": "lot-055-checkpoint-v3",
         "snapshot_sha256": snapshot_digest,
@@ -916,6 +1100,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                     "half_life": 100.0 if baseline == "ewma" else None,
                     "weighting": "expanding" if baseline == "expanding" else "2^(-lag/100)",
                     "feature_schema_hash": _jcs_hash(baseline_schema),
+                    "calibration_configuration": baseline_calibration,
                 }
                 try:
                     marginals = _probabilities(
@@ -923,7 +1108,14 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                         half_life=100.0 if baseline == "ewma" else None,
                     )
                     calibration = ConditionalPoisson.calibrate(
-                        marginals, k, tolerance=1e-8, max_iterations=5000, history_size=10
+                        marginals, k,
+                        tolerance=baseline_calibration["stopping"]["gradient_infinity_norm_tolerance"],
+                        max_iterations=baseline_calibration["stopping"]["max_iterations"],
+                        history_size=baseline_calibration["stopping"]["history_size"],
+                        line_search_c1=baseline_calibration["line_search"]["c1"],
+                        line_search_c2=baseline_calibration["line_search"]["c2"],
+                        line_search_max_iterations=baseline_calibration["line_search"]["max_iterations"],
+                        line_search_initial_step=baseline_calibration["line_search"]["initial_step"],
                     )
                     statuses[baseline] = calibration.terminal_status
                     scores[baseline] = None
@@ -962,13 +1154,14 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                                 "parameter_order": "feature_schema.names",
                             },
                             "model_configuration": baseline_config,
+                            "solver_provenance": baseline_calibration,
                             "fit": {
                                 "status": calibration.terminal_status,
                                 "termination_reason": calibration.message,
                                 "objective": calibration.objective,
                                 "gradient_inf_norm": calibration.gradient_infinity_norm,
                                 "iterations": calibration.iterations,
-                                "optimizer": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+                                "optimizer": baseline_calibration["solver_id"],
                                 "lambda": None,
                             },
                             "training": {
@@ -1013,7 +1206,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                             objective=calibration.objective,
                             gradient_inf_norm=calibration.gradient_infinity_norm,
                             iterations=calibration.iterations,
-                            optimizer="conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+                            optimizer=baseline_calibration["solver_id"],
                             regularization_lambda=None,
                             rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
                         )
@@ -1027,7 +1220,7 @@ def _evaluate_zone(rows: list[dict], zone: str, m: int, k: int, include_gap: boo
                         feature_schema=baseline_schema, model_configuration=baseline_config,
                         status=statuses[baseline], reason=str(exc),
                         objective=None, gradient_inf_norm=None, iterations=0,
-                        optimizer="conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+                        optimizer=baseline_calibration["solver_id"],
                         regularization_lambda=None,
                         rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
                     )
@@ -1106,6 +1299,7 @@ def _run_impl(
     require_execution_binding: bool = False,
 ) -> dict:
     rows, digest = _load_and_validate(snapshot_path)
+    baseline_calibration = calibration_configuration()
     registry = None
     experiment_binding = None
     if require_execution_binding:
@@ -1197,10 +1391,11 @@ def _run_impl(
         "model_comparison": ["uniform", "expanding", "ewma", "exponential_family"],
         "objective_scale": "mean_nll", "regularization_lambda": 1.0,
         "solver": "deterministic_unbounded_lbfgsb_strong_wolfe_v1",
-        "baseline_solver": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
-        "baseline_solver_tolerance": 1e-8,
-        "baseline_solver_max_iterations": 5000,
-        "baseline_solver_history_size": 10,
+        "baseline_solver": baseline_calibration["solver_id"],
+        "baseline_calibration": baseline_calibration,
+        "baseline_solver_tolerance": baseline_calibration["stopping"]["gradient_infinity_norm_tolerance"],
+        "baseline_solver_max_iterations": baseline_calibration["stopping"]["max_iterations"],
+        "baseline_solver_history_size": baseline_calibration["stopping"]["history_size"],
         "solver_policy_note": "Unbounded L-BFGS-B specialization: this model has no box constraints, so the active-set step reduces to L-BFGS; deterministic strong-Wolfe line search is used.",
         "bootstrap": {
             "replicates": BOOTSTRAP_REPLICATES,
@@ -1240,11 +1435,17 @@ def _run_impl(
             "all_zones_pass": bool(all(non_regression_pass.values())),
             "multiplicity_note": "intersection-union non-regression gate; all four zone-by-comparator conditions must pass",
         },
-        "experiment_id": "LOT055-OPT-DIAG-20261120",
+        "experiment_id": (
+            experiment_binding["trial_config"].get("experiment_name", "LOT055-OPT-DIAG-20261120")
+            if experiment_binding is not None else "LOT055-OPT-DIAG-20261120"
+        ),
         "experiment_class": "exploratory_diagnostic",
         "confirmatory_eligible": False,
         "experiment_registration_approved": False,
-        "confirmatory_ineligibility_reason": "post-outcome optimizer repair; see Issue #27 child registration",
+        "confirmatory_ineligibility_reason": (
+            "post-outcome conditional-Poisson baseline calibration child; "
+            "descriptive only under the append-only Issue #27 registration"
+        ),
         "confirmatory_candidate_pass": bool(passed),
         "production_ready": False,
         "limitations": ["pooled equipment-blind model only", "snapshot not officially authenticated",

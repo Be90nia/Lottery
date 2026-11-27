@@ -302,6 +302,61 @@ class ModelArtifactTests(unittest.TestCase):
         with self.assertRaises(ArtifactValidationError):
             verify_derived_cache(canonicalize(altered), expected_parent_artifact_id=parent_id)
 
+    def test_conditional_poisson_artifact_binds_strong_wolfe_source_provenance(self):
+        from lottery.subset_model.conditional_poisson import calibration_configuration
+        from scripts.run_subset_rolling_origin import _create_fit_failure_artifact
+
+        configuration = calibration_configuration()
+        names = [f"item_{item}" for item in range(1, 13)]
+        p = 2 / 12
+        feature_schema = {
+            "version": "lottery-item-inclusion/v1",
+            "names": names,
+            "uniform_means": [p] * 12,
+            "uniform_population_stds": [(p * (1 - p)) ** 0.5] * 12,
+            "zero_variance_policy": "not_applicable_item_indicator_schema",
+        }
+        model_configuration = {
+            "model_family": "conditional_poisson",
+            "baseline": "expanding",
+            "zone": "back",
+            "population_size": 12,
+            "selection_size": 2,
+            "alpha": 100.0,
+            "half_life": None,
+            "weighting": "expanding",
+            "calibration_configuration": configuration,
+        }
+        artifact = _create_fit_failure_artifact(
+            model_family="conditional_poisson",
+            zone="back",
+            population_size=12,
+            selection_size=2,
+            snapshot_digest="b" * 64,
+            training_rows=[{"draw_id": "07001"}],
+            code_revision="a" * 40,
+            feature_schema=feature_schema,
+            model_configuration=model_configuration,
+            status="line_search_failed",
+            reason="test failure artifact",
+            objective=None,
+            gradient_inf_norm=None,
+            iterations=1,
+            optimizer=configuration["solver_id"],
+            regularization_lambda=None,
+            rng_algorithm="conditional_poisson_backward_dp_with_injected_rng_v1",
+        )
+        payload = artifact["payload"]
+        self.assertEqual(payload["solver_provenance"], configuration)
+        self.assertEqual(
+            payload["model_configuration"]["calibration_configuration"],
+            configuration,
+        )
+        tampered = dict(payload)
+        tampered["solver_provenance"] = dict(configuration, solver_id="armijo")
+        with self.assertRaisesRegex(ArtifactValidationError, "solver_provenance"):
+            create_artifact(tampered)
+
     def test_conditional_poisson_family_requires_centered_weights(self):
         p = 2 / 12
         runtime = {}

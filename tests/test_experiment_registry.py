@@ -1,4 +1,5 @@
 import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,8 @@ from lottery.experiment_registry import (
     ExperimentApprovalError,
     ExperimentRegistry,
     ExperimentRegistryError,
+    _execution_binding_expectations,
+    _validate_manifest_experiment_binding,
 )
 from lottery.execution_context import execution_context_from_env
 from lottery.subset_model.artifact import canonicalize
@@ -149,6 +152,68 @@ class ExperimentRegistryTests(unittest.TestCase):
         }
         with self.assertRaisesRegex(ExperimentRegistryError, "closed event schema"):
             self.registry._append_event_locked(event)
+
+    def test_registry_event_timestamps_must_be_explicit_utc(self):
+        base = {
+            "schema": EVENT_SCHEMA,
+            "event_id": "register:timestamp-validation",
+            "event_type": "experiment_registered",
+            "occurred_at_utc": "2026-11-23T00:00:00+00:00",
+            "actor": "test-suite",
+            "experiment_id": digest("timestamp-validation-experiment"),
+            "approval_sha256": None,
+        }
+        for timestamp in ("2026-11-23T00:00:00", "2026-11-23T01:00:00+01:00"):
+            with self.subTest(timestamp=timestamp):
+                event = {**base, "occurred_at_utc": timestamp}
+                with self.assertRaisesRegex(ExperimentRegistryError, "must be explicitly UTC"):
+                    self.registry._append_event_locked(event)
+        self.registry._append_event_locked(base)
+        self.assertEqual(len(self.registry._read_events()), 1)
+
+    def test_event_replay_rejects_rehashed_non_utc_timestamp(self):
+        event = {
+            "schema": EVENT_SCHEMA,
+            "event_id": "register:replay-timestamp-validation",
+            "event_type": "experiment_registered",
+            "occurred_at_utc": "2026-11-23T00:00:00+00:00",
+            "actor": "test-suite",
+            "experiment_id": digest("replay-timestamp-validation-experiment"),
+            "approval_sha256": None,
+        }
+        self.registry._append_event_locked(event)
+        persisted = json.loads(self.registry.events_path.read_text(encoding="utf-8"))
+        persisted["occurred_at_utc"] = "2026-11-23T00:00:00"
+        body = {key: value for key, value in persisted.items() if key != "event_hash"}
+        persisted["event_hash"] = hashlib.sha256(canonicalize(body)).hexdigest()
+        self.registry.events_path.write_bytes(canonicalize(persisted) + b"\n")
+        with self.assertRaisesRegex(ExperimentRegistryError, "must be explicitly UTC"):
+            self.registry._read_events()
+
+    def test_event_replay_rejects_rehashed_unknown_fields(self):
+        event = {
+            "schema": EVENT_SCHEMA,
+            "event_id": "register:replay-closed-schema",
+            "event_type": "experiment_registered",
+            "occurred_at_utc": "2026-11-23T00:00:00+00:00",
+            "actor": "test-suite",
+            "experiment_id": digest("replay-closed-schema-experiment"),
+            "approval_sha256": None,
+        }
+        self.registry._append_event_locked(event)
+        persisted = json.loads(self.registry.events_path.read_text(encoding="utf-8"))
+        persisted["untrusted_extra"] = "rehashed but not part of the event contract"
+        body = {key: value for key, value in persisted.items() if key != "event_hash"}
+        persisted["event_hash"] = hashlib.sha256(canonicalize(body)).hexdigest()
+        self.registry.events_path.write_bytes(canonicalize(persisted) + b"\n")
+        with self.assertRaisesRegex(ExperimentRegistryError, "closed event schema"):
+            self.registry._read_events()
+
+    def test_event_replay_rejects_non_object_json_lines(self):
+        self.registry.events_path.parent.mkdir(parents=True, exist_ok=True)
+        self.registry.events_path.write_bytes(canonicalize(["not", "an", "event"]) + b"\n")
+        with self.assertRaisesRegex(ExperimentRegistryError, "line 1 is invalid"):
+            self.registry._read_events()
 
     def test_registration_retry_is_idempotent(self):
         first = self.register_confirmatory()
@@ -355,6 +420,88 @@ class ExperimentRegistryTests(unittest.TestCase):
                 expected_repository_id="1461523125",
                 expected_workflow_id=423307604,
                 expected_workflow_path=".github/workflows/subset-research.yml",
+            )
+
+    def test_cp_registration_source_binding_is_closed_and_content_addressed(self):
+        config = {
+            "regularization_lambda": 1.0,
+            "registration_schema": "lottery.cp-calibration-preregistration/v1",
+            "registration_source_sha256": digest("cp-registration-source"),
+            "approval_disposition_reason": "post-outcome exploratory registration",
+            "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
+            "legacy_child_registration_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184888699",
+            "legacy_child_registration_comment_sha256": digest("child-registration-comment"),
+            "parent_lineage_disposition": "append-only exploratory child",
+        }
+        experiment_id = digest("cp-experiment")
+        attempt_id = "exec-" + digest("cp-execution")
+        execution_id = digest("cp-execution")
+        experiment = {
+            "registration": {
+                "spec": {
+                    "experiment_class": "exploratory",
+                    "trial_plan": [config],
+                    "target_draw_ids": ["00001"],
+                    "target_manifest_sha256": digest("target-manifest"),
+                    "source_evidence_sha256": digest("cp-registration-source"),
+                },
+                "spec_sha256": digest("cp-spec"),
+            }
+        }
+        attempt = {
+            "approval_sha256": None,
+            "config_sha256": hashlib.sha256(canonicalize(config)).hexdigest(),
+            "execution_context": {"execution_id": execution_id},
+        }
+        binding = _execution_binding_expectations(
+            experiment_id, experiment, attempt, attempt_id, execution_id,
+        )
+        self.assertEqual(
+            binding["registration_schema"],
+            "lottery.cp-calibration-preregistration/v1",
+        )
+        self.assertEqual(
+            binding["registration_source_sha256"],
+            digest("cp-registration-source"),
+        )
+        binding_fields = (
+            "experiment_id", "spec_sha256", "approval_sha256",
+            "approval_required", "approval_disposition",
+            "approval_disposition_reason", "legacy_parent_issue_url",
+            "legacy_child_registration_comment_url",
+            "legacy_child_registration_comment_sha256",
+            "parent_lineage_disposition", "experiment_class", "trial_id",
+            "registry_attempt_id", "execution_id", "execution_context",
+            "registration_schema", "registration_source_sha256",
+        )
+        manifest_binding = {
+            "schema": "lottery.experiment-run-binding/v1",
+            **{field: binding[field] for field in binding_fields},
+        }
+        manifest = {
+            "experiment_id": experiment_id,
+            "experiment_class": "exploratory",
+        }
+        _validate_manifest_experiment_binding(manifest_binding, manifest, binding)
+        tampered_binding = dict(manifest_binding, unregistered_extension=True)
+        with self.assertRaisesRegex(ExperimentRegistryError, "closed registry experiment binding"):
+            _validate_manifest_experiment_binding(tampered_binding, manifest, binding)
+
+        mismatched_config = dict(config, registration_source_sha256=digest("other-source"))
+        mismatched_attempt = dict(
+            attempt,
+            config_sha256=hashlib.sha256(canonicalize(mismatched_config)).hexdigest(),
+        )
+        mismatched_experiment = {
+            "registration": {
+                "spec": dict(experiment["registration"]["spec"], trial_plan=[mismatched_config]),
+                "spec_sha256": digest("cp-spec"),
+            }
+        }
+        with self.assertRaisesRegex(ExperimentRegistryError, "registration source binding"):
+            _execution_binding_expectations(
+                experiment_id, mismatched_experiment, mismatched_attempt,
+                attempt_id, execution_id,
             )
 
     def test_historical_import_preserves_source_times_and_stays_uncommitted(self):

@@ -1,0 +1,80 @@
+name: G3 existing-run evidence reconciliation
+
+on:
+  # Read-only verification of the one-shot CP diagnostic artifact.
+  # This branch is deliberately excluded from the full-evaluation workflow.
+  push:
+    branches:
+      - feat/lot055-cp-calibration-lineage
+    paths:
+      - .github/workflows/g3-evidence-reconciliation.yml
+      - scripts/check_workflow_security.py
+      - scripts/reconcile_experiment_executions.py
+      - src/lottery/experiment_registry.py
+      - src/lottery/execution_context.py
+      - src/lottery/storage.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g3-evidence-reconciliation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  reconcile-existing-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      PYTHONPATH: .:src
+      SOURCE_RUN_ID: "45783468758"
+      SOURCE_ARTIFACT_ID: "15113510778"
+      SOURCE_ARTIFACT_NAME: "exact-subset-rolling-origin-attempt-1"
+      SOURCE_ARTIFACT_SHA256: "82652bd9cb500a9b447693af596735faba2c3c1d5edb3c13ea1302e67e9d0133"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+      - name: Download and verify the pinned one-shot evidence artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID"
+          metadata="$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "$api")"
+          printf '%s' "$metadata" | jq -e \
+            --arg name "$SOURCE_ARTIFACT_NAME" \
+            --arg digest "sha256:$SOURCE_ARTIFACT_SHA256" \
+            --argjson run "$SOURCE_RUN_ID" \
+            '.name == $name and .digest == $digest and .expired == false and .workflow_run.id == $run' >/dev/null
+          curl -fL \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
+            -o source-evidence.zip
+          echo "$SOURCE_ARTIFACT_SHA256  source-evidence.zip" | sha256sum --check -
+          mkdir -p evidence
+          unzip -q source-evidence.zip -d evidence
+          test -s evidence/experiment-registry/events.jsonl
+          test -s evidence/experiment-registry/storage-receipts/649f98685a743e96537d3ef5e4485f2cb9a56aea3a34ae8d759e4e3b715b02c8.json
+          test -d evidence/experiment-storage/objects
+          echo "Verified source run $SOURCE_RUN_ID / artifact $SOURCE_ARTIFACT_ID by exact ZIP SHA-256."
+      - name: Reconcile the original execution against live Actions metadata and LOT-065 receipts
+        run: >-
+          python scripts/reconcile_experiment_executions.py
+          --registry-root evidence/experiment-registry
+          --output g3-cp-evidence-reconciliation.json
+      - name: Upload read-only reconciliation report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: g3-cp-evidence-reconciliation
+          path: g3-cp-evidence-reconciliation.json
+          if-no-files-found: warn
+          retention-days: 90

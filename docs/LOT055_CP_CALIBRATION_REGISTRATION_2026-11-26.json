@@ -1,0 +1,104 @@
+{
+  "schema": "lottery.cp-calibration-preregistration/v1",
+  "experiment_id": "LOT055-CP-CALIBRATION-DIAG-20261126",
+  "protocol_id": "LOT-055-v1",
+  "experiment_class": "exploratory_diagnostic",
+  "outcomes_observed_at_registration": true,
+  "snapshot_sha256": "9f4cc51b76fd258dd056e0b86f675192d3d9a41c2901f771cab778c65ec2b6aa",
+  "target_manifest_sha256": "9eb25115725b67e95bcf68f38342cf717d71c3233ddf244997c03c03a57316ba",
+  "targets_per_zone": 2649,
+  "holdout_accessed": false,
+  "parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
+  "governance_issue_url": "https://github.com/Be90nia/Lottery/issues/27",
+  "child_registration_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184888699",
+  "child_registration_comment_id": 7184888699,
+  "solver_parameter_comment_url": "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184937843",
+  "solver_parameter_comment_id": 7184937843,
+  "registration_timing": "post_outcome_exploratory",
+  "confirmatory_eligible": false,
+  "production_eligible": false,
+  "candidate_selection_or_promotion": false,
+  "trial_budget": {
+    "full_corrected_diagnostic_executions": 1
+  },
+  "baselines": {
+    "expanding": {
+      "model_family": "conditional_poisson",
+      "alpha": 100,
+      "weighting": "expanding"
+    },
+    "ewma": {
+      "model_family": "conditional_poisson",
+      "alpha": 100,
+      "half_life": 100,
+      "weighting": "2^(-lag/100)"
+    }
+  },
+  "solver_configuration": {
+    "solver_id": "conditional_poisson_calibration_lbfgs_strong_wolfe_v2",
+    "algorithm": "L-BFGS",
+    "implementation_version": "v2",
+    "line_search": {
+      "method": "strong_wolfe",
+      "c1": 0.0001,
+      "c2": 0.9,
+      "max_iterations": 60,
+      "initial_step": 1,
+      "bracketing": "step_doubling",
+      "zoom": "deterministic_midpoint_bisection",
+      "roundoff_policy": "bounded_float64_ulp_envelope",
+      "bracketing_factor": 2
+    },
+    "stopping": {
+      "gradient_infinity_norm_tolerance": 1e-8,
+      "independent_marginal_residual_tolerance": 1e-8,
+      "max_iterations": 5000,
+      "history_size": 10
+    },
+    "initialization": "zero_log_weights",
+    "gauge": "centered_zero_sum",
+    "accumulation": "compensated_float64_math.fsum"
+  },
+  "unchanged_contracts": [
+    "candidate_features",
+    "candidate_objective_and_regularization",
+    "target_set",
+    "metrics",
+    "bootstrap",
+    "inference_family",
+    "decision_gates",
+    "expanding_marginal_formula",
+    "ewma_marginal_formula"
+  ],
+  "boundaries": [
+    "no_LOT-042_access",
+    "no_Champion_mutation",
+    "no_promotion",
+    "no_serving_activation",
+    "no_threshold_relaxation",
+    "no_historical_artifact_receipt_or_event_rewrite",
+    "no_PR_merge",
+    "descriptive_only_no_confirmatory_p_values_or_predictive_advantage_claim"
+  ],
+  "bootstrap_replicates": 1000,
+  "block_length": 50,
+  "bootstrap_seed": 20261118,
+  "bootstrap_seeds_by_zone_and_comparison": {
+    "front": {
+      "uniform": 20261118,
+      "expanding": 20261119,
+      "ewma": 20261120
+    },
+    "back": {
+      "uniform": 20261119,
+      "expanding": 20261120,
+      "ewma": 20261121
+    }
+  },
+  "multiplicity_family": [
+    "candidate_vs_uniform:front",
+    "candidate_vs_uniform:back"
+  ],
+  "alpha": 0.05,
+  "child_registration_comment_sha256": "ce10d1d7f20988c1d321c95e36caec302f0a51f0931e29e36ce31c4c1dafccdd"
+}

@@ -49,6 +49,70 @@ def _is_sha(value: Any) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
+_EVENT_REQUIRED_FIELDS = {
+    "experiment_registered": {
+        "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+        "experiment_id", "approval_sha256",
+    },
+    "trial_started": {
+        "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+        "experiment_id", "attempt_id", "config_sha256",
+    },
+    "artifacts_committed": {
+        "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+        "experiment_id", "attempt_id", "execution_id", "storage_receipts_sha256",
+        "result_sha256", "artifact_sha256", "output_files",
+    },
+    "trial_finished": {
+        "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+        "experiment_id", "attempt_id", "terminal_status", "artifact_sha256",
+        "result_sha256", "failure_code",
+    },
+}
+_EVENT_OPTIONAL_FIELDS = {
+    "experiment_registered": set(),
+    "trial_started": {
+        "execution_context", "approval_sha256", "source_metadata_sha256",
+        "source_verification_receipt_sha256", "source_started_at_utc",
+        "source_run_url", "imported",
+    },
+    "artifacts_committed": set(),
+    "trial_finished": {
+        "execution_id", "approval_sha256", "storage_receipts_sha256",
+        "source_metadata_sha256", "source_verification_receipt_sha256",
+        "source_started_at_utc", "source_completed_at_utc", "source_run_url",
+        "source_artifact_id", "source_artifact_zip_sha256",
+        "scientific_result_status", "confirmatory_eligible", "imported",
+    },
+}
+
+
+def _validate_event_body(body: dict[str, Any]) -> None:
+    """Apply the same closed event contract to new appends and persisted replay."""
+    if not isinstance(body, dict) or body.get("schema") != EVENT_SCHEMA:
+        raise ExperimentRegistryError("experiment event does not match the closed event schema")
+    event_type = body.get("event_type")
+    required = _EVENT_REQUIRED_FIELDS.get(event_type)
+    optional = _EVENT_OPTIONAL_FIELDS.get(event_type)
+    if (required is None or optional is None or not required <= set(body)
+            or set(body) - required - optional):
+        raise ExperimentRegistryError("experiment event fields do not match the closed event schema")
+    if (not isinstance(body.get("event_id"), str) or not body["event_id"]
+            or not isinstance(body.get("actor"), str) or not body["actor"]
+            or not _is_sha(body.get("experiment_id"))):
+        raise ExperimentRegistryError("experiment event identity fields are invalid")
+    try:
+        occurred_at = datetime.fromisoformat(body["occurred_at_utc"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ExperimentRegistryError("experiment event timestamp is invalid") from exc
+    if (occurred_at.tzinfo is None
+            or occurred_at.utcoffset() != timezone.utc.utcoffset(occurred_at)):
+        raise ExperimentRegistryError("experiment event timestamp must be explicitly UTC")
+    approval_hash = body.get("approval_sha256")
+    if approval_hash is not None and not _is_sha(approval_hash):
+        raise ExperimentRegistryError("experiment event approval digest is invalid")
+
+
 def _execution_binding_expectations(
     experiment_id: str, experiment: dict[str, Any], attempt: dict[str, Any],
     attempt_id: str, execution_id: str,
@@ -91,10 +155,48 @@ def _execution_binding_expectations(
         "approval_disposition_reason", "legacy_parent_issue_url",
         "legacy_child_registration_comment_url",
         "legacy_child_registration_comment_sha256", "parent_lineage_disposition",
+        "registration_schema", "registration_source_sha256",
     ):
         if field in config:
             expected[field] = config[field]
+    if ("registration_schema" in expected) != ("registration_source_sha256" in expected):
+        raise ExperimentRegistryError("registration source binding must include both schema and digest")
+    if "registration_schema" in expected:
+        if (expected["registration_schema"] != "lottery.cp-calibration-preregistration/v1"
+                or not _is_sha(expected["registration_source_sha256"])
+                or expected["registration_source_sha256"] != spec.get("source_evidence_sha256")):
+            raise ExperimentRegistryError("conditional-Poisson registration source binding is invalid")
     return expected
+
+
+def _validate_manifest_experiment_binding(
+    manifest_binding: Any, manifest: dict[str, Any], expected_binding: dict[str, Any],
+) -> None:
+    """Validate the closed run-binding schema, including the CP source extension."""
+    required_fields = {
+        "schema", "experiment_id", "spec_sha256", "approval_sha256",
+        "approval_required", "approval_disposition", "approval_disposition_reason",
+        "legacy_parent_issue_url", "legacy_child_registration_comment_url",
+        "legacy_child_registration_comment_sha256", "parent_lineage_disposition",
+        "experiment_class", "trial_id", "registry_attempt_id", "execution_id",
+        "execution_context",
+    }
+    registration_fields = {"registration_schema", "registration_source_sha256"}
+    present_registration_fields = registration_fields & set(expected_binding)
+    if present_registration_fields and present_registration_fields != registration_fields:
+        raise ExperimentRegistryError("conditional-Poisson registration binding is incomplete")
+    expected_fields = required_fields | present_registration_fields
+    if (not isinstance(manifest_binding, dict)
+            or set(manifest_binding) != expected_fields
+            or manifest_binding.get("schema") != "lottery.experiment-run-binding/v1"
+            or manifest.get("experiment_id") != expected_binding["experiment_id"]
+            or manifest.get("experiment_class") != expected_binding["experiment_class"]):
+        raise ExperimentRegistryError("LOT-065 run manifest is missing its closed registry experiment binding")
+    for field, expected_value in expected_binding.items():
+        if field.startswith("_"):
+            continue
+        if manifest_binding.get(field) != expected_value:
+            raise ExperimentRegistryError(f"LOT-065 run manifest binding mismatch: {field}")
 
 
 def _write_once(path: Path, raw: bytes) -> None:
@@ -239,6 +341,10 @@ class ExperimentRegistry:
                 event = parse_json_strict(line)
             except ArtifactValidationError as exc:
                 raise ExperimentRegistryError(f"experiment event line {line_number} is invalid") from exc
+            if not isinstance(event, dict):
+                raise ExperimentRegistryError(
+                    f"experiment event line {line_number} is not an object"
+                )
             event_id = event.get("event_id")
             body = {key: value for key, value in event.items() if key != "event_hash"}
             if (not isinstance(event_id, str) or not event_id or event_id in seen
@@ -246,65 +352,18 @@ class ExperimentRegistry:
                     or event.get("prev_event_hash") != previous
                     or event.get("event_hash") != _sha(canonicalize(body))):
                 raise ExperimentRegistryError(f"experiment event hash chain failed at line {line_number}")
+            event_payload = {
+                key: value for key, value in event.items()
+                if key not in ("event_hash", "prev_event_hash")
+            }
+            _validate_event_body(event_payload)
             seen.add(event_id)
             previous = event["event_hash"]
             events.append(event)
         return events
 
     def _append_event_locked(self, body: dict[str, Any]) -> None:
-        if not isinstance(body, dict) or body.get("schema") != EVENT_SCHEMA:
-            raise ExperimentRegistryError("experiment event does not match the closed event schema")
-        required_fields = {
-            "experiment_registered": {
-                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
-                "experiment_id", "approval_sha256",
-            },
-            "trial_started": {
-                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
-                "experiment_id", "attempt_id", "config_sha256",
-            },
-            "artifacts_committed": {
-                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
-                "experiment_id", "attempt_id", "execution_id", "storage_receipts_sha256",
-                "result_sha256", "artifact_sha256", "output_files",
-            },
-            "trial_finished": {
-                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
-                "experiment_id", "attempt_id", "terminal_status", "artifact_sha256",
-                "result_sha256", "failure_code",
-            },
-        }
-        optional_fields = {
-            "experiment_registered": set(),
-            "trial_started": {
-                "execution_context", "approval_sha256", "source_metadata_sha256",
-                "source_verification_receipt_sha256", "source_started_at_utc",
-                "source_run_url", "imported",
-            },
-            "artifacts_committed": set(),
-            "trial_finished": {
-                "execution_id", "approval_sha256", "storage_receipts_sha256",
-                "source_metadata_sha256", "source_verification_receipt_sha256",
-                "source_started_at_utc", "source_completed_at_utc", "source_run_url",
-                "source_artifact_id", "source_artifact_zip_sha256",
-                "scientific_result_status", "confirmatory_eligible", "imported",
-            },
-        }
-        event_type = body.get("event_type")
-        required = required_fields.get(event_type)
-        if required is None or not required <= set(body) or set(body) - required - optional_fields[event_type]:
-            raise ExperimentRegistryError("experiment event fields do not match the closed event schema")
-        if (not isinstance(body.get("event_id"), str) or not body["event_id"]
-                or not isinstance(body.get("actor"), str) or not body["actor"]
-                or not _is_sha(body.get("experiment_id"))):
-            raise ExperimentRegistryError("experiment event identity fields are invalid")
-        try:
-            datetime.fromisoformat(body["occurred_at_utc"])
-        except (TypeError, ValueError) as exc:
-            raise ExperimentRegistryError("experiment event timestamp is invalid") from exc
-        approval_hash = body.get("approval_sha256")
-        if approval_hash is not None and not _is_sha(approval_hash):
-            raise ExperimentRegistryError("experiment event approval digest is invalid")
+        _validate_event_body(body)
         events = self._read_events()
         event_id = body["event_id"]
         existing = next((x for x in events if x["event_id"] == event_id), None)
@@ -1054,27 +1113,9 @@ class ExperimentRegistry:
         if manifest_self_digest != "sha256:" + _sha(canonicalize(manifest_body)):
             raise ExperimentRegistryError("LOT-065 run manifest self-digest is invalid")
         manifest_binding = manifest.get("experiment_binding")
-        required_binding_fields = {
-            "schema", "experiment_id", "spec_sha256", "approval_sha256",
-            "approval_required", "approval_disposition", "approval_disposition_reason",
-            "legacy_parent_issue_url", "legacy_child_registration_comment_url",
-            "legacy_child_registration_comment_sha256", "parent_lineage_disposition",
-            "experiment_class", "trial_id", "registry_attempt_id", "execution_id",
-            "execution_context",
-        }
-        if (not isinstance(manifest_binding, dict)
-                or set(manifest_binding) != required_binding_fields
-                or manifest_binding.get("schema") != "lottery.experiment-run-binding/v1"
-                or manifest.get("experiment_id") != expected_binding["experiment_id"]
-                or manifest.get("experiment_class") != expected_binding["experiment_class"]):
-            raise ExperimentRegistryError("LOT-065 run manifest is missing its closed registry experiment binding")
-        for field, expected_value in expected_binding.items():
-            if field.startswith("_"):
-                continue
-            if manifest_binding.get(field) != expected_value:
-                raise ExperimentRegistryError(
-                    f"LOT-065 run manifest binding mismatch: {field}"
-                )
+        _validate_manifest_experiment_binding(
+            manifest_binding, manifest, expected_binding,
+        )
         if (expected_binding["experiment_class"] == "exploratory"
                 and manifest.get("confirmatory_eligible") is not False):
             raise ExperimentRegistryError(
