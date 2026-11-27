@@ -1,4 +1,6 @@
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,11 +16,20 @@ from scripts.run_subset_rolling_origin import (
 
 
 class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
+    def _write_registration_fixture(self, directory):
+        source = ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json"
+        registration = json.loads(source.read_text(encoding="utf-8"))
+        registration["solver_source_sha256"] = calibration_configuration()["source_sha256"]
+        candidate = Path(directory) / source.name
+        candidate.write_text(json.dumps(registration), encoding="utf-8")
+        return candidate
+
     def test_post_outcome_child_registration_binds_exact_solver_and_snapshot(self):
         snapshot = ROOT / "data/processed/draws-20261118.jsonl"
-        registration = ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json"
         rows, digest = _load_and_validate(snapshot)
-        spec, trial = _build_cp_calibration_registry_spec(rows, digest, registration)
+        with tempfile.TemporaryDirectory() as directory:
+            registration = self._write_registration_fixture(directory)
+            spec, trial = _build_cp_calibration_registry_spec(rows, digest, registration)
 
         effective = calibration_configuration()
         self.assertEqual(spec["experiment_name"], "LOT055-CP-CALIBRATION-DIAG-20261126")
@@ -34,13 +45,10 @@ class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
         self.assertFalse(trial["candidate"].get("production_ready", False))
 
     def test_registration_rejects_mismatched_parent_or_governance_issue(self):
-        import json
-        import tempfile
-
         snapshot = ROOT / "data/processed/draws-20261118.jsonl"
-        registration = ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json"
         rows, digest = _load_and_validate(snapshot)
-        original = json.loads(registration.read_text(encoding="utf-8"))
+        original = json.loads((ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json").read_text(encoding="utf-8"))
+        original["solver_source_sha256"] = calibration_configuration()["source_sha256"]
         for field, value in (
             ("parent_issue_url", "https://github.com/Be90nia/Lottery/issues/19"),
             ("governance_issue_url", "https://github.com/Be90nia/Lottery/issues/28"),
@@ -56,17 +64,34 @@ class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
 
     def test_registration_rejects_armijo_or_unregistered_solver_settings(self):
         snapshot = ROOT / "data/processed/draws-20261118.jsonl"
-        registration = ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json"
         rows, digest = _load_and_validate(snapshot)
-        original = registration.read_text(encoding="utf-8")
-        changed = original.replace('"method": "strong_wolfe"', '"method": "armijo"')
-        self.assertNotEqual(original, changed)
-        import tempfile
         with tempfile.TemporaryDirectory() as directory:
-            candidate = Path(directory) / registration.name
+            registration = self._write_registration_fixture(directory)
+            original = registration.read_text(encoding="utf-8")
+            changed = original.replace('"method": "strong_wolfe"', '"method": "armijo"')
+            self.assertNotEqual(original, changed)
+            candidate = Path(directory) / "armijo-registration.json"
             candidate.write_text(changed, encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "registered solver settings"):
                 _build_cp_calibration_registry_spec(rows, digest, candidate)
+
+    def test_registration_rejects_missing_or_mismatched_solver_source_digest(self):
+        snapshot = ROOT / "data/processed/draws-20261118.jsonl"
+        rows, digest = _load_and_validate(snapshot)
+        original = json.loads((ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as directory:
+            for field_value, message in (
+                (None, "missing or malformed"),
+                ("0" * 64, "does not match the imported implementation"),
+            ):
+                changed = dict(original)
+                if field_value is not None:
+                    changed["solver_source_sha256"] = field_value
+                candidate = Path(directory) / f"registration-{field_value}.json"
+                candidate.write_text(json.dumps(changed), encoding="utf-8")
+                with self.subTest(field_value=field_value):
+                    with self.assertRaisesRegex(ValueError, message):
+                        _build_cp_calibration_registry_spec(rows, digest, candidate)
 
 
 if __name__ == "__main__":
