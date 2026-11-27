@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.verify_cp_registration_source import verify_registration_comment
+from scripts.verify_cp_registration_source import (\n    verify_legacy_registration_comment,\n    verify_registration_comment,\n)
 
 
 class CpRegistrationSourceVerificationTests(unittest.TestCase):
@@ -76,6 +76,49 @@ class CpRegistrationSourceVerificationTests(unittest.TestCase):
             verify_registration_comment(
                 registration, "Be90nia/Lottery", token="test-token",
                 fetch_json=lambda _url, _token: self.payload,
+            )
+
+
+    def test_verifies_legacy_g3_child_registration_comment(self):
+        registration = {
+            "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
+            "legacy_child_registration_comment_url": (
+                "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751"
+            ),
+            "legacy_child_registration_comment_sha256": self.digest,
+        }
+        payload = {
+            "id": 7028060751,
+            "issue_url": "https://api.github.com/repos/Be90nia/Lottery/issues/27",
+            "html_url": registration["legacy_child_registration_comment_url"],
+            "user": {"login": "Be90nia"},
+            "body": self.body,
+        }
+        actual = verify_legacy_registration_comment(
+            registration, "Be90nia/Lottery", token="test-token",
+            fetch_json=lambda _url, _token: payload,
+        )
+        self.assertEqual(actual, self.digest)
+
+    def test_rejects_legacy_comment_digest_mismatch(self):
+        registration = {
+            "legacy_parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
+            "legacy_child_registration_comment_url": (
+                "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7028060751"
+            ),
+            "legacy_child_registration_comment_sha256": "0" * 64,
+        }
+        payload = {
+            "id": 7028060751,
+            "issue_url": "https://api.github.com/repos/Be90nia/Lottery/issues/27",
+            "html_url": registration["legacy_child_registration_comment_url"],
+            "user": {"login": "Be90nia"},
+            "body": self.body,
+        }
+        with self.assertRaisesRegex(ValueError, "body SHA-256 mismatch"):
+            verify_legacy_registration_comment(
+                registration, "Be90nia/Lottery", token="test-token",
+                fetch_json=lambda _url, _token: payload,
             )
 
     def test_rejects_invalid_digest_before_api_access(self):
