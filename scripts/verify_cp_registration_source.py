@@ -91,6 +91,8 @@ def verify_registration_comment(
         raise ValueError("child registration comment SHA-256 is missing or malformed")
     if registration.get("governance_issue_url") != f"https://github.com/{repository}/issues/27":
         raise ValueError("CP governance issue URL is mismatched")
+    if registration.get("parent_issue_url") != f"https://github.com/{repository}/issues/18":
+        raise ValueError("CP parent LOT-055 protocol issue URL is mismatched")
     return _verify_comment(
         repository=repository,
         issue_number=27,
