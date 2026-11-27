@@ -190,6 +190,25 @@ class ExperimentRegistryTests(unittest.TestCase):
         with self.assertRaisesRegex(ExperimentRegistryError, "must be explicitly UTC"):
             self.registry._read_events()
 
+    def test_event_replay_rejects_rehashed_unknown_fields(self):
+        event = {
+            "schema": EVENT_SCHEMA,
+            "event_id": "register:replay-closed-schema",
+            "event_type": "experiment_registered",
+            "occurred_at_utc": "2026-11-23T00:00:00+00:00",
+            "actor": "test-suite",
+            "experiment_id": digest("replay-closed-schema-experiment"),
+            "approval_sha256": None,
+        }
+        self.registry._append_event_locked(event)
+        persisted = json.loads(self.registry.events_path.read_text(encoding="utf-8"))
+        persisted["untrusted_extra"] = "rehashed but not part of the event contract"
+        body = {key: value for key, value in persisted.items() if key != "event_hash"}
+        persisted["event_hash"] = hashlib.sha256(canonicalize(body)).hexdigest()
+        self.registry.events_path.write_bytes(canonicalize(persisted) + b"\n")
+        with self.assertRaisesRegex(ExperimentRegistryError, "closed event schema"):
+            self.registry._read_events()
+
     def test_registration_retry_is_idempotent(self):
         first = self.register_confirmatory()
         second = self.registry.register_experiment(
