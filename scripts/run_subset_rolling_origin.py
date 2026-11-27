@@ -238,7 +238,7 @@ def _build_cp_calibration_registry_spec(
     registration = json.loads(raw)
     if registration.get("schema") != "lottery.cp-calibration-preregistration/v1":
         raise ValueError("unsupported conditional-Poisson calibration registration schema")
-    if registration.get("experiment_id") != "LOT055-CP-CALIBRATION-DIAG-20261126":
+    if registration.get("experiment_id") != "LOT055-CP-CALIBRATION-DIAG-20261127-G3-02":
         raise ValueError("conditional-Poisson child registration ID mismatch")
     if registration.get("experiment_class") != "exploratory_diagnostic":
         raise ValueError("conditional-Poisson calibration child must remain exploratory")
