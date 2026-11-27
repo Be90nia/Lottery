@@ -1,4 +1,5 @@
 import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -169,6 +170,25 @@ class ExperimentRegistryTests(unittest.TestCase):
                     self.registry._append_event_locked(event)
         self.registry._append_event_locked(base)
         self.assertEqual(self.registry.snapshot()["event_count"], 1)
+
+    def test_event_replay_rejects_rehashed_non_utc_timestamp(self):
+        event = {
+            "schema": EVENT_SCHEMA,
+            "event_id": "register:replay-timestamp-validation",
+            "event_type": "experiment_registered",
+            "occurred_at_utc": "2026-11-23T00:00:00+00:00",
+            "actor": "test-suite",
+            "experiment_id": digest("replay-timestamp-validation-experiment"),
+            "approval_sha256": None,
+        }
+        self.registry._append_event_locked(event)
+        persisted = json.loads(self.registry.events_path.read_text(encoding="utf-8"))
+        persisted["occurred_at_utc"] = "2026-11-23T00:00:00"
+        body = {key: value for key, value in persisted.items() if key != "event_hash"}
+        persisted["event_hash"] = hashlib.sha256(canonicalize(body)).hexdigest()
+        self.registry.events_path.write_bytes(canonicalize(persisted) + b"\\n")
+        with self.assertRaisesRegex(ExperimentRegistryError, "must be explicitly UTC"):
+            self.registry._read_events()
 
     def test_registration_retry_is_idempotent(self):
         first = self.register_confirmatory()
