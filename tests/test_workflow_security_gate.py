@@ -12,7 +12,7 @@ class WorkflowSecurityGateOrderingTests(unittest.TestCase):
     def test_provenance_gate_precedes_all_registry_mutation_and_evaluation(self):
         lines = [
             "- name: Verify append-only CP child registration source comment before any evaluation",
-            "  --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json",
+            "  --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json",
             "  --legacy-registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json",
             '  --repository "$GITHUB_REPOSITORY"',
             '  --solver-parameter-comment-sha256 "d9a451cc1bb9b5a62ace3aa47ae34ca016e2f1d66c5bc65ea4003222c9c296e5"',
