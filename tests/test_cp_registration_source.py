@@ -75,7 +75,7 @@ class CpRegistrationSourceVerificationTests(unittest.TestCase):
     def test_rejects_registration_url_and_identifier_mismatch(self):
         registration = dict(self.registration)
         registration["child_registration_comment_id"] = 7184937843
-        with self.assertRaisesRegex(ValueError, "URL or governance"):
+        with self.assertRaisesRegex(ValueError, "URL or issue lineage"):
             verify_registration_comment(
                 registration, "Be90nia/Lottery", token="test-token",
                 fetch_json=lambda _url, _token: self.payload,
