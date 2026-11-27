@@ -105,6 +105,12 @@ def main() -> int:
                         errors.append(
                             f"{path}:{child_number}: actions: read is allowed only for the subset research job"
                         )
+                    elif permission_match.group(2) == "issues" and not (
+                        path.name == "subset-research.yml" and indent == 4
+                    ):
+                        errors.append(
+                            f"{path}:{child_number}: issues: read is allowed only for the subset research job"
+                        )
                 if not found:
                     errors.append(f"{path}:{number}: empty permissions block")
 
