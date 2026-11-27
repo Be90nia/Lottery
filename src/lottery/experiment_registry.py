@@ -49,6 +49,70 @@ def _is_sha(value: Any) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
+_EVENT_REQUIRED_FIELDS = {
+    "experiment_registered": {
+        "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+        "experiment_id", "approval_sha256",
+    },
+    "trial_started": {
+        "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+        "experiment_id", "attempt_id", "config_sha256",
+    },
+    "artifacts_committed": {
+        "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+        "experiment_id", "attempt_id", "execution_id", "storage_receipts_sha256",
+        "result_sha256", "artifact_sha256", "output_files",
+    },
+    "trial_finished": {
+        "schema", "event_id", "event_type", "occurred_at_utc", "actor",
+        "experiment_id", "attempt_id", "terminal_status", "artifact_sha256",
+        "result_sha256", "failure_code",
+    },
+}
+_EVENT_OPTIONAL_FIELDS = {
+    "experiment_registered": set(),
+    "trial_started": {
+        "execution_context", "approval_sha256", "source_metadata_sha256",
+        "source_verification_receipt_sha256", "source_started_at_utc",
+        "source_run_url", "imported",
+    },
+    "artifacts_committed": set(),
+    "trial_finished": {
+        "execution_id", "approval_sha256", "storage_receipts_sha256",
+        "source_metadata_sha256", "source_verification_receipt_sha256",
+        "source_started_at_utc", "source_completed_at_utc", "source_run_url",
+        "source_artifact_id", "source_artifact_zip_sha256",
+        "scientific_result_status", "confirmatory_eligible", "imported",
+    },
+}
+
+
+def _validate_event_body(body: dict[str, Any]) -> None:
+    """Apply the same closed event contract to new appends and persisted replay."""
+    if not isinstance(body, dict) or body.get("schema") != EVENT_SCHEMA:
+        raise ExperimentRegistryError("experiment event does not match the closed event schema")
+    event_type = body.get("event_type")
+    required = _EVENT_REQUIRED_FIELDS.get(event_type)
+    optional = _EVENT_OPTIONAL_FIELDS.get(event_type)
+    if (required is None or optional is None or not required <= set(body)
+            or set(body) - required - optional):
+        raise ExperimentRegistryError("experiment event fields do not match the closed event schema")
+    if (not isinstance(body.get("event_id"), str) or not body["event_id"]
+            or not isinstance(body.get("actor"), str) or not body["actor"]
+            or not _is_sha(body.get("experiment_id"))):
+        raise ExperimentRegistryError("experiment event identity fields are invalid")
+    try:
+        occurred_at = datetime.fromisoformat(body["occurred_at_utc"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ExperimentRegistryError("experiment event timestamp is invalid") from exc
+    if (occurred_at.tzinfo is None
+            or occurred_at.utcoffset() != timezone.utc.utcoffset(occurred_at)):
+        raise ExperimentRegistryError("experiment event timestamp must be explicitly UTC")
+    approval_hash = body.get("approval_sha256")
+    if approval_hash is not None and not _is_sha(approval_hash):
+        raise ExperimentRegistryError("experiment event approval digest is invalid")
+
+
 def _execution_binding_expectations(
     experiment_id: str, experiment: dict[str, Any], attempt: dict[str, Any],
     attempt_id: str, execution_id: str,
@@ -284,79 +348,14 @@ class ExperimentRegistry:
                     or event.get("prev_event_hash") != previous
                     or event.get("event_hash") != _sha(canonicalize(body))):
                 raise ExperimentRegistryError(f"experiment event hash chain failed at line {line_number}")
-            try:
-                occurred_at = datetime.fromisoformat(event["occurred_at_utc"])
-            except (KeyError, TypeError, ValueError) as exc:
-                raise ExperimentRegistryError(
-                    f"experiment event timestamp is invalid at line {line_number}"
-                ) from exc
-            if (occurred_at.tzinfo is None
-                    or occurred_at.utcoffset() != timezone.utc.utcoffset(occurred_at)):
-                raise ExperimentRegistryError(
-                    f"experiment event timestamp must be explicitly UTC at line {line_number}"
-                )
+            _validate_event_body(event)
             seen.add(event_id)
             previous = event["event_hash"]
             events.append(event)
         return events
 
     def _append_event_locked(self, body: dict[str, Any]) -> None:
-        if not isinstance(body, dict) or body.get("schema") != EVENT_SCHEMA:
-            raise ExperimentRegistryError("experiment event does not match the closed event schema")
-        required_fields = {
-            "experiment_registered": {
-                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
-                "experiment_id", "approval_sha256",
-            },
-            "trial_started": {
-                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
-                "experiment_id", "attempt_id", "config_sha256",
-            },
-            "artifacts_committed": {
-                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
-                "experiment_id", "attempt_id", "execution_id", "storage_receipts_sha256",
-                "result_sha256", "artifact_sha256", "output_files",
-            },
-            "trial_finished": {
-                "schema", "event_id", "event_type", "occurred_at_utc", "actor",
-                "experiment_id", "attempt_id", "terminal_status", "artifact_sha256",
-                "result_sha256", "failure_code",
-            },
-        }
-        optional_fields = {
-            "experiment_registered": set(),
-            "trial_started": {
-                "execution_context", "approval_sha256", "source_metadata_sha256",
-                "source_verification_receipt_sha256", "source_started_at_utc",
-                "source_run_url", "imported",
-            },
-            "artifacts_committed": set(),
-            "trial_finished": {
-                "execution_id", "approval_sha256", "storage_receipts_sha256",
-                "source_metadata_sha256", "source_verification_receipt_sha256",
-                "source_started_at_utc", "source_completed_at_utc", "source_run_url",
-                "source_artifact_id", "source_artifact_zip_sha256",
-                "scientific_result_status", "confirmatory_eligible", "imported",
-            },
-        }
-        event_type = body.get("event_type")
-        required = required_fields.get(event_type)
-        if required is None or not required <= set(body) or set(body) - required - optional_fields[event_type]:
-            raise ExperimentRegistryError("experiment event fields do not match the closed event schema")
-        if (not isinstance(body.get("event_id"), str) or not body["event_id"]
-                or not isinstance(body.get("actor"), str) or not body["actor"]
-                or not _is_sha(body.get("experiment_id"))):
-            raise ExperimentRegistryError("experiment event identity fields are invalid")
-        try:
-            occurred_at = datetime.fromisoformat(body["occurred_at_utc"])
-        except (TypeError, ValueError) as exc:
-            raise ExperimentRegistryError("experiment event timestamp is invalid") from exc
-        if (occurred_at.tzinfo is None
-                or occurred_at.utcoffset() != timezone.utc.utcoffset(occurred_at)):
-            raise ExperimentRegistryError("experiment event timestamp must be explicitly UTC")
-        approval_hash = body.get("approval_sha256")
-        if approval_hash is not None and not _is_sha(approval_hash):
-            raise ExperimentRegistryError("experiment event approval digest is invalid")
+        _validate_event_body(body)
         events = self._read_events()
         event_id = body["event_id"]
         existing = next((x for x in events if x["event_id"] == event_id), None)
