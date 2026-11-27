@@ -95,6 +95,7 @@ jobs:
         run: >-
           python scripts/verify_cp_registration_source.py
           --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json
+          --legacy-registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
           --repository "$GITHUB_REPOSITORY"
       # Restore only closed registry histories. Failed/cancelled attempts remain
       # first-class when terminalized; never carry an open attempt into a new run.
