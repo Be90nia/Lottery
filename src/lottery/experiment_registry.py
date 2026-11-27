@@ -341,6 +341,10 @@ class ExperimentRegistry:
                 event = parse_json_strict(line)
             except ArtifactValidationError as exc:
                 raise ExperimentRegistryError(f"experiment event line {line_number} is invalid") from exc
+            if not isinstance(event, dict):
+                raise ExperimentRegistryError(
+                    f"experiment event line {line_number} is not an object"
+                )
             event_id = event.get("event_id")
             body = {key: value for key, value in event.items() if key != "event_hash"}
             if (not isinstance(event_id, str) or not event_id or event_id in seen
