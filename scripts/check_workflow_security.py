@@ -11,7 +11,7 @@ from pathlib import Path
 
 WORKFLOW_DIR = Path(".github/workflows")
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
-ALLOWED_PERMISSION = re.compile(r"^(\s*)(contents|actions):\s*read\s*(?:#.*)?$")
+ALLOWED_PERMISSION = re.compile(r"^(\s*)(contents|actions|issues):\s*read\s*(?:#.*)?$")
 
 
 
