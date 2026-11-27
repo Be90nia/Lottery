@@ -152,6 +152,24 @@ class ExperimentRegistryTests(unittest.TestCase):
         with self.assertRaisesRegex(ExperimentRegistryError, "closed event schema"):
             self.registry._append_event_locked(event)
 
+    def test_registry_event_timestamps_must_be_explicit_utc(self):
+        base = {
+            "schema": EVENT_SCHEMA,
+            "event_id": "register:timestamp-validation",
+            "event_type": "experiment_registered",
+            "occurred_at_utc": "2026-11-23T00:00:00+00:00",
+            "actor": "test-suite",
+            "experiment_id": digest("timestamp-validation-experiment"),
+            "approval_sha256": None,
+        }
+        for timestamp in ("2026-11-23T00:00:00", "2026-11-23T01:00:00+01:00"):
+            with self.subTest(timestamp=timestamp):
+                event = {**base, "occurred_at_utc": timestamp}
+                with self.assertRaisesRegex(ExperimentRegistryError, "must be explicitly UTC"):
+                    self.registry._append_event_locked(event)
+        self.registry._append_event_locked(base)
+        self.assertEqual(self.registry.snapshot()["event_count"], 1)
+
     def test_registration_retry_is_idempotent(self):
         first = self.register_confirmatory()
         second = self.registry.register_experiment(
