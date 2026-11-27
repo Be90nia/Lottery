@@ -77,6 +77,7 @@ def validate_execution_context(
             "refs/heads/feat/lot-063-prospective-score-ledger",
             "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
             "refs/heads/feat/lot055-cp-calibration-lineage",
+            "refs/heads/feat/lottery-g3-g3-acceptance-20261127",
         },
         "workflow_dispatch": {
             "refs/heads/feat/lot-064-g3-runtime-binding-isolated",
