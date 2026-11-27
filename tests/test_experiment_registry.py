@@ -169,7 +169,7 @@ class ExperimentRegistryTests(unittest.TestCase):
                 with self.assertRaisesRegex(ExperimentRegistryError, "must be explicitly UTC"):
                     self.registry._append_event_locked(event)
         self.registry._append_event_locked(base)
-        self.assertEqual(self.registry.snapshot()["event_count"], 1)
+        self.assertEqual(len(self.registry._read_events()), 1)
 
     def test_event_replay_rejects_rehashed_non_utc_timestamp(self):
         event = {
