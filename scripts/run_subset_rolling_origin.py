@@ -251,6 +251,10 @@ def _build_cp_calibration_registry_spec(
         raise ValueError("conditional-Poisson child eligibility boundary was changed")
     if registration.get("holdout_accessed") is not False:
         raise ValueError("conditional-Poisson child must preserve the LOT-042 holdout firewall")
+    if registration.get("parent_issue_url") != "https://github.com/Be90nia/Lottery/issues/18":
+        raise ValueError("conditional-Poisson child parent LOT-055 protocol lineage is missing or mismatched")
+    if registration.get("governance_issue_url") != "https://github.com/Be90nia/Lottery/issues/27":
+        raise ValueError("conditional-Poisson child LOT-064 governance lineage is missing or mismatched")
     if (not isinstance(registration.get("child_registration_comment_sha256"), str)
             or not re.fullmatch(r"[0-9a-f]{64}", registration["child_registration_comment_sha256"])):
         raise ValueError("conditional-Poisson child registration comment digest is missing or malformed")
