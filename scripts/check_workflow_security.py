@@ -49,6 +49,12 @@ def validate_subset_research_gate(lines: list[str]) -> list[str]:
     ):
         if required not in gate:
             errors.append(f"CP provenance gate is missing required argument: {required}")
+    full_job = next((index for index, line in enumerate(lines) if line.strip() == "full-rolling-origin:"), None)
+    reconcile_job = next((index for index, line in enumerate(lines) if line.strip() == "reconcile:"), None)
+    if full_job is None or reconcile_job is None or full_job >= reconcile_job:
+        errors.append("subset research full-rolling-origin job boundary is missing or malformed")
+    elif not any(line.strip() == "issues: read" for line in lines[full_job:reconcile_job]):
+        errors.append("full-rolling-origin job requires issues: read for GitHub comment verification")
     workflow = "\n".join(lines)
     if "feat/lot055-cp-calibration-lineage" in workflow.split("workflow_dispatch:", 1)[0]:
         errors.append(
