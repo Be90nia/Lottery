@@ -348,7 +348,11 @@ class ExperimentRegistry:
                     or event.get("prev_event_hash") != previous
                     or event.get("event_hash") != _sha(canonicalize(body))):
                 raise ExperimentRegistryError(f"experiment event hash chain failed at line {line_number}")
-            _validate_event_body(event)
+            event_payload = {
+                key: value for key, value in event.items()
+                if key not in ("event_hash", "prev_event_hash")
+            }
+            _validate_event_body(event_payload)
             seen.add(event_id)
             previous = event["event_hash"]
             events.append(event)
