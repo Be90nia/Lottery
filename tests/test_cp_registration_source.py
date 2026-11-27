@@ -156,6 +156,7 @@ class CpRegistrationSourceVerificationTests(unittest.TestCase):
                 "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184937843"
             ),
             "solver_parameter_comment_id": 7184937843,
+            "solver_parameter_comment_sha256": digest,
         }
         payload = {
             "id": 7184937843,
@@ -176,12 +177,26 @@ class CpRegistrationSourceVerificationTests(unittest.TestCase):
             "test-token",
         )])
 
+    def test_requires_solver_parameter_digest_in_immutable_registration(self):
+        registration = {
+            "solver_parameter_comment_url": (
+                "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184937843"
+            ),
+            "solver_parameter_comment_id": 7184937843,
+        }
+        with self.assertRaisesRegex(ValueError, "must pin solver_parameter_comment_sha256"):
+            verify_solver_parameter_comment(
+                registration, "Be90nia/Lottery", digest_expected="0" * 64,
+                token="test-token", fetch_json=lambda _url, _token: {},
+            )
+
     def test_rejects_solver_parameter_comment_digest_or_identity_mismatch(self):
         registration = {
             "solver_parameter_comment_url": (
                 "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184937843"
             ),
             "solver_parameter_comment_id": 7184937843,
+            "solver_parameter_comment_sha256": "0" * 64,
         }
         payload = {
             "id": 7184937843,
