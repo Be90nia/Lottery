@@ -49,6 +49,7 @@ class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
         rows, digest = _load_and_validate(snapshot)
         original = json.loads((ROOT / "docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json").read_text(encoding="utf-8"))
         original["solver_source_sha256"] = calibration_configuration()["source_sha256"]
+        registration_name = "LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json"
         for field, value in (
             ("parent_issue_url", "https://github.com/Be90nia/Lottery/issues/19"),
             ("governance_issue_url", "https://github.com/Be90nia/Lottery/issues/28"),
@@ -56,7 +57,7 @@ class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
             changed = dict(original)
             changed[field] = value
             with tempfile.TemporaryDirectory() as directory:
-                candidate = Path(directory) / registration.name
+                candidate = Path(directory) / registration_name
                 candidate.write_text(json.dumps(changed), encoding="utf-8")
                 with self.subTest(field=field):
                     with self.assertRaisesRegex(ValueError, "lineage is missing or mismatched"):
