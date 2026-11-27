@@ -86,7 +86,9 @@ class ConditionalPoissonChildRegistrationTests(unittest.TestCase):
                 ("0" * 64, "does not match the imported implementation"),
             ):
                 changed = dict(original)
-                if field_value is not None:
+                if field_value is None:
+                    changed.pop("solver_source_sha256", None)
+                else:
                     changed["solver_source_sha256"] = field_value
                 candidate = Path(directory) / f"registration-{field_value}.json"
                 candidate.write_text(json.dumps(changed), encoding="utf-8")
