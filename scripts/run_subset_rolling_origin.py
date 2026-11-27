@@ -281,6 +281,12 @@ def _build_cp_calibration_registry_spec(
     effective_solver_without_source = {
         key: value for key, value in effective_solver.items() if key != "source_sha256"
     }
+    registered_source_sha256 = registration.get("solver_source_sha256")
+    if (not isinstance(registered_source_sha256, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", registered_source_sha256)):
+        raise ValueError("registered Strong-Wolfe solver source SHA-256 is missing or malformed")
+    if registered_source_sha256 != effective_solver["source_sha256"]:
+        raise ValueError("registered solver source SHA-256 does not match the imported implementation")
     if registered_solver != effective_solver_without_source:
         raise ValueError("registered solver settings do not exactly match the imported Strong-Wolfe implementation")
     if registration.get("baselines") != {
