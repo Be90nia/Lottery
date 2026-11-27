@@ -130,7 +130,7 @@ class ExecutionContextTests(unittest.TestCase):
 
     def test_new_calibration_branch_is_allowlisted_only_for_push(self):
         env = environment()
-        branch_ref = "refs/heads/feat/lot055-cp-calibration-lineage"
+        branch_ref = "refs/heads/feat/lottery-g3-g3-acceptance-20261127"
         env["GITHUB_EVENT_NAME"] = "push"
         env["GITHUB_REF"] = branch_ref
         env["GITHUB_WORKFLOW_REF"] = f"{REPOSITORY}/{WORKFLOW_PATH}@{branch_ref}"
