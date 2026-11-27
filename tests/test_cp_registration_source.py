@@ -19,6 +19,7 @@ class CpRegistrationSourceVerificationTests(unittest.TestCase):
         self.digest = hashlib.sha256(self.body.encode("utf-8")).hexdigest()
         self.registration = {
             "governance_issue_url": "https://github.com/Be90nia/Lottery/issues/27",
+            "parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
             "child_registration_comment_url": (
                 "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184888699"
             ),
@@ -82,6 +83,18 @@ class CpRegistrationSourceVerificationTests(unittest.TestCase):
                 fetch_json=lambda _url, _token: self.payload,
             )
 
+
+    def test_rejects_wrong_parent_protocol_lineage_before_api_access(self):
+        registration = dict(self.registration)
+        registration["parent_issue_url"] = "https://github.com/Be90nia/Lottery/issues/19"
+
+        def unexpected_fetch(*_args):
+            self.fail("API must not be called for mismatched parent protocol lineage")
+
+        with self.assertRaisesRegex(ValueError, "parent LOT-055 protocol"):
+            verify_registration_comment(
+                registration, "Be90nia/Lottery", token="test-token", fetch_json=unexpected_fetch,
+            )
 
     def test_verifies_legacy_g3_child_registration_comment(self):
         registration = {
@@ -152,6 +165,7 @@ class CpRegistrationSourceVerificationTests(unittest.TestCase):
         )
         digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
         registration = {
+            "parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
             "solver_parameter_comment_url": (
                 "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184937843"
             ),
@@ -179,6 +193,7 @@ class CpRegistrationSourceVerificationTests(unittest.TestCase):
 
     def test_requires_solver_parameter_digest_in_immutable_registration(self):
         registration = {
+            "parent_issue_url": "https://github.com/Be90nia/Lottery/issues/18",
             "solver_parameter_comment_url": (
                 "https://github.com/Be90nia/Lottery/issues/27#issuecomment-7184937843"
             ),
