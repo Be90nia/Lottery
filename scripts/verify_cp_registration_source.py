@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify that a CP child registration pins the exact immutable GitHub comment body."""
+"""Verify exact GitHub comment-body digests pinned by G3/CP registrations."""
 
 from __future__ import annotations
 
@@ -34,37 +34,30 @@ def _github_json(url: str, token: str) -> dict:
     return payload
 
 
-def verify_registration_comment(
-    registration: dict,
-    repository: str,
+def _verify_comment(
     *,
+    repository: str,
+    issue_number: int,
+    comment_url: str,
+    comment_id: int,
+    digest_expected: str,
     token: str,
-    fetch_json=_github_json,
+    fetch_json,
 ) -> str:
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
-        raise ValueError("repository must be owner/name")
-    comment_id = registration.get("child_registration_comment_id")
-    digest_expected = registration.get("child_registration_comment_sha256")
-    comment_url = registration.get("child_registration_comment_url")
-    issue_url = registration.get("governance_issue_url")
-    if not isinstance(comment_id, int) or isinstance(comment_id, bool) or comment_id <= 0:
-        raise ValueError("child registration comment ID is missing or malformed")
-    if not isinstance(digest_expected, str) or not re.fullmatch(r"[0-9a-f]{64}", digest_expected):
-        raise ValueError("child registration comment SHA-256 is missing or malformed")
-    expected_comment_url = f"https://github.com/{repository}/issues/27#issuecomment-{comment_id}"
-    expected_issue_url = f"https://github.com/{repository}/issues/27"
-    if comment_url != expected_comment_url or issue_url != expected_issue_url:
-        raise ValueError("child registration comment URL or governance issue URL is mismatched")
-
+    expected_url = f"https://github.com/{repository}/issues/{issue_number}#issuecomment-{comment_id}"
+    if comment_url != expected_url:
+        raise ValueError("registered GitHub comment URL or issue lineage is mismatched")
     payload = fetch_json(
         f"https://api.github.com/repos/{repository}/issues/comments/{comment_id}",
         token,
     )
     if payload.get("id") != comment_id:
         raise ValueError("GitHub returned a different issue comment ID")
-    if payload.get("issue_url") != f"https://api.github.com/repos/{repository}/issues/27":
+    if payload.get("issue_url") != (
+        f"https://api.github.com/repos/{repository}/issues/{issue_number}"
+    ):
         raise ValueError("GitHub comment belongs to a different issue")
-    if payload.get("html_url") != expected_comment_url:
+    if payload.get("html_url") != expected_url:
         raise ValueError("GitHub comment canonical URL does not match the registration")
     if (not isinstance(payload.get("user"), dict)
             or payload["user"].get("login") != repository.split("/", 1)[0]):
@@ -75,15 +68,76 @@ def verify_registration_comment(
     actual = hashlib.sha256(body.encode("utf-8")).hexdigest()
     if actual != digest_expected:
         raise ValueError(
-            "child registration comment body SHA-256 mismatch: "
+            "registered GitHub comment body SHA-256 mismatch: "
             f"registered={digest_expected} actual={actual}"
         )
     return actual
 
 
+def verify_registration_comment(
+    registration: dict,
+    repository: str,
+    *,
+    token: str,
+    fetch_json=_github_json,
+) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("repository must be owner/name")
+    comment_id = registration.get("child_registration_comment_id")
+    digest = registration.get("child_registration_comment_sha256")
+    if not isinstance(comment_id, int) or isinstance(comment_id, bool) or comment_id <= 0:
+        raise ValueError("child registration comment ID is missing or malformed")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("child registration comment SHA-256 is missing or malformed")
+    if registration.get("governance_issue_url") != f"https://github.com/{repository}/issues/27":
+        raise ValueError("CP governance issue URL is mismatched")
+    return _verify_comment(
+        repository=repository,
+        issue_number=27,
+        comment_url=registration.get("child_registration_comment_url"),
+        comment_id=comment_id,
+        digest_expected=digest,
+        token=token,
+        fetch_json=fetch_json,
+    )
+
+
+def verify_legacy_registration_comment(
+    registration: dict,
+    repository: str,
+    *,
+    token: str,
+    fetch_json=_github_json,
+) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("repository must be owner/name")
+    digest = registration.get("legacy_child_registration_comment_sha256")
+    comment_url = registration.get("legacy_child_registration_comment_url")
+    match = re.fullmatch(
+        rf"https://github\.com/{re.escape(repository)}/issues/27#issuecomment-(\d+)",
+        comment_url if isinstance(comment_url, str) else "",
+    )
+    if not match:
+        raise ValueError("legacy child registration comment URL is missing or malformed")
+    if registration.get("legacy_parent_issue_url") != f"https://github.com/{repository}/issues/18":
+        raise ValueError("legacy LOT-055 parent issue URL is mismatched")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise ValueError("legacy child registration comment SHA-256 is missing or malformed")
+    return _verify_comment(
+        repository=repository,
+        issue_number=27,
+        comment_url=comment_url,
+        comment_id=int(match.group(1)),
+        digest_expected=digest,
+        token=token,
+        fetch_json=fetch_json,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--registration", type=Path, required=True)
+    parser.add_argument("--legacy-registration", type=Path, required=True)
     parser.add_argument("--repository", required=True)
     args = parser.parse_args()
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
@@ -91,11 +145,18 @@ def main() -> int:
         raise SystemExit("GITHUB_TOKEN or GH_TOKEN is required for source-comment verification")
     try:
         registration = json.loads(args.registration.read_text(encoding="utf-8"))
-        digest = verify_registration_comment(registration, args.repository, token=token)
+        legacy_registration = json.loads(args.legacy_registration.read_text(encoding="utf-8"))
+        cp_digest = verify_registration_comment(registration, args.repository, token=token)
+        legacy_digest = verify_legacy_registration_comment(
+            legacy_registration, args.repository, token=token,
+        )
     except (OSError, json.JSONDecodeError, ValueError) as exc:
-        print(f"CP registration provenance verification failed: {exc}", file=sys.stderr)
+        print(f"Registration provenance verification failed: {exc}", file=sys.stderr)
         return 1
-    print(f"Verified CP child registration comment {registration['child_registration_comment_id']}: sha256={digest}")
+    print(
+        "Verified CP and legacy G3 source comments: "
+        f"cp_sha256={cp_digest} legacy_sha256={legacy_digest}"
+    )
     return 0
 
 
