@@ -26,7 +26,8 @@ def _hash_object(value: dict) -> str:
 def _model_identity(zone: str, name: str, m: int, k: int,
                     active_features: list[str], candidate_features: list[str],
                     zero_variance_features: list[str], uniform_means: list[float],
-                    uniform_stds: list[float]) -> tuple[str, str, dict]:
+                    uniform_stds: list[float],
+                    baseline_calibration: dict | None = None) -> tuple[str, str, dict]:
     if name == "uniform":
         family = "uniform_analytic"
         config = {"model_family": family, "zone": zone, "population_size": m,
@@ -46,6 +47,8 @@ def _model_identity(zone: str, name: str, m: int, k: int,
                   "half_life": 100.0 if name == "ewma" else None,
                   "weighting": "expanding" if name == "expanding" else "2^(-lag/100)",
                   "feature_schema_hash": _hash_object(schema)}
+        if baseline_calibration is not None:
+            config["calibration_configuration"] = baseline_calibration
     else:
         family = "complete_subset_exponential"
         schema = {
@@ -159,7 +162,10 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
         "code_revision": code_revision,
         "model_spec_revision": "PR-16@aec3a864ea14d84b8b9fac971e0d4b08e72cb0c0",
         "preregistration_revision": "Be90nia/Lottery#18",
-        "experiment_registration_revision": "Be90nia/Lottery#27-comment-7028060751",
+        "experiment_registration_revision": (
+            experiment_binding["trial_config"].get("registration_source_sha256")
+            if experiment_binding is not None else "Be90nia/Lottery#27-comment-7028060751"
+        ),
         "bootstrap": result["bootstrap"],
         "models": model_specs,
     }
@@ -172,7 +178,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             family, config_hash, schema = _model_identity(
                 zone, name, spec["m"], spec["k"], spec["features"],
                 spec["candidate_features"], spec["zero_variance_features"],
-                spec["uniform_means"], spec["uniform_stds"])
+                spec["uniform_means"], spec["uniform_stds"],
+                result.get("baseline_calibration"))
             model_config_hashes[(zone, name)] = config_hash
             feature_schema_hashes[(zone, name)] = _hash_object(schema)
             families[(zone, name)] = family
@@ -338,13 +345,19 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             experiment_binding["experiment_id"]
             if experiment_binding is not None else "LOT055-OPT-DIAG-20261120"
         ),
-        "legacy_experiment_label": "LOT055-OPT-DIAG-20261120",
+        "legacy_experiment_label": (
+            experiment_binding["trial_config"].get("experiment_name", "LOT055-OPT-DIAG-20261120")
+            if experiment_binding is not None else "LOT055-OPT-DIAG-20261120"
+        ),
         "experiment_class": (
             experiment_binding["experiment_class"]
             if experiment_binding is not None else "exploratory_diagnostic"
         ),
         "confirmatory_eligible": False,
-        "confirmatory_ineligibility_reason": "post-outcome optimizer repair; see Issue #27 child registration",
+        "confirmatory_ineligibility_reason": (
+            "post-outcome exploratory conditional-Poisson calibration child; "
+            "see the append-only Issue #27 registration"
+        ),
         "snapshot": {
             "path": str(snapshot_path),
             "sha256": snapshot_digest,
@@ -375,8 +388,12 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             "approval_disposition_reason": experiment_binding["approval_disposition_reason"],
             "legacy_parent_issue_url": experiment_binding["legacy_parent_issue_url"],
             "legacy_child_registration_comment_url": experiment_binding["legacy_child_registration_comment_url"],
-            "legacy_child_registration_comment_sha256": experiment_binding["legacy_child_registration_comment_sha256"],
-            "parent_lineage_disposition": experiment_binding["parent_lineage_disposition"],
+            "legacy_child_registration_comment_sha256": experiment_binding.get("legacy_child_registration_comment_sha256"),
+            "parent_lineage_disposition": experiment_binding.get("parent_lineage_disposition"),
+            **({
+                "registration_schema": experiment_binding["trial_config"]["registration_schema"],
+                "registration_source_sha256": experiment_binding["trial_config"]["registration_source_sha256"],
+            } if "registration_schema" in experiment_binding["trial_config"] else {}),
             "experiment_class": experiment_binding["experiment_class"],
             "trial_id": experiment_binding["trial_id"],
             "registry_attempt_id": experiment_binding["attempt_id"],
@@ -397,6 +414,8 @@ def write_immutable_outputs(result: dict, rows: list[dict], snapshot_path: Path,
             for zone in ("front", "back") for name in MODEL_ORDER
         ],
         "bootstrap": result["bootstrap"],
+        "baseline_solver": result.get("baseline_solver"),
+        "baseline_calibration": result.get("baseline_calibration"),
         "metrics": {
             "primary": "exact observed unordered-subset negative log probability",
             "paired_difference": "candidate NLL minus comparator NLL; negative favors candidate",

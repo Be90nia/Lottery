@@ -87,6 +87,65 @@ def _is_finite_number(value: Any) -> bool:
     return type(value) in (int, float) and math.isfinite(value)
 
 
+
+def _validate_calibration_provenance(configuration: Any) -> None:
+    """Validate the content-bound conditional-Poisson Strong-Wolfe solver contract."""
+    expected_fields = {
+        "solver_id", "algorithm", "implementation_version", "line_search",
+        "stopping", "initialization", "gauge", "accumulation", "source_sha256",
+    }
+    if not isinstance(configuration, dict) or set(configuration) != expected_fields:
+        raise ArtifactValidationError("calibration solver provenance has an invalid field set")
+    if (configuration.get("solver_id") != "conditional_poisson_calibration_lbfgs_strong_wolfe_v2"
+            or configuration.get("algorithm") != "L-BFGS"
+            or configuration.get("implementation_version") != "v2"
+            or configuration.get("initialization") != "zero_log_weights"
+            or configuration.get("gauge") != "centered_zero_sum"
+            or configuration.get("accumulation") != "compensated_float64_math.fsum"):
+        raise ArtifactValidationError("calibration solver identity/initialization/accumulation is invalid")
+    line_search = configuration["line_search"]
+    line_search_fields = {
+        "method", "c1", "c2", "max_iterations", "initial_step",
+        "bracketing", "bracketing_factor", "zoom", "roundoff_policy",
+    }
+    if not isinstance(line_search, dict) or set(line_search) != line_search_fields:
+        raise ArtifactValidationError("calibration line-search provenance has an invalid field set")
+    if (line_search.get("method") != "strong_wolfe"
+            or not _is_finite_number(line_search.get("c1"))
+            or not _is_finite_number(line_search.get("c2"))
+            or not 0.0 < line_search["c1"] < line_search["c2"] < 1.0
+            or type(line_search.get("max_iterations")) is not int
+            or line_search["max_iterations"] < 1
+            or not _is_finite_number(line_search.get("initial_step"))
+            or line_search["initial_step"] <= 0.0
+            or line_search.get("bracketing") != "step_doubling"
+            or line_search.get("bracketing_factor") != 2.0
+            or line_search.get("zoom") != "deterministic_midpoint_bisection"
+            or line_search.get("roundoff_policy") != "bounded_float64_ulp_envelope"):
+        raise ArtifactValidationError("calibration Strong-Wolfe line-search settings are invalid")
+    stopping = configuration["stopping"]
+    stopping_fields = {
+        "gradient_infinity_norm_tolerance", "independent_marginal_residual_tolerance",
+        "max_iterations", "history_size",
+    }
+    if not isinstance(stopping, dict) or set(stopping) != stopping_fields:
+        raise ArtifactValidationError("calibration stopping provenance has an invalid field set")
+    if (not _is_finite_number(stopping.get("gradient_infinity_norm_tolerance"))
+            or stopping["gradient_infinity_norm_tolerance"] <= 0.0
+            or not _is_finite_number(stopping.get("independent_marginal_residual_tolerance"))
+            or stopping["independent_marginal_residual_tolerance"] <= 0.0
+            or stopping["gradient_infinity_norm_tolerance"]
+               != stopping["independent_marginal_residual_tolerance"]
+            or type(stopping.get("max_iterations")) is not int
+            or stopping["max_iterations"] < 1
+            or type(stopping.get("history_size")) is not int
+            or stopping["history_size"] < 1):
+        raise ArtifactValidationError("calibration stopping settings are invalid")
+    source_digest = configuration.get("source_sha256")
+    if (not isinstance(source_digest, str) or len(source_digest) != 64
+            or any(character not in "0123456789abcdef" for character in source_digest)):
+        raise ArtifactValidationError("calibration solver source SHA-256 is malformed")
+
 def _canonical(value: Any) -> str:
     if value is None:
         return "null"
@@ -287,10 +346,16 @@ def validate_model_artifact(payload: dict) -> None:
             "max_iterations", "gradient_tolerance",
         }
     else:
-        model_configuration_fields |= {"baseline", "alpha", "half_life", "weighting"}
+        model_configuration_fields |= {"baseline", "alpha", "half_life", "weighting", "calibration_configuration"}
     if (not isinstance(model_configuration, dict)
             or set(model_configuration).difference(model_configuration_fields)):
         raise ArtifactValidationError("model_configuration must use only registered family fields")
+    if family == "conditional_poisson" and "calibration_configuration" in model_configuration:
+        _validate_calibration_provenance(model_configuration["calibration_configuration"])
+        if payload.get("solver_provenance") != model_configuration["calibration_configuration"]:
+            raise ArtifactValidationError("solver_provenance must exactly match model_configuration calibration")
+    elif "solver_provenance" in payload:
+        raise ArtifactValidationError("solver_provenance requires a registered calibration_configuration")
     expected_config_hash = "sha256:" + hashlib.sha256(canonicalize(model_configuration)).hexdigest()
     if payload["model_configuration_hash"] != expected_config_hash:
         raise ArtifactValidationError("model_configuration_hash does not bind the canonical configuration")
@@ -346,7 +411,7 @@ def validate_model_artifact(payload: dict) -> None:
         allowed_fields |= {
             "baseline", "alpha", "half_life",
             "centered_log_weights", "target_marginals", "achieved_marginals",
-            "solver_status", "calibration_residual",
+            "solver_status", "calibration_residual", "solver_provenance",
         }
     if artifact_type == "fit_failure":
         allowed_fields.add("failure_reason")

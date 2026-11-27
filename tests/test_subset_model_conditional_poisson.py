@@ -7,7 +7,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from lottery.subset_model.conditional_poisson import ConditionalPoisson
+from lottery.subset_model.conditional_poisson import (
+    ConditionalPoisson,
+    _strong_wolfe_search,
+    calibration_configuration,
+)
 
 
 def brute_force(log_weights, k):
@@ -106,6 +110,135 @@ class ConditionalPoissonCalibrationTests(unittest.TestCase):
         self.assertLessEqual(result.maximum_absolute_residual, 1e-8)
         self.assertLessEqual(result.gradient_infinity_norm, 1e-8)
         self.assertAlmostEqual(sum(result.centered_log_weights), 0.0, places=12)
+
+
+
+    def test_calibration_uses_strong_wolfe_and_not_armijo(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "src/lottery/subset_model/conditional_poisson.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("def _strong_wolfe_search(", source)
+        self.assertIn("accepted = _strong_wolfe_search(", source)
+        self.assertNotIn("Armijo search failed", source)
+
+    def test_strong_wolfe_calibration_handles_high_dynamic_range_marginals(self):
+        source = ConditionalPoisson(
+            tuple((index - 17) * 0.07 for index in range(35)), 5
+        )
+        target = source.inclusion_marginals()
+        first = ConditionalPoisson.calibrate(target, 5)
+        second = ConditionalPoisson.calibrate(target, 5)
+        self.assertTrue(first.converged, msg=first)
+        self.assertLessEqual(first.maximum_absolute_residual, 1e-8)
+        self.assertLessEqual(first.gradient_infinity_norm, 1e-8)
+        self.assertEqual(first, second)
+
+    def test_calibration_configuration_is_complete_and_source_bound(self):
+        import hashlib
+
+        configuration = calibration_configuration()
+        source = Path(__file__).resolve().parents[1] / "src/lottery/subset_model/conditional_poisson.py"
+        self.assertEqual(configuration["solver_id"], "conditional_poisson_calibration_lbfgs_strong_wolfe_v2")
+        self.assertEqual(configuration["line_search"], {
+            "method": "strong_wolfe",
+            "c1": 1e-4,
+            "c2": 0.9,
+            "max_iterations": 60,
+            "initial_step": 1.0,
+            "bracketing": "step_doubling",
+            "bracketing_factor": 2.0,
+            "zoom": "deterministic_midpoint_bisection",
+            "roundoff_policy": "bounded_float64_ulp_envelope",
+        })
+        self.assertEqual(configuration["stopping"], {
+            "gradient_infinity_norm_tolerance": 1e-8,
+            "independent_marginal_residual_tolerance": 1e-8,
+            "max_iterations": 5000,
+            "history_size": 10,
+        })
+        self.assertEqual(
+            configuration["source_sha256"],
+            hashlib.sha256(source.read_bytes()).hexdigest(),
+        )
+        self.assertEqual(configuration["initialization"], "zero_log_weights")
+        self.assertEqual(configuration["gauge"], "centered_zero_sum")
+        self.assertEqual(configuration["accumulation"], "compensated_float64_math.fsum")
+
+    def test_strong_wolfe_zoom_accepts_after_initial_objective_increase(self):
+        def evaluate(point):
+            x = point[0]
+            objective = x**4 - 2.0*x**3 + 2.0*x**2 - 0.5*x
+            gradient = (4.0*x**3 - 6.0*x**2 + 4.0*x - 0.5,)
+            return objective, gradient, (0.5,)
+
+        # The first trial at step=1 must increase the objective, forcing zoom.
+        self.assertGreater(evaluate((1.0,))[0], evaluate((0.0,))[0])
+        accepted = _strong_wolfe_search(
+            evaluate, (0.0,), (1.0,), 0.0, (-0.5,),
+        )
+        self.assertIsNotNone(accepted)
+        point, objective, gradient, _ = accepted
+        step = point[0]
+        self.assertLessEqual(objective, 0.0 + 1e-4 * step * -0.5 + 1e-14)
+        derivative = gradient[0]
+        self.assertLessEqual(abs(derivative), 0.9 * 0.5)
+
+    def test_strong_wolfe_accepts_an_ordinary_first_step(self):
+        def evaluate(point):
+            x = point[0]
+            return 0.5 * (x - 1.0) ** 2, (x - 1.0,), (0.5,)
+
+        accepted = _strong_wolfe_search(
+            evaluate, (0.0,), (1.0,), 0.5, (-1.0,),
+        )
+        self.assertIsNotNone(accepted)
+        point, objective, gradient, _ = accepted
+        step = point[0]
+        derivative_zero = -1.0
+        derivative = gradient[0]
+        self.assertLessEqual(objective, 0.5 + 1e-4 * step * derivative_zero + 1e-14)
+        self.assertLessEqual(abs(derivative), -0.9 * derivative_zero)
+
+    def test_strong_wolfe_zoom_handles_derivative_sign_transition(self):
+        def evaluate(point):
+            x = point[0]
+            objective = -x + 0.55 * x**4
+            gradient = (-1.0 + 2.2 * x**3,)
+            return objective, gradient, (0.5,)
+
+        # The first trial satisfies Armijo but violates curvature with a
+        # positive directional derivative, so the derivative-sign zoom path
+        # must run before a smaller step can satisfy both Wolfe conditions.
+        first_trial = evaluate((1.0,))
+        self.assertLessEqual(first_trial[0], 0.0 + 1e-4 * -1.0 + 1e-14)
+        self.assertGreater(first_trial[1][0], 0.9)
+        first = _strong_wolfe_search(
+            evaluate, (0.0,), (1.0,), 0.0, (-1.0,),
+        )
+        second = _strong_wolfe_search(
+            evaluate, (0.0,), (1.0,), 0.0, (-1.0,),
+        )
+        self.assertIsNotNone(first)
+        self.assertEqual(first, second)
+        point, objective, gradient, _ = first
+        step = point[0]
+        derivative_zero = -1.0
+        derivative = gradient[0]
+        self.assertLessEqual(objective, 0.0 + 1e-4 * step * derivative_zero + 1e-14)
+        self.assertLessEqual(abs(derivative), -0.9 * derivative_zero)
+
+    def test_strong_wolfe_zoom_stops_at_its_iteration_bound(self):
+        def evaluate(_point):
+            # A deliberately inconsistent oracle keeps every zoom candidate
+            # outside Armijo; the bounded search must return None, not loop.
+            return 1.0, (-1.0,), (0.5,)
+
+        accepted = _strong_wolfe_search(
+            evaluate, (0.0,), (1.0,), 0.0, (-1.0,),
+            max_iterations=3,
+        )
+        self.assertIsNone(accepted)
 
     def test_calibration_rejects_boundary_and_wrong_sum_without_repair(self):
         with self.assertRaises(ValueError):
