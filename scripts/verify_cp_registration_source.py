@@ -150,8 +150,14 @@ def verify_solver_parameter_comment(
     comment_url = registration.get("solver_parameter_comment_url")
     if comment_id != 7184937843:
         raise ValueError("solver parameter comment ID is missing or not the registered clarification")
+    registered_digest = registration.get("solver_parameter_comment_sha256")
+    if (not isinstance(registered_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", registered_digest)):
+        raise ValueError("registration must pin solver_parameter_comment_sha256")
     if not isinstance(digest_expected, str) or not re.fullmatch(r"[0-9a-f]{64}", digest_expected):
         raise ValueError("solver parameter comment SHA-256 is missing or malformed")
+    if registered_digest != digest_expected:
+        raise ValueError("workflow solver-parameter digest differs from immutable registration")
     return _verify_comment(
         repository=repository,
         issue_number=27,
