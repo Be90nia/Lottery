@@ -9,6 +9,7 @@ on:
       - feat/lot-055-preregistered-holm-inference
       - feat/lot-063-prospective-score-ledger
       - feat/lot-064-g3-runtime-binding-isolated
+      - feat/lottery-g3-g3-acceptance-20261127
     paths:
       - .github/workflows/subset-research.yml
       - src/lottery/subset_model/artifact.py
@@ -24,6 +25,7 @@ on:
       - src/lottery/storage.py
       - docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
       - docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json
+      - docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json
       - docs/G3_HISTORICAL_EXECUTION_EVIDENCE_2026-11-20.json
   workflow_dispatch:
 permissions:
@@ -95,7 +97,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
           python scripts/verify_cp_registration_source.py
-          --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-26.json
+          --registration docs/LOT055_CP_CALIBRATION_REGISTRATION_2026-11-27_G3-02.json
           --legacy-registration docs/G3_DIAGNOSTIC_REGISTRATION_2026-11-22.json
           --repository "$GITHUB_REPOSITORY"
           --solver-parameter-comment-sha256 "d9a451cc1bb9b5a62ace3aa47ae34ca016e2f1d66c5bc65ea4003222c9c296e5"
@@ -346,7 +348,7 @@ jobs:
                   or historical_attempt.get("execution_id") == attempt.get("execution_id")):
               raise SystemExit("historical optimizer child and live calibration child must remain separate experiments/executions")
           experiment_spec = snapshot["experiments"][current_experiment_id]["registration"]["spec"]
-          if (experiment_spec.get("experiment_name") != "LOT055-CP-CALIBRATION-DIAG-20261126"
+          if (experiment_spec.get("experiment_name") != "LOT055-CP-CALIBRATION-DIAG-20261127-G3-02"
                   or experiment_spec.get("experiment_class") != "exploratory"
                   or experiment_spec.get("outcomes_observed") is not True
                   or any(item.get("trial_id") != attempt.get("trial_id")
